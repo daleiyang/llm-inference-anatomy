@@ -1,0 +1,1329 @@
+<meta charset="utf-8">
+<title>Qwen2.5-7B 并发曲线</title>
+<style>
+  :root{
+    --ground:#F5F7F6; --surface:#FFFFFF; --surface-2:#EDF1F0; --surface-3:#E4EAE8;
+    --ink:#131C1B; --ink-2:#455553; --ink-3:#6E807D;
+    --rule:#D6DFDD; --rule-soft:#E6EBEA;
+    --accent:#0D7A80; --accent-2:#0A5C61; --accent-soft:rgba(13,122,128,.10);
+    --good:#2E7D4F; --warn:#B05A12; --crit:#A32F35;
+    --good-soft:rgba(46,125,79,.12); --warn-soft:rgba(176,90,18,.12); --crit-soft:rgba(163,47,53,.10);
+    --grid:rgba(19,28,27,.09); --grid-2:rgba(19,28,27,.05);
+    --shadow:0 1px 2px rgba(19,28,27,.05), 0 8px 24px -16px rgba(19,28,27,.22);
+    --font-mono:ui-monospace,"Cascadia Mono","SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --font-body:"Segoe UI",system-ui,-apple-system,"Helvetica Neue","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D1312; --surface:#141C1B; --surface-2:#1B2524; --surface-3:#223030;
+      --ink:#E2EAE8; --ink-2:#A3B4B0; --ink-3:#7E8F8B;
+      --rule:#26332F; --rule-soft:#1E2A28;
+      --accent:#45B6BC; --accent-2:#69CBD0; --accent-soft:rgba(69,182,188,.13);
+      --good:#58B87C; --warn:#DF9247; --crit:#E06A70;
+      --good-soft:rgba(88,184,124,.13); --warn-soft:rgba(223,146,71,.13); --crit-soft:rgba(224,106,112,.12);
+      --grid:rgba(226,234,232,.11); --grid-2:rgba(226,234,232,.055);
+      --shadow:0 1px 2px rgba(0,0,0,.32), 0 10px 28px -18px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0D1312; --surface:#141C1B; --surface-2:#1B2524; --surface-3:#223030;
+    --ink:#E2EAE8; --ink-2:#A3B4B0; --ink-3:#7E8F8B;
+    --rule:#26332F; --rule-soft:#1E2A28;
+    --accent:#45B6BC; --accent-2:#69CBD0; --accent-soft:rgba(69,182,188,.13);
+    --good:#58B87C; --warn:#DF9247; --crit:#E06A70;
+    --good-soft:rgba(88,184,124,.13); --warn-soft:rgba(223,146,71,.13); --crit-soft:rgba(224,106,112,.12);
+    --grid:rgba(226,234,232,.11); --grid-2:rgba(226,234,232,.055);
+    --shadow:0 1px 2px rgba(0,0,0,.32), 0 10px 28px -18px rgba(0,0,0,.7);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--ground); color:var(--ink);
+    font-family:var(--font-body); font-size:16px; line-height:1.65;
+    margin:0; padding:0 20px 96px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:940px; margin:0 auto}
+  .prose{max-width:66ch}
+
+  /* ---------- 头部 ---------- */
+  header{padding:56px 0 32px; border-bottom:1px solid var(--rule)}
+  .eyebrow{
+    font-family:var(--font-mono); font-size:11px; font-weight:600;
+    letter-spacing:.16em; text-transform:uppercase; color:var(--accent);
+    display:flex; align-items:center; gap:10px; margin:0 0 18px;
+  }
+  .eyebrow::after{content:""; flex:1; height:1px; background:var(--rule)}
+  h1{
+    font-size:clamp(30px,4.6vw,44px); line-height:1.16; font-weight:700;
+    letter-spacing:-.018em; margin:0 0 14px; text-wrap:balance;
+  }
+  .standfirst{font-size:17px; color:var(--ink-2); margin:0; max-width:60ch}
+
+  .spec{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(148px,1fr));
+    gap:1px; background:var(--rule); border:1px solid var(--rule);
+    margin:30px 0 0; border-radius:3px; overflow:hidden;
+  }
+  .spec div{background:var(--surface); padding:11px 14px}
+  .spec dt{
+    font-family:var(--font-mono); font-size:10px; font-weight:600;
+    letter-spacing:.12em; text-transform:uppercase; color:var(--ink-3); margin:0 0 3px;
+  }
+  .spec dd{
+    font-family:var(--font-mono); font-size:13px; margin:0; color:var(--ink);
+    font-variant-numeric:tabular-nums; word-break:break-word;
+  }
+
+  /* ---------- 章节 ---------- */
+  section{padding:52px 0 0}
+  h2{
+    font-size:24px; font-weight:700; letter-spacing:-.012em;
+    margin:0 0 8px; text-wrap:balance;
+  }
+  h2 .num{
+    font-family:var(--font-mono); font-size:12px; font-weight:600; color:var(--accent);
+    letter-spacing:.1em; display:block; margin-bottom:7px;
+  }
+  h3{font-size:17px; font-weight:650; margin:30px 0 8px; letter-spacing:-.005em}
+  p{margin:0 0 14px}
+  .lede{color:var(--ink-2); font-size:16px; margin-bottom:26px}
+  strong{font-weight:650}
+  code{
+    font-family:var(--font-mono); font-size:.88em; background:var(--surface-2);
+    padding:1px 5px; border-radius:3px; border:1px solid var(--rule-soft);
+    font-variant-numeric:tabular-nums;
+  }
+
+  /* ---------- 结论卡 ---------- */
+  .verdict{
+    background:var(--surface); border:1px solid var(--rule); border-radius:4px;
+    padding:24px 26px; box-shadow:var(--shadow); margin:0 0 28px;
+    border-left:3px solid var(--accent);
+  }
+  .verdict .k{
+    font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--ink-3); margin:0 0 10px;
+  }
+  .verdict .big{
+    font-family:var(--font-mono); font-size:clamp(26px,4vw,34px); font-weight:700;
+    color:var(--accent); letter-spacing:-.01em; margin:0 0 6px; font-variant-numeric:tabular-nums;
+  }
+  .verdict p{margin:0; color:var(--ink-2); font-size:15px}
+
+  .stats{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+    gap:14px; margin:0 0 8px;
+  }
+  .stat{
+    background:var(--surface); border:1px solid var(--rule); border-radius:4px; padding:16px 18px;
+  }
+  .stat .k{
+    font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--ink-3); margin:0 0 8px;
+  }
+  .stat .v{
+    font-family:var(--font-mono); font-size:23px; font-weight:700; letter-spacing:-.015em;
+    margin:0 0 4px; font-variant-numeric:tabular-nums; line-height:1.15;
+  }
+  .stat .v small{font-size:13px; font-weight:500; color:var(--ink-3); letter-spacing:0}
+  .stat .n{font-size:13px; color:var(--ink-3); margin:0; line-height:1.45}
+  .stat.ok .v{color:var(--good)} .stat.warn .v{color:var(--warn)} .stat.crit .v{color:var(--crit)}
+
+  /* ---------- 图表 ---------- */
+  figure{
+    margin:26px 0 0; background:var(--surface); border:1px solid var(--rule);
+    border-radius:4px; padding:22px 22px 16px; box-shadow:var(--shadow);
+  }
+  figcaption{
+    font-family:var(--font-mono); font-size:11px; font-weight:600; letter-spacing:.13em;
+    text-transform:uppercase; color:var(--ink-3); margin:0 0 4px;
+  }
+  .fig-title{font-size:16px; font-weight:650; margin:0 0 16px; letter-spacing:-.005em}
+  .chart{width:100%; overflow-x:auto}
+  .chart svg{display:block; width:100%; height:auto; min-width:520px}
+  .legend{
+    display:flex; flex-wrap:wrap; gap:8px 22px; margin:14px 0 0;
+    padding-top:13px; border-top:1px solid var(--rule-soft);
+    font-family:var(--font-mono); font-size:11.5px; color:var(--ink-2);
+  }
+  .legend span{display:flex; align-items:center; gap:7px}
+  .legend i{width:15px; height:2.5px; border-radius:2px; flex:none}
+  .legend i.d{height:0; border-top:2.5px dashed currentColor; border-radius:0}
+  .note{
+    font-size:13.5px; color:var(--ink-3); margin:13px 0 0; line-height:1.6; max-width:70ch;
+  }
+
+  /* ---------- 表格 ---------- */
+  .tw{overflow-x:auto; margin:22px 0 0; border:1px solid var(--rule); border-radius:4px; background:var(--surface)}
+  table{border-collapse:collapse; width:100%; font-family:var(--font-mono); font-size:12.5px; min-width:720px}
+  th,td{padding:8px 12px; text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap}
+  th{
+    font-size:10px; font-weight:600; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--ink-3); background:var(--surface-2); border-bottom:1px solid var(--rule);
+    position:sticky; top:0;
+  }
+  th:first-child,td:first-child{text-align:left}
+  tbody tr{border-bottom:1px solid var(--rule-soft)}
+  tbody tr:last-child{border-bottom:0}
+  tbody tr:hover{background:var(--surface-2)}
+  td.hl{color:var(--accent); font-weight:650}
+  td.bad{color:var(--crit); font-weight:650}
+  td.mid{color:var(--warn); font-weight:600}
+  td.gd{color:var(--good); font-weight:650}
+  tr.pick{background:var(--accent-soft)}
+  tr.pick td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+  caption{
+    caption-side:bottom; text-align:left; padding:11px 12px; font-family:var(--font-body);
+    font-size:13px; color:var(--ink-3); border-top:1px solid var(--rule-soft);
+  }
+
+  /* ---------- 要点列表 ---------- */
+  ul.pts{list-style:none; padding:0; margin:16px 0 0; display:flex; flex-direction:column; gap:13px}
+  ul.pts li{
+    padding-left:19px; position:relative; color:var(--ink-2); font-size:15px; max-width:68ch;
+  }
+  ul.pts li::before{
+    content:""; position:absolute; left:0; top:.62em; width:7px; height:2px;
+    background:var(--accent); border-radius:1px;
+  }
+  ul.pts li strong{color:var(--ink)}
+
+  .callout{
+    border:1px solid var(--rule); border-left:3px solid var(--warn);
+    background:var(--warn-soft); border-radius:4px; padding:16px 20px; margin:22px 0 0;
+  }
+  .callout.crit{border-left-color:var(--crit); background:var(--crit-soft)}
+  .callout.ok{border-left-color:var(--good); background:var(--good-soft)}
+  .callout .k{
+    font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.13em;
+    text-transform:uppercase; margin:0 0 7px; color:var(--warn);
+  }
+  .callout.crit .k{color:var(--crit)} .callout.ok .k{color:var(--good)}
+  .callout p{margin:0; font-size:14.5px; color:var(--ink-2)}
+  .callout p+p{margin-top:9px}
+
+  pre{
+    background:var(--surface-2); border:1px solid var(--rule); border-radius:4px;
+    padding:15px 17px; overflow-x:auto; margin:16px 0 0;
+    font-family:var(--font-mono); font-size:12.5px; line-height:1.7; color:var(--ink);
+  }
+  pre .c{color:var(--ink-3)}
+  pre .a{color:var(--accent); font-weight:600}
+  pre .w{color:var(--warn); font-weight:600}
+
+  footer{
+    margin-top:64px; padding-top:22px; border-top:1px solid var(--rule);
+    font-family:var(--font-mono); font-size:11.5px; color:var(--ink-3);
+    display:flex; flex-wrap:wrap; gap:6px 20px;
+  }
+  @media (max-width:640px){
+    header{padding-top:38px}
+    figure{padding:17px 14px 13px}
+    .verdict{padding:19px}
+  }
+  table.gloss { min-width: 620px; }
+  table.gloss th, table.gloss td {
+    text-align: left; white-space: normal; vertical-align: top; padding: 10px 14px 10px 0;
+  }
+  table.gloss td:nth-child(1) { white-space: nowrap; padding-left: 12px; }
+  table.gloss td:nth-child(2) { white-space: nowrap; color: var(--ink-2); }
+  table.gloss td:nth-child(3) {
+    min-width: 20rem; line-height: 1.6; font-family: var(--font-body); font-size: 13px;
+  }
+  table.gloss td:nth-child(4) {
+    min-width: 12rem; color: var(--accent); font-weight: 650; line-height: 1.55;
+  }
+</style>
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">Concurrency Sweep · RTX 4090 · Round 2</p>
+  <h1>Qwen2.5-7B 并发曲线</h1>
+  <p class="standfirst">
+    固定 1024 输入 / 256 输出,并发从 1 扫到 64。
+    第二轮换了一台实例,KV 池比第一轮大了 38%。
+    这条曲线回答两个问题:这张卡上吞吐涨到多少才开始拿延迟去换,以及池子变大之后那个拐点动了没有。
+  </p>
+  <dl class="spec">
+    <div><dt>GPU</dt><dd>RTX 4090 · 24 GB</dd></div>
+    <div><dt>vLLM</dt><dd>0.27.1 · V1</dd></div>
+    <div><dt>Torch</dt><dd>2.13.0+cu130</dd></div>
+    <div><dt>Dtype</dt><dd>bfloat16</dd></div>
+    <div><dt>In / Out</dt><dd>1024 / 256 tok</dd></div>
+    <div><dt>KV 池</dt><dd>6.41 GiB · 120,064 tok</dd></div>
+    <div><dt>Chunked prefill</dt><dd>on</dd></div>
+    <div><dt>失败请求</dt><dd>0 / 1332</dd></div>
+    <div><dt>驱动</dt><dd>580.159.03 · CUDA 13.0</dd></div>
+  </dl>
+</header>
+
+<!-- ============ 术语 ============ -->
+<section>
+  <h2><span class="num">术语</span>先把这六个主线指标定义清楚</h2>
+  <p class="lede prose">
+    下面这些缩写在正文里会反复出现,它们<b>不是同义词</b> ——
+    每一个量的是流水线上不同的一段,彼此之间还有确定的换算关系。
+    本轮负载:<code>1024 输入 / 256 输出 · 并发 1 → 64</code>。
+    其余指标(MBU、MFU、KV 占用、preemption 等)只在用到它的那一节就地解释,不必现在记。
+  </p>
+
+  <pre>  t=0   客户端发出请求
+        │
+        │  [1] 排队 queue_time —— 在 waiting 队列里等调度器放行
+        │  [2] prefill —— 把 1024 个输入 token 一次算完,写进 KV Cache
+        │  [3] 前端 + IPC —— 分词、HTTP、API server 与引擎之间的通信
+        │
+  <span class="a">━━━━━ [1]+[2]+[3]       = TTFT 首字延迟 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+        │
+        │      第 1 个输出 token 送达
+        │
+        │  [4] ITL × 255 —— 相邻两个输出 token 之间的间隔
+        │     这 255 个间隔的平均值 = TPOT
+        │
+  <span class="a">━━━━━ [1]+[2]+[3]+[4]   = E2EL 端到端时延 ━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+
+  <span class="c"># 恒等式:E2EL = TTFT + 255 × TPOT</span>
+  <span class="c"># 吞吐 = 所有请求的输出 token 总数 ÷ 整段测试的墙钟时间(不是 1/TPOT)</span></pre>
+
+  <div class="tw">
+    <table class="gloss">
+      <caption>贯穿全文的六个主线指标 · 最后一列是本轮的实测范围</caption>
+      <thead><tr><th>指标</th><th>中文</th><th>量的是什么</th><th>本轮实测</th></tr></thead>
+      <tbody>
+        <tr><td><strong>TTFT</strong><br><span class="n" style="opacity:.7">Time To First Token</span></td><td>首字延迟</td><td>从客户端发出请求,到收到<b>第 1 个</b>输出 token。它包含排队 + prefill + 前端开销三段,<b>不含</b>后续解码。</td><td class="hl">102 ms(C=1)→ 787 ms(C=64)</td></tr>
+        <tr><td><strong>ITL</strong><br><span class="n" style="opacity:.7">Inter-Token Latency</span></td><td>token 间隔</td><td>相邻两个输出 token 之间的时间。一条 256 token 的请求有 255 个 ITL 样本 —— 样本量大,所以它的 p99 最能暴露抖动。</td><td class="hl">15.83 → 22.50 ms(p50)</td></tr>
+        <tr><td><strong>ITL p99</strong></td><td>间隔的尾部</td><td>把所有 ITL 样本排序后第 99% 那个值。一次卡顿只影响少数间隔,均值和中位数都看不出来,<b>只有 p99 会跳</b>。</td><td class="hl">16.3 → 207.6 ms</td></tr>
+        <tr><td><strong>TPOT</strong><br><span class="n" style="opacity:.7">Time Per Output Token</span></td><td>每输出 token 耗时</td><td>一条请求"首 token 之后"的平均出字速度,即 <code>(E2EL − TTFT) ÷ (输出 token 数 − 1)</code>。数值上就是这条请求 ITL 的均值。</td><td class="hl">15.83 → 43.41 ms</td></tr>
+        <tr><td><strong>E2EL</strong><br><span class="n" style="opacity:.7">End-to-End Latency</span></td><td>端到端时延</td><td>从发出请求到收到<b>最后一个</b> token 的总时间。恒等式:<code>E2EL = TTFT + (输出数−1) × TPOT</code>。</td><td class="hl">4,138 → 11,779 ms</td></tr>
+        <tr><td><strong>输出吞吐</strong><br><span class="n" style="opacity:.7">output token/s</span></td><td>用户拿到的</td><td>单位时间产出的<b>输出</b> token 数。这是用户真正感知的产能。</td><td class="hl">61.9 → 1,387.8 tok/s</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <p class="k">三个最容易混的地方</p>
+    <p>
+      <b>1 · TPOT 和 ITL 均值是同一件事的两种算法。</b>
+      TPOT 是"每条请求先算自己的平均,再对请求取中位数";ITL 均值是"把所有间隔倒在一起平均"。
+      负载均匀时两者几乎相等(本轮 C=1 都是 15.83 ms),
+      有长尾时会分开 —— <span class="hl">两者一分开,就说明存在少数被拖长的间隔</span>。
+    </p>
+    <p>
+      <b>2 · 看 p50 得不出任何关于抖动的结论。</b>
+      一次 200 ms 的停顿混在 25 万个间隔里,对中位数毫无影响,对均值影响也很小。
+      本系列反复出现的一条经验:<b>抖动只在 p99 上露头</b>;
+      而抢占这种更稀有的事件(万分之一量级)连 p99 都够不着,只能看专门的计数器。
+    </p>
+    <p>
+      <b>3 · 吞吐不是 1 / TPOT。</b>
+      TPOT 是单条请求的出字速度,吞吐是整台机器的产能 —— 后者约等于前者乘以并行的请求条数。
+      并发提高时 TPOT 会变差而吞吐会变好,<span class="hl">这正是压测要权衡的那个交换</span>。
+    </p>
+  </div>
+</section>
+
+
+<!-- ============ 结论 ============ -->
+<section>
+  <h2><span class="num">结论</span>拐点仍然在 C=8 到 C=16 之间</h2>
+  <p class="lede prose">
+    吞吐一路涨到 C=64 都没有真正饱和,但"每多给一个并发槽换来多少 token/s"从 C=8 起就掉得很快。
+    真正划线的不是吞吐曲线,是 ITL 的尾部 —— 它在 C=8 那一点突然裂开。
+    <strong>池子比第一轮宽松得多,这个拐点一步都没动</strong>:它不是被显存卡住的,是被调度器卡住的。
+  </p>
+
+  <div class="verdict">
+    <p class="k">推荐运行点</p>
+    <p class="big">C = 16 &nbsp;·&nbsp; 681 tok/s</p>
+    <p>
+      吞吐达到单流的 11.0 倍,p50 ITL 仍只有 17.2 ms(比单流慢 8.9%),p99 TTFT 1.41 秒。
+      再往上走,C=32 多拿 50.7% 吞吐,代价是 p99 TTFT 翻一倍到 2.85 秒。
+    </p>
+    <p style="margin-top:10px">
+      为什么不是 C=8?<b>C=8 是抖动开始出现的点,C=16 是抖动仍可接受的点</b> ——
+      C=16 的 p99 ITL 虽已到 184 ms,但 p50 ITL 只有 17.2 ms、p99 TTFT 还在 1.5 秒 SLO 以内。
+      要完全消掉 ITL 尖峰只能退回 C=4,代价是丢掉三分之二的吞吐。
+    </p>
+  </div>
+
+  <div class="stats">
+    <div class="stat ok">
+      <p class="k">单流带宽利用率 MBU</p>
+      <p class="v">88.0<small> %</small></p>
+      <p class="n">61.9 tok/s,decode 已贴住显存带宽</p>
+    </div>
+    <div class="stat">
+      <p class="k">C=64 吞吐增益</p>
+      <p class="v">22.4<small> ×</small></p>
+      <p class="n">用 64 倍并发换来,最后一段每槽只剩 11.3 tok/s</p>
+    </div>
+    <div class="stat crit">
+      <p class="k">ITL p99 / p50 最大比</p>
+      <p class="v">10.7<small> ×</small></p>
+      <p class="n">C=16 处,均值完全看不见这个裂口</p>
+    </div>
+    <div class="stat ok">
+      <p class="k">C=64 时 KV 池占用</p>
+      <p class="v">57.2<small> %</small></p>
+      <p class="n">采样窗口实测均值,理论上界 68.2% —— 显存不再是这一轮的墙</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 主曲线 ============ -->
+<section>
+  <h2><span class="num">曲线</span>吞吐与延迟的兑换率</h2>
+  <p class="lede prose">
+    横轴是实际产出的 token/s,纵轴是 p99 首字延迟(对数)。曲线越往右越贵 ——
+    从 C=1 走到 C=16 花了 1.30 秒 p99 TTFT 买到 11 倍吞吐;从 C=32 走到 C=64
+    只多买到 35% 吞吐,却付出了 3.07 秒。
+  </p>
+
+  <figure>
+    <figcaption>Figure 1</figcaption>
+    <p class="fig-title">吞吐 – 延迟权衡曲线</p>
+    <div class="chart" id="ch-tradeoff"></div>
+    <div class="legend">
+      <span style="color:var(--warn)"><i style="background:currentColor"></i>p99 TTFT</span>
+      <span style="color:var(--ink-3)"><i class="d" style="background:none"></i>p50 TTFT</span>
+      <span style="color:var(--accent)"><i style="background:currentColor;border-radius:50%;width:8px;height:8px"></i>各并发点</span>
+    </div>
+    <p class="note">
+      灰色横带是三档常见 SLO。p50 与 p99 在 C=8 之后急剧分离,说明高并发下的慢请求
+      不是整体变慢,而是少数请求被排到了后面。
+    </p>
+  </figure>
+</section>
+
+<!-- ============ 扩展效率 ============ -->
+<section>
+  <h2><span class="num">效率</span>并发翻倍,吞吐没有翻倍</h2>
+  <p class="lede prose">
+    双对数坐标下,理想线性扩展是一条直线。实测曲线从 C=4 开始明显偏离,
+    到 C=64 时只剩理想值的 35.1%。
+  </p>
+
+  <figure>
+    <figcaption>Figure 2</figcaption>
+    <p class="fig-title">扩展效率:实测 vs 理想线性</p>
+    <div class="chart" id="ch-scaling"></div>
+    <div class="legend">
+      <span style="color:var(--accent)"><i style="background:currentColor"></i>实测吞吐</span>
+      <span style="color:var(--ink-3)"><i class="d" style="background:none"></i>理想线性(61.9 × C)</span>
+    </div>
+    <p class="note">点旁标注为该点的扩展效率。</p>
+  </figure>
+
+  <h3>每多一个并发槽,还能换来多少</h3>
+  <p class="prose">
+    这是判断拐点最直接的量。第一个并发槽带来 61.9 tok/s,到 C=32→64 那一段,
+    每个槽只剩 11.3 tok/s —— <strong>边际收益衰减到五分之一以下</strong>。
+    而这一段的 KV 池占用才刚过一半,<strong>掉下来的不是显存,是并行度本身的收益</strong>。
+  </p>
+
+  <figure>
+    <figcaption>Figure 3</figcaption>
+    <p class="fig-title">边际吞吐收益(每新增一个并发槽)</p>
+    <div class="chart" id="ch-marginal"></div>
+    <p class="note">
+      柱高 = 该区间内新增吞吐 ÷ 新增并发数。虚线为 C=1 的基准值 61.9 tok/s。
+    </p>
+  </figure>
+</section>
+
+<!-- ============ 两堵墙 ============ -->
+<section>
+  <h2><span class="num">两堵墙</span>MBU 下滑、MFU 上扬,交点在 C≈44</h2>
+  <p class="lede prose">
+    上一节留了个问题:并发翻 64 倍,吞吐只兑现了理想值的 35.1%,那损失掉的到底是什么?
+    这一节用服务端计数器正面回答 —— <b>不是浪费,是瓶颈换了一堵墙</b>。
+    本轮给服务端加了 <code>--enable-mfu-metrics</code>,它把每次迭代的
+    <strong>FLOPs</strong> 和<strong>读取字节数</strong>累加进 <code>/metrics</code>,
+    除以窗口墙钟就得到实际算力和实际带宽,再除以 4090 的峰值(165.2 TFLOP/s FP16 累加、
+    1008 GB/s)就是 MFU 和 MBU。
+  </p>
+  <p class="prose">
+    <b>MBU</b>(带宽利用率)= 实际读取字节 ÷ 墙钟 ÷ 1008 GB/s。解码是访存密集的:每出一个
+    token,整份权重都要过一遍 HBM ——<b>MBU 高说明卡在"读得不够快"这堵墙上</b>。
+    <b>MFU</b>(算力利用率)= 实际浮点乘加 ÷ 墙钟 ÷ 165.2 TFLOP/s。批越大,同一份权重服务的
+    token 越多,GEMM 越"方",算力才用得起来 ——<b>MFU 高说明卡在"算得不够快"这堵墙上</b>。
+    中间的传动杆是 <b>tok/iter</b>:一次前向里被一起算掉的 token 数(解码 token +
+    chunked prefill 切进来的块)。<b>权重只读一次,却服务了这么多 token</b> ——
+    这就是两者此消彼长的直接原因。
+  </p>
+
+  <figure>
+    <figcaption>Figure 4</figcaption>
+    <p class="fig-title">MBU(带宽利用率)与 MFU(算力利用率)随并发的此消彼长</p>
+    <div class="chart" id="ch-wall"></div>
+    <div class="legend">
+      <span style="color:var(--accent)"><i style="background:currentColor"></i>MBU = 实测 GB/s ÷ 1008</span>
+      <span style="color:var(--crit)"><i style="background:currentColor"></i>MFU = 实测 TFLOP/s ÷ 165.2</span>
+      <span style="color:var(--ink-3)"><i class="d" style="background:none"></i>交叉点 C ≈ 44</span>
+    </div>
+    <p class="note">
+      C=1 时权重读取占满了带宽(88%),算力几乎闲置(2.5%);
+      C=64 时权重被摊薄 64 次,带宽需求降到 43%,而 GEMM 的算力需求升到 57%。
+      <strong>同一颗芯片,瓶颈从左边那堵墙换到了右边那堵。</strong>
+      两条线在 C≈44 交于 49% 附近 —— 那之后再加并发,买到的是算力,付出的是带宽余量。
+      (同一对指标沿另一条轴的走势见《vllm-03-KV的线性》:那边固定并发扫输入长度,趋势相同。)
+    </p>
+  </figure>
+
+  <div class="tw">
+    <table>
+      <caption>服务端计数器直读。TFLOP/s 与 GB/s 由 /metrics 累计量除以窗口墙钟得到;<b>功耗、温度、KV 均值三列是采样窗口内的算术均值</b>(不是 p50 / 峰值,与《vllm-02-TTFT解剖》那份的口径不同,不要直接对数)。</caption>
+      <thead><tr><th>C</th><th>TFLOP/s</th><th>MFU</th><th>GB/s</th><th>MBU</th><th>tok/iter</th><th>功耗 W 均值</th><th>温度 均值</th><th>KV 均值</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>4.16</td><td>2.5%</td><td class="gd">887.1</td><td class="gd">88.0%</td><td>4.9</td><td>365</td><td>62</td><td>0.9%</td></tr>
+        <tr><td>2</td><td>7.94</td><td>4.8%</td><td class="gd">856.7</td><td class="gd">85.0%</td><td>9.7</td><td>337</td><td>60</td><td>1.9%</td></tr>
+        <tr><td>4</td><td>15.00</td><td>9.1%</td><td class="gd">823.5</td><td class="gd">81.7%</td><td>19.3</td><td>349</td><td>62</td><td>3.7%</td></tr>
+        <tr><td>8</td><td>27.27</td><td>16.5%</td><td>774.9</td><td>76.9%</td><td>38.4</td><td>364</td><td>62</td><td>7.4%</td></tr>
+        <tr><td>16</td><td>46.14</td><td>27.9%</td><td>695.3</td><td>69.0%</td><td>75.2</td><td>385</td><td>64</td><td>14.1%</td></tr>
+        <tr class="pick"><td>32</td><td>70.43</td><td class="mid">42.6%</td><td>548.0</td><td class="mid">54.4%</td><td>159.0</td><td>411</td><td>66</td><td>28.9%</td></tr>
+        <tr><td>64</td><td class="hl">94.61</td><td class="hl">57.3%</td><td>435.0</td><td class="bad">43.2%</td><td>311.6</td><td>428</td><td>69</td><td>57.2%</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>用 roofline 给每个并发点算一条地板</h3>
+  <p class="prose">
+    上面那张表是"实际跑到了多少",这里换个方向问:<b>理论上最快能到多少</b>。
+    解码一步至少要把权重完整读一遍、再把每条在跑的请求的 KV 读一遍,
+    这些字节除以峰值带宽,就是这一步的时间下限。
+  </p>
+
+  <pre><span class="c"># roofline 对账:解码步长的理论地板 = (权重 + C × 单条 KV) / 带宽</span>
+权重(参与矩阵乘) = 7.07e9 × 2 B = <span class="a">14.14 GB</span>   <span class="c">embedding 是查表,不流过 HBM</span>
+单条 KV   = 1152 tok × 56 KiB = <span class="a"> 0.066 GB</span>   <span class="c">1152 = (1024+1280)/2,全程平均上下文</span>
+
+  C      地板 ms    实测 ITL p50    达成率
+  1       14.09        15.83       <span class="a">89.0%</span>
+  8       14.55        16.63       <span class="a">87.5%</span>
+ 32       16.13        19.82       <span class="a">81.4%</span>
+ 64       18.22        22.50       <span class="a">81.0%</span>
+
+<span class="c"># 结论:vLLM 从 C=1 到 C=64,roofline 达成率只从 89% 掉到 81%</span>
+<span class="c"># 交叉验证:这一列与同轮 read_bytes 算出的 MBU(88.0 → 43.2%)在 C=1 处只差 1.0 pt</span></pre>
+
+  <div class="callout ok">
+    <p class="k">这张表是"批处理几乎不要钱"的直接证据</p>
+    <p>
+      地板本身从 14.09 涨到 18.22 ms(<strong>+29%</strong>),因为要多读 63 条 KV
+      (63 × 0.066 GB = 4.16 GB);
+      实测从 15.83 涨到 22.50 ms(<strong>+42%</strong>)。多出来的 13 个百分点是调度和 kernel 效率的损耗。
+      <strong>换句话说:并发翻 64 倍,理论代价 29%,实付 42%。</strong>
+      同一把尺子量 llama.cpp 的结果见《llama-cpp-压测》,差距是数量级的。
+    </p>
+  </div>
+</section>
+
+<!-- ============ ITL 裂口 ============ -->
+<section>
+  <h2><span class="num">断点</span>ITL 的尾部在 C=8 裂开</h2>
+  <p class="lede prose">
+    这是整轮压测里最值得看的一张图,也是"P99 ITL 才暴露抖动"这句话最干净的实证。
+    p50 ITL 从 C=1 到 C=64 只从 15.8 ms 涨到 22.5 ms —— 涨了 42%,温和得看不出问题。
+    但 p99 ITL 在 C=8 那一点从 17.6 ms 直接跳到 102.1 ms,<strong>比上一档翻了 5.8 倍</strong>。
+  </p>
+
+  <figure>
+    <figcaption>Figure 5</figcaption>
+    <p class="fig-title">ITL 分位数分裂(对数纵轴)</p>
+    <div class="chart" id="ch-itl"></div>
+    <div class="legend">
+      <span style="color:var(--ink-3)"><i style="background:currentColor"></i>p50</span>
+      <span style="color:var(--warn)"><i style="background:currentColor"></i>p90</span>
+      <span style="color:var(--crit)"><i style="background:currentColor"></i>p99</span>
+      <span style="color:var(--accent)"><i class="d" style="background:none"></i>ITL 均值</span>
+    </div>
+    <p class="note">
+      阴影区是 p50 与 p99 之间的跨度。C=4 时几乎看不见,C=8 之后张开成一个数量级。
+      注意均值线始终贴着 p50 与 p99 之间 —— 它两头都不代表。
+      <br><br>
+      <strong>图上有两种倍数,别混:</strong>点上方标的
+      <span class="hl">p99/p50</span> 是<b>同一个并发档内</b>最慢的 1% 比中位数慢多少倍
+      (C=8 是 6.1×);C=4 与 C=8 之间那条斜虚线标的
+      <span class="hl">×5.8</span> 是 p99 <b>相对上一档</b>翻了多少倍。
+      前者说"这一档有多不均匀",后者说"抖动是在哪一步冒出来的"。
+    </p>
+  </figure>
+
+  <div class="callout crit">
+    <p class="k">这不是抢占,而且这一轮尤其不可能是</p>
+    <p>
+      <b>抢占(preemption)</b>指 KV 池装不下时,调度器把某条正在跑的请求踢回队列 ——
+      它已算出的 KV 被丢弃、恢复时要重算 prefill。计数器 <code>vllm:num_preemptions_total</code>
+      全程 <strong>0 次</strong>(vLLM V1 不为它打日志行,只能从 /metrics 读)。
+      <b>Waiting</b>(队列里等的请求数;它与 <b>Running</b>——正在解码的请求数——之和
+      等于客户端在飞的并发)确实出现过 —— C=64 那一档起步瞬间排到 55 条 ——
+      但那是客户端一次性投放 64 条造成的,<strong>5 秒内就排空了</strong>,
+      稳态下 90% 的采样点 Waiting 都是 0。
+    </p>
+    <p>
+      更关键的是:这一轮 C=64 的 KV 池占用只有 <strong>67.5%</strong>,
+      离抢占阈值差得很远。<span class="hl">同样的 ITL 裂口在池子宽松 38% 的机器上原样重现</span>,
+      基本排除了"KV 紧张导致抖动"这条解释。
+    </p>
+    <p>
+      真正的原因是 <code>enable_chunked_prefill</code>:
+      新请求的 prefill 被切块后<strong>混进正在解码的批次</strong>。
+      对已经在解码的请求来说,那一步要等 prefill 块算完,于是出现一个 100–200 ms 的停顿。
+      C=64 时 p90 ITL 已达 187.5 ms —— <strong>超过一成的 token 间隔卡在别人的 prefill 上</strong>。
+    </p>
+  </div>
+
+  <h3>这些停顿最终反映在端到端时间上</h3>
+  <figure>
+    <figcaption>Figure 6</figcaption>
+    <p class="fig-title">E2EL 构成:首字等待 vs 解码耗时(p50)</p>
+    <div class="chart" id="ch-e2el"></div>
+    <div class="legend">
+      <span style="color:var(--warn)"><i style="background:currentColor"></i>TTFT(首字等待)</span>
+      <span style="color:var(--accent)"><i style="background:currentColor"></i>解码 255 个 token</span>
+    </div>
+    <p class="note">
+      解码段从 4.04 秒涨到 10.99 秒,是 E2EL 增长的主体。TTFT 虽然 p99 很难看,
+      但在中位数上始终只占总时长的 2.5%–6.7%。
+    </p>
+  </figure>
+</section>
+
+<!-- ============ KV 天花板 ============ -->
+<section>
+  <h2><span class="num">天花板</span>真实并发上限是 93 条,不是 <code>--max-num-seqs</code> 写的 128</h2>
+  <p class="lede prose">
+    服务端启动参数写的是 <code>--max-num-seqs 128</code>,但那只是名义上限。
+    实际能同时跑多少条,由 KV cache 池除以单请求占用决定。
+    <b>KV 占用</b>(计数器 <code>gpu_cache_usage_perc</code>)就是这个池子的使用率 ——
+    池子大小 = 显存扣掉权重与激活之后的余量,由启动日志给出,每 token 占 56 KiB。
+    这一轮的池子比第一轮宽松不少,上限也跟着抬了同样的比例。
+  </p>
+
+  <pre><span class="c"># 服务端日志实测(第二轮)</span>
+Available KV cache memory: <span class="a">6.41 GiB</span>
+GPU KV cache size:         <span class="a">120,064 tokens</span>
+
+<span class="c"># 单请求占用 = 输入 + 输出</span>
+1024 + 256 = 1,280 tokens
+
+<span class="c"># 真实并发上限</span>
+120,064 ÷ 1,280 = <span class="a">93.8 条</span>
+
+<span class="c"># 第一轮同样的算法,同样的启动参数,拿到的是</span>
+86,896 ÷ 1,280 = 67.9 条   <span class="c">← 差在 profiling 结果,见下</span></pre>
+
+  <h3>差在哪一行</h3>
+  <pre><span class="c"># Round 1 启动日志</span>
+Available KV cache memory: <span class="w">4.64 GiB</span>
+GPU KV cache size: <span class="w">86,896 tokens</span>
+Maximum concurrency for 8,192 tokens per request: <span class="w">10.61x</span>
+Actual usage: <span class="w">15.49 GiB</span> weights+non-torch, <span class="w">1.04 GiB</span> peak activation
+
+<span class="c"># Round 2 启动日志(同一条命令,同样 --gpu-memory-utilization 0.9)</span>
+Available KV cache memory: <span class="a">6.41 GiB</span>
+GPU KV cache size: <span class="a">120,064 tokens</span>
+Maximum concurrency for 8,192 tokens per request: <span class="a">14.66x</span>
+Actual usage: <span class="a">14.49 GiB</span> weights+non-torch, <span class="a">0.26 GiB</span> peak activation</pre>
+
+  <p class="prose">
+    权重那一项少了 1.00 GiB、峰值激活少了 0.78 GiB,于是 KV 池多出 1.77 GiB。
+    两轮的 vLLM / torch 版本号完全相同(0.27.1 / 2.13.0+cu130),
+    差别在驱动与 CUDA(Round 1 是 590.48.01 / CUDA 13.1,Round 2 是 580.159.03 / CUDA 13.0),
+    以及显存 profiling 本身的随机性。
+  </p>
+
+  <figure>
+    <figcaption>Figure 7</figcaption>
+    <p class="fig-title">各并发点的 KV cache 池占用</p>
+    <div class="chart" id="ch-kv"></div>
+    <p class="note">
+      条长 = <b>全程满载的理论上界</b> C × 1280 ÷ 120,064。C=64 需要 81,920 tokens、
+      占池 68.2%,与服务端观测到的峰值 67.5% 吻合;全程实测均值则只有 57.2%(见下方对账)。
+      被注释掉的 C=128 需要 163,840 tokens,是池子的 1.36 倍,仍然跑不起来。
+    </p>
+  </figure>
+
+  <div class="callout">
+    <p class="k">这一轮 C=64 根本没碰到 KV 墙</p>
+    <p>
+      显存账:权重 + non-torch <strong>14.49 GiB</strong>,峰值激活 0.26 GiB,CUDA Graph 0.34 GiB,
+      KV 池 6.41 GiB,合计 21.50 GiB。而 <code>--gpu-memory-utilization 0.90</code>
+      给出的预算是 21.16 GiB,卡上总共有 23.52 GiB。
+    </p>
+    <p>
+      <strong>差别不在配置,在 profiling</strong> —— 换了驱动之后,
+      vLLM 探到的"已占用显存"少了 1 GiB,省下来的全进了 KV 池。
+      <span class="hl">所以并发上限这个数必须每台机器现读日志,不能跨机器搬</span>。
+    </p>
+  </div>
+</section>
+
+<!-- ============ 数据表 ============ -->
+<section>
+  <h2><span class="num">数据</span>完整测量结果</h2>
+  <div class="tw">
+    <table>
+      <thead>
+        <tr>
+          <th>并发</th><th>请求数</th><th>耗时 s</th>
+          <th>输出 tok/s</th><th>效率</th>
+          <th>TTFT p50</th><th>TTFT p99</th>
+          <th>TPOT p50</th>
+          <th>ITL p50</th><th>ITL p99</th>
+          <th>E2EL p50</th><th>KV 上界</th><th>KV 实测</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+      <caption>延迟单位 ms。效率 = 吞吐 ÷ (C × 61.86)。<b>KV 上界</b> = C × 1280 ÷ 120,064,即"全程满载"的理论值;<b>KV 实测</b>是采样窗口内的实测均值。表中吞吐只算输出 token —— 把输入一起算的<b>总吞吐</b>是它的 5 倍(309 → 6,939 tok/s),长输入场景下两者会背道而驰,不可互相替代。</caption>
+    </table>
+  </div>
+
+  <h3>这批数据能不能信:四条自检</h3>
+  <ul class="pts">
+    <li><strong>每请求输出 token 精确等于 256</strong>(全部 7 档),<code>--ignore-eos</code> 生效,
+      各档之间的工作量完全一致 —— 吞吐差异不可能来自"有的请求提前停了"。</li>
+    <li><strong><code>--temperature 0</code> 生效</strong>:sweep 日志里已经没有
+      <code>no longer sets temperature==0</code> 这句 WARNING(Round 1 每档都有)。
+      采样路径与 llama.cpp 侧同构。</li>
+    <li><strong>prefix caching 确实关着</strong>:启动日志 <code>non-default args</code> 里
+      <code>enable_prefix_caching: False</code>,且 KV 使用率随并发严格线性
+      (0.9 / 1.9 / 3.7 / 7.4 / 14.1 / 28.9 / 57.2 %),没有任何缓存命中造成的塌陷。
+      <span class="hl">这条线性关系在《vllm-03-KV的线性》里被单独做成了实验</span>,那边的对账更严格。</li>
+    <li><strong>零失败、零抢占</strong>:1,332 条请求全部成功,
+      <code>vllm:num_preemptions_total</code> 全程为 0 —— 本轮没有任何一个点触到 KV 上限。</li>
+  </ul>
+
+  <div class="callout ok">
+    <p class="k">三个 KV 数字,一把尺子对得上</p>
+    <p>
+      理论上界 <code>C × 1280 ÷ 120,064</code>(C=64 得 68.2%)、服务端观测到的峰值(67.5%)、
+      采样窗口内的实测均值(57.2%)—— 量的是同一件事的三个时刻。
+      把上界里的两处高估还原回去,它就落到实测均值上:
+    </p>
+    <pre><span class="c"># ① 1280 是请求结束那一刻的占用,全程平均只有 (1024+1280)/2 = 1152</span>
+<span class="c"># ② running 均值略小于 C —— 起步和收尾都有一小段没坐满</span>
+
+  C    实测 KV 均值    running 均值   running × 1152 ÷ 120,064
+  1        0.94%          1.0            <span class="a">0.93%</span>
+  8        7.40%          7.7            <span class="a">7.39%</span>
+ 16       14.11%         14.7            <span class="a">14.12%</span>
+ 32       28.94%         30.3            <span class="a">29.04%</span>
+ 64       57.18%         59.9            <span class="a">57.44%</span>
+
+<span class="c"># 七个点最大偏差 0.5%,PagedAttention 的账在这个尺度上是平的</span></pre>
+    <p>
+      也就是说 <span class="hl">Figure 7 的 68.2% 是"如果 64 条全程都满载"的上界,
+      57.2% 才是这台机器实际占住的量</span> —— 结论(本轮离 KV 上限还很远)三个数都成立。
+    </p>
+  </div>
+</section>
+
+<!-- ============ 怎么设 ============ -->
+<section>
+  <h2><span class="num">选点</span>按 SLO 反查配置</h2>
+  <p class="lede prose">
+    <b>SLO</b>(Service Level Objective,服务等级目标)是事先定下的延迟承诺,
+    例如"p99 首字延迟不超过 1.5 秒"。压测的意义就是反查:在这条线以内,并发最多能开到多少。
+    下表按 p99 TTFT ≤ 0.5 / 1 / 1.5 / 3 秒四档反查。
+  </p>
+  <div class="tw">
+    <table>
+      <thead>
+        <tr><th>如果 SLO 是</th><th>选并发</th><th>能拿到吞吐</th><th>实际 p99 TTFT</th><th>p50 ITL</th></tr>
+      </thead>
+      <tbody id="slo"></tbody>
+      <caption>高亮行为推荐默认值。</caption>
+    </table>
+  </div>
+
+  <h3>下一步该改什么</h3>
+  <ul class="pts">
+    <li><strong>C=96 现在才是该补的点。</strong>这一轮 C=64 只用掉 68% 的池子,
+      C=96 需要 122,880 tokens、刚好压满 120,064 —— 那才是第一次能看到 preemption 的地方。
+      第一轮想测这个点必须先扩池,这一轮不用。</li>
+    <li><strong>池子还能再扩一次。</strong>加 <code>--kv-cache-memory=8471115264</code>,
+      6.41 → 7.89 GiB,上限 93 → 115 条。仍然是纯赚不赔的改动,只是没有第一轮那么急迫。</li>
+    <li><strong>ITL 抖动想压下去,调 <code>--max-num-batched-tokens</code>。</strong>
+      调小 → prefill 块更细 → ITL 尖峰更矮,但 TTFT 会变差。这是一个明确的对换,
+      取决于你的场景是流式聊天(在意 ITL)还是批量任务(在意 TTFT)。
+      <span class="hl">这一轮已经证明它跟 KV 余量无关,所以只能从这里下手</span>。</li>
+    <li><strong>跨轮对照要锁住 KV 池。</strong>两轮之间池子差得远,任何"并发上限"类的结论
+      都不能直接比。要比就用 <code>--kv-cache-memory</code> 把两边钉死在同一个数上。</li>
+    <li><strong>TTFT 的 p99 在 C≤8 不要单独引用。</strong>它的样本量就是请求数
+      (40/60/80/120),算 p99 等于取最慢的那一两条。
+      <strong>ITL 的 p99 不受此限</strong> —— 每条请求贡献 255 个间隔样本,C=8 已有
+      30,600 个。<span class="hl">这正是本报告用 ITL p99、而不是 TTFT p99 来划拐点的原因</span>。</li>
+  </ul>
+</section>
+
+<p class="note" style="margin-top:56px; max-width:none">
+  <b>这是 Round 2 五份压测报告的第 1 份</b>(vLLM 并发扫描)。
+  整轮的横向结论与生产选型建议见 <b>《选型指南-vllm-llama-cpp》</b> ——
+  那份把五组测试的数据合起来,回答"两个引擎各自强在哪、生产上怎么选"。
+  同目录另有:<code>vllm-02-TTFT解剖</code> · <code>vllm-03-KV的线性</code> · <code>vllm-04-断崖</code> · <code>llama-cpp-压测</code>。
+</p>
+
+<footer>
+  <span>2026-08-25 · Round 2</span>
+  <span>1,332 requests · 0 failed</span>
+  <span>vLLM 0.27.1 · CUDA 13.0 · driver 580.159.03</span>
+  <span>prefix caching: off</span>
+</footer>
+
+</div>
+
+<script>
+(function(){
+"use strict";
+
+var BASE = 61.857;                // C=1 输出吞吐,作为线性扩展基准
+var KV_TOKENS = 120064;            // 服务端日志实测(第二轮)
+var REQ_TOKENS = 1280;             // 1024 in + 256 out
+
+var D = [
+ {c:1,   n:40,   dur:165.54 , tp:61.857   , ttft50:102.3  , ttft90:105.8  , ttft99:109.0  , tpot50:15.83 , itl50:15.83 , itl90:15.91  , itl99:16.3  , itlAvg:15.83 , e2e50:4138, kvAvg:0.9},
+ {c:2,   n:60,   dur:129.42 , tp:118.681  , ttft50:154.2  , ttft90:198.1  , ttft99:203.0  , tpot50:16.31 , itl50:16.15 , itl90:16.24  , itl99:16.9  , itlAvg:16.31 , e2e50:4313, kvAvg:1.9},
+ {c:4,   n:80,   dur:90.99  , tp:225.083  , ttft50:288.4  , ttft90:303.5  , ttft99:388.4  , tpot50:16.70 , itl50:16.32 , itl90:16.44  , itl99:17.6  , itlAvg:16.88 , e2e50:4549, kvAvg:3.7},
+ {c:8,   n:120,  dur:74.67  , tp:411.410  , ttft50:305.9  , ttft90:487.4  , ttft99:733.6  , tpot50:18.32 , itl50:16.63 , itl90:16.77  , itl99:102.1 , itlAvg:18.25 , e2e50:4978, kvAvg:7.4},
+ {c:16,  n:200,  dur:75.13  , tp:681.493  , ttft50:474.4  , ttft90:760.7  , ttft99:1407.3 , tpot50:21.01 , itl50:17.23 , itl90:17.57  , itl99:183.7 , itlAvg:21.01 , e2e50:5850, kvAvg:14.1},
+ {c:32,  n:320,  dur:79.79  , tp:1026.684 , ttft50:588.3  , ttft90:784.4  , ttft99:2854.0 , tpot50:28.60 , itl50:19.82 , itl90:21.16  , itl99:197.2 , itlAvg:28.53 , e2e50:7962, kvAvg:28.9},
+ {c:64,  n:512,  dur:94.45  , tp:1387.769 , ttft50:786.7  , ttft90:1427.8 , ttft99:5923.7 , tpot50:43.41 , itl50:22.50 , itl90:187.48 , itl99:207.6 , itlAvg:42.22 , e2e50:11779, kvAvg:57.2}
+];
+
+// --enable-mfu-metrics 计数器,窗口内累计量 ÷ 墙钟
+// mfu = tf / 165.2 * 100 ; mbu = gb / 1008 * 100
+var WALL = [
+ {c:1,  tf: 4.16, mfu: 2.5, gb:887.1, mbu:88.0, iter:  4.9},
+ {c:2,  tf: 7.94, mfu: 4.8, gb:856.7, mbu:85.0, iter:  9.7},
+ {c:4,  tf:15.00, mfu: 9.1, gb:823.5, mbu:81.7, iter: 19.3},
+ {c:8,  tf:27.27, mfu:16.5, gb:774.9, mbu:76.9, iter: 38.4},
+ {c:16, tf:46.14, mfu:27.9, gb:695.3, mbu:69.0, iter: 75.2},
+ {c:32, tf:70.43, mfu:42.6, gb:548.0, mbu:54.4, iter:159.0},
+ {c:64, tf:94.61, mfu:57.3, gb:435.0, mbu:43.2, iter:311.6}
+];
+
+var NS = "http://www.w3.org/2000/svg";
+function el(name, attrs){
+  var e = document.createElementNS(NS, name);
+  if (attrs) for (var k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+function txt(x, y, s, attrs){
+  var t = el("text", attrs || {});
+  t.setAttribute("x", x); t.setAttribute("y", y);
+  t.textContent = s;
+  return t;
+}
+function lin(d0, d1, r0, r1){
+  return function(v){ return r0 + (v - d0) / (d1 - d0) * (r1 - r0); };
+}
+function log(d0, d1, r0, r1){
+  var a = Math.log(d0), b = Math.log(d1);
+  return function(v){ return r0 + (Math.log(v) - a) / (b - a) * (r1 - r0); };
+}
+function fmt(v){
+  if (v >= 10000) return (v/1000).toFixed(1) + "k";
+  if (v >= 1000)  return v.toLocaleString("en-US");
+  if (v >= 100)   return String(Math.round(v));
+  if (v >= 10)    return v.toFixed(1);
+  return v.toFixed(2);
+}
+// 主题色实时取值,保证明暗两套都正确
+function cv(name){
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+var W = 860, H = 400;
+
+function frame(mountId, m){
+  var host = document.getElementById(mountId);
+  host.innerHTML = "";
+  var svg = el("svg", {viewBox:"0 0 " + W + " " + H, role:"img"});
+  host.appendChild(svg);
+  return {svg:svg, l:m.l, r:W-m.r, t:m.t, b:H-m.b};
+}
+
+function axes(g, o){
+  var C = {grid:cv("--grid"), grid2:cv("--grid-2"), ink3:cv("--ink-3"), rule:cv("--rule")};
+  // 横向网格 + Y 轴刻度
+  o.yTicks.forEach(function(v){
+    var y = o.y(v);
+    g.appendChild(el("line", {x1:o.l, y1:y, x2:o.r, y2:y, stroke:C.grid2, "stroke-width":1}));
+    g.appendChild(txt(o.l - 9, y + 4, o.yFmt ? o.yFmt(v) : fmt(v), {
+      "text-anchor":"end", fill:C.ink3, "font-size":11,
+      "font-family":"var(--font-mono)", "font-variant-numeric":"tabular-nums"}));
+  });
+  // X 轴刻度
+  o.xTicks.forEach(function(v){
+    var x = o.x(v);
+    if (o.xGrid) g.appendChild(el("line", {x1:x, y1:o.t, x2:x, y2:o.b, stroke:C.grid2, "stroke-width":1}));
+    g.appendChild(el("line", {x1:x, y1:o.b, x2:x, y2:o.b + 5, stroke:C.rule, "stroke-width":1}));
+    g.appendChild(txt(x, o.b + 19, o.xFmt ? o.xFmt(v) : fmt(v), {
+      "text-anchor":"middle", fill:C.ink3, "font-size":11,
+      "font-family":"var(--font-mono)", "font-variant-numeric":"tabular-nums"}));
+  });
+  // 轴线
+  g.appendChild(el("line", {x1:o.l, y1:o.b, x2:o.r, y2:o.b, stroke:C.rule, "stroke-width":1.5}));
+  // 轴标题
+  if (o.xLabel) g.appendChild(txt((o.l + o.r)/2, H - 6, o.xLabel, {
+    "text-anchor":"middle", fill:C.ink3, "font-size":11, "font-weight":600,
+    "font-family":"var(--font-mono)", "letter-spacing":"0.09em"}));
+  if (o.yLabel) {
+    var t = txt(0, 0, o.yLabel, {
+      "text-anchor":"middle", fill:C.ink3, "font-size":11, "font-weight":600,
+      "font-family":"var(--font-mono)", "letter-spacing":"0.09em",
+      transform:"translate(13," + (o.t + o.b)/2 + ") rotate(-90)"});
+    g.appendChild(t);
+  }
+}
+
+function path(pts, color, opts){
+  opts = opts || {};
+  var d = pts.map(function(p, i){ return (i ? "L" : "M") + p[0].toFixed(2) + " " + p[1].toFixed(2); }).join(" ");
+  return el("path", {
+    d:d, fill:"none", stroke:color,
+    "stroke-width":opts.w || 2.2,
+    "stroke-dasharray":opts.dash || "none",
+    "stroke-linejoin":"round", "stroke-linecap":"round",
+    opacity:opts.op == null ? 1 : opts.op
+  });
+}
+function dot(x, y, color, r, tip){
+  var g = el("g", {});
+  var c = el("circle", {cx:x, cy:y, r:r || 4.5, fill:color, stroke:cv("--surface"), "stroke-width":1.8});
+  if (tip){ var t = el("title", {}); t.textContent = tip; c.appendChild(t); }
+  g.appendChild(c);
+  return g;
+}
+function label(x, y, s, color, anchor){
+  return txt(x, y, s, {
+    "text-anchor":anchor || "middle", fill:color, "font-size":10.5, "font-weight":600,
+    "font-family":"var(--font-mono)", "font-variant-numeric":"tabular-nums"});
+}
+
+/* ---------- Fig 1 · 吞吐 – 延迟 ---------- */
+function figTradeoff(){
+  var o = frame("ch-tradeoff", {t:26, r:26, b:52, l:66});
+  var g = o.svg;
+  o.x = lin(0, 1500, o.l, o.r);
+  o.y = log(90, 8000, o.b, o.t);
+  o.xTicks = [0,250,500,750,1000,1250,1500];
+  o.yTicks = [100,200,500,1000,2000,5000];
+  o.yFmt = function(v){ return v >= 1000 ? (v/1000) + "s" : v + "ms"; };
+  o.xLabel = "OUTPUT THROUGHPUT (tok/s)";
+  o.yLabel = "p99 TTFT";
+  o.xGrid = true;
+
+  // SLO 带
+  var bands = [
+    {v:500,  t:"500 ms", c:cv("--good")},
+    {v:1500, t:"1.5 s",  c:cv("--warn")},
+    {v:3000, t:"3 s",    c:cv("--crit")}
+  ];
+  bands.forEach(function(b){
+    var y = o.y(b.v);
+    g.appendChild(el("line", {x1:o.l, y1:y, x2:o.r, y2:y, stroke:b.c,
+      "stroke-width":1.2, "stroke-dasharray":"2 4", opacity:.55}));
+    g.appendChild(txt(o.r - 3, y - 6, "SLO " + b.t, {"text-anchor":"end", fill:b.c,
+      "font-size":10, "font-weight":600, "font-family":"var(--font-mono)", opacity:.9}));
+  });
+
+  axes(g, o);
+
+  var p50 = D.map(function(d){ return [o.x(d.tp), o.y(d.ttft50)]; });
+  var p99 = D.map(function(d){ return [o.x(d.tp), o.y(d.ttft99)]; });
+  g.appendChild(path(p50, cv("--ink-3"), {dash:"5 4", w:1.8, op:.85}));
+  g.appendChild(path(p99, cv("--warn"), {w:2.6}));
+
+  D.forEach(function(d, i){
+    g.appendChild(dot(p50[i][0], p50[i][1], cv("--ink-3"), 3.4,
+      "C=" + d.c + " · p50 TTFT " + d.ttft50 + " ms"));
+    g.appendChild(dot(p99[i][0], p99[i][1], cv("--accent"), 5,
+      "C=" + d.c + " · " + d.tp.toFixed(1) + " tok/s · p99 TTFT " + d.ttft99 + " ms"));
+    var up = (d.c === 1 || d.c === 2);
+    g.appendChild(label(p99[i][0] + (up ? 12 : 0), p99[i][1] - (up ? 2 : 13),
+      "C=" + d.c, cv("--ink"), up ? "start" : "middle"));
+  });
+}
+
+/* ---------- Fig 2 · 扩展效率 ---------- */
+function figScaling(){
+  var o = frame("ch-scaling", {t:26, r:30, b:52, l:66});
+  var g = o.svg;
+  o.x = log(1, 64, o.l, o.r);
+  o.y = log(50, 4400, o.b, o.t);
+  o.xTicks = [1,2,4,8,16,32,64];
+  o.yTicks = [50,100,250,500,1000,2000,4000];
+  o.xFmt = function(v){ return String(v); };
+  o.yFmt = function(v){ return v.toLocaleString("en-US"); };
+  o.xLabel = "CONCURRENCY";
+  o.yLabel = "OUTPUT tok/s";
+  o.xGrid = true;
+  axes(g, o);
+
+  var ideal = D.map(function(d){ return [o.x(d.c), o.y(BASE * d.c)]; });
+  var real  = D.map(function(d){ return [o.x(d.c), o.y(d.tp)]; });
+
+  // 差距填充
+  var area = ideal.concat(real.slice().reverse());
+  var dd = area.map(function(p,i){ return (i?"L":"M") + p[0].toFixed(2) + " " + p[1].toFixed(2); }).join(" ") + "Z";
+  g.appendChild(el("path", {d:dd, fill:cv("--accent"), opacity:.07}));
+
+  g.appendChild(path(ideal, cv("--ink-3"), {dash:"6 5", w:1.8, op:.8}));
+  g.appendChild(path(real, cv("--accent"), {w:2.8}));
+
+  D.forEach(function(d, i){
+    var eff = d.tp / (BASE * d.c) * 100;
+    g.appendChild(dot(real[i][0], real[i][1], cv("--accent"), 5,
+      "C=" + d.c + " · " + d.tp.toFixed(1) + " tok/s · 效率 " + eff.toFixed(1) + "%"));
+    if (d.c !== 1) {
+      g.appendChild(label(real[i][0] + 4, real[i][1] + 19,
+        eff.toFixed(0) + "%", eff >= 80 ? cv("--good") : (eff >= 50 ? cv("--warn") : cv("--crit")), "middle"));
+    }
+  });
+  g.appendChild(label(ideal[6][0] - 4, ideal[6][1] + 4,
+    "理想 " + Math.round(BASE * 64).toLocaleString("en-US"), cv("--ink-3"), "end"));
+}
+
+/* ---------- Fig 3 · 边际收益 ---------- */
+function figMarginal(){
+  var H3 = 300;
+  var host = document.getElementById("ch-marginal");
+  host.innerHTML = "";
+  var svg = el("svg", {viewBox:"0 0 " + W + " " + H3, role:"img"});
+  host.appendChild(svg);
+  var l = 66, r = W - 26, t = 24, b = H3 - 52;
+
+  var steps = [];
+  for (var i = 1; i < D.length; i++){
+    steps.push({
+      from:D[i-1].c, to:D[i].c,
+      tpFrom:D[i-1].tp, tpTo:D[i].tp,
+      val:(D[i].tp - D[i-1].tp) / (D[i].c - D[i-1].c)
+    });
+  }
+  var y = lin(0, 70, b, t);
+  var bw = (r - l) / steps.length;
+
+  [0,15,30,45,60].forEach(function(v){
+    var yy = y(v);
+    svg.appendChild(el("line", {x1:l, y1:yy, x2:r, y2:yy, stroke:cv("--grid-2"), "stroke-width":1}));
+    svg.appendChild(txt(l - 9, yy + 4, String(v), {"text-anchor":"end", fill:cv("--ink-3"),
+      "font-size":11, "font-family":"var(--font-mono)", "font-variant-numeric":"tabular-nums"}));
+  });
+
+  // 基准线
+  svg.appendChild(el("line", {x1:l, y1:y(BASE), x2:r, y2:y(BASE), stroke:cv("--ink-3"),
+    "stroke-width":1.4, "stroke-dasharray":"5 4", opacity:.75}));
+  svg.appendChild(txt(r - 3, y(BASE) - 7, "单流基准 " + BASE.toFixed(1), {"text-anchor":"end",
+    fill:cv("--ink-3"), "font-size":10, "font-weight":600, "font-family":"var(--font-mono)"}));
+
+  steps.forEach(function(s, i){
+    var x = l + i * bw + bw * 0.19;
+    var w = bw * 0.62;
+    var hh = b - y(s.val);
+    var col = s.val >= 45 ? cv("--good") : (s.val >= 25 ? cv("--warn") : cv("--crit"));
+    var rect = el("rect", {x:x, y:y(s.val), width:w, height:hh, fill:col, opacity:.82, rx:2});
+    var ti = el("title", {});
+    ti.textContent = "C " + s.from + "→" + s.to + " · " + s.tpFrom.toFixed(1) + " → "
+      + s.tpTo.toFixed(1) + " tok/s · 新增 " + (s.tpTo - s.tpFrom).toFixed(1)
+      + " ÷ " + (s.to - s.from) + " 槽 = 每槽 +" + s.val.toFixed(1) + " tok/s";
+    rect.appendChild(ti);
+    svg.appendChild(rect);
+    svg.appendChild(txt(x + w/2, y(s.val) - 8, "+" + s.val.toFixed(1), {"text-anchor":"middle",
+      fill:col, "font-size":12, "font-weight":700, "font-family":"var(--font-mono)",
+      "font-variant-numeric":"tabular-nums"}));
+    svg.appendChild(txt(x + w/2, b + 19, s.from + "→" + s.to, {"text-anchor":"middle",
+      fill:cv("--ink-3"), "font-size":11, "font-family":"var(--font-mono)"}));
+  });
+
+  svg.appendChild(el("line", {x1:l, y1:b, x2:r, y2:b, stroke:cv("--rule"), "stroke-width":1.5}));
+  svg.appendChild(txt((l+r)/2, H3 - 6, "CONCURRENCY STEP", {"text-anchor":"middle",
+    fill:cv("--ink-3"), "font-size":11, "font-weight":600,
+    "font-family":"var(--font-mono)", "letter-spacing":"0.09em"}));
+  svg.appendChild(txt(0, 0, "tok/s PER SLOT", {"text-anchor":"middle", fill:cv("--ink-3"),
+    "font-size":11, "font-weight":600, "font-family":"var(--font-mono)",
+    "letter-spacing":"0.09em", transform:"translate(13," + (t+b)/2 + ") rotate(-90)"}));
+}
+
+/* ---------- Fig 4 · 两堵墙 ---------- */
+function figWall(){
+  var o = frame("ch-wall", {t:26, r:34, b:52, l:66});
+  var g = o.svg;
+  o.x = log(1, 64, o.l, o.r);
+  o.y = lin(0, 100, o.b, o.t);
+  o.xTicks = [1,2,4,8,16,32,64];
+  o.yTicks = [0,20,40,60,80,100];
+  o.xFmt = function(v){ return String(v); };
+  o.yFmt = function(v){ return v + "%"; };
+  o.xLabel = "CONCURRENCY";
+  o.yLabel = "UTILIZATION %";
+  o.xGrid = true;
+  axes(g, o);
+
+  var mbu = WALL.map(function(w){ return [o.x(w.c), o.y(w.mbu)]; });
+  var mfu = WALL.map(function(w){ return [o.x(w.c), o.y(w.mfu)]; });
+
+  // 交叉点:C=32→64 之间在对数 x 上线性内插两条线
+  var t  = (54.4 - 42.6) / ((57.3 - 42.6) + (54.4 - 43.2));   // 0.4556
+  var xc = 32 * Math.pow(2, t);                                // ≈ 43.9
+  var yc = 54.4 - (54.4 - 43.2) * t;                           // ≈ 49.3
+  g.appendChild(el("line", {x1:o.x(xc), y1:o.t, x2:o.x(xc), y2:o.b,
+    stroke:cv("--ink-3"), "stroke-width":1.4, "stroke-dasharray":"5 4", opacity:.75}));
+  g.appendChild(label(o.x(xc) - 7, o.t + 13, "C ≈ " + Math.round(xc), cv("--ink-3"), "end"));
+
+  g.appendChild(path(mbu, cv("--accent"), {w:2.8}));
+  g.appendChild(path(mfu, cv("--crit"), {w:2.8}));
+
+  WALL.forEach(function(w, i){
+    g.appendChild(dot(mbu[i][0], mbu[i][1], cv("--accent"), 5,
+      "C=" + w.c + " · MBU " + w.mbu.toFixed(1) + "% · " + w.gb.toFixed(1) + " GB/s"));
+    g.appendChild(dot(mfu[i][0], mfu[i][1], cv("--crit"), 5,
+      "C=" + w.c + " · MFU " + w.mfu.toFixed(1) + "% · " + w.tf.toFixed(2) + " TFLOP/s"
+      + " · " + w.iter.toFixed(1) + " tok/iter"));
+  });
+  // 两端各标一次,中间留白
+  g.appendChild(label(mbu[0][0] + 6, mbu[0][1] - 11, "88.0%", cv("--accent"), "start"));
+  g.appendChild(label(mbu[6][0] - 4, mbu[6][1] + 19, "43.2%", cv("--accent"), "end"));
+  g.appendChild(label(mfu[0][0] + 6, mfu[0][1] + 17, "2.5%",  cv("--crit"), "start"));
+  g.appendChild(label(mfu[6][0] - 4, mfu[6][1] - 11, "57.3%", cv("--crit"), "end"));
+}
+
+/* ---------- Fig 5 · ITL 分裂 ---------- */
+function figItl(){
+  var o = frame("ch-itl", {t:26, r:30, b:52, l:66});
+  var g = o.svg;
+  o.x = log(1, 64, o.l, o.r);
+  o.y = log(13, 300, o.b, o.t);
+  o.xTicks = [1,2,4,8,16,32,64];
+  o.yTicks = [15,20,30,50,100,200,300];
+  o.xFmt = function(v){ return String(v); };
+  o.yFmt = function(v){ return v + "ms"; };
+  o.xLabel = "CONCURRENCY";
+  o.yLabel = "INTER-TOKEN LATENCY";
+  o.xGrid = true;
+
+  var p50 = D.map(function(d){ return [o.x(d.c), o.y(d.itl50)]; });
+  var p90 = D.map(function(d){ return [o.x(d.c), o.y(d.itl90)]; });
+  var p99 = D.map(function(d){ return [o.x(d.c), o.y(d.itl99)]; });
+  var avg = D.map(function(d){ return [o.x(d.c), o.y(d.itlAvg)]; });
+
+  // p50–p99 跨度阴影
+  var area = p99.concat(p50.slice().reverse());
+  var dd = area.map(function(p,i){ return (i?"L":"M") + p[0].toFixed(2) + " " + p[1].toFixed(2); }).join(" ") + "Z";
+  g.appendChild(el("path", {d:dd, fill:cv("--crit"), opacity:.09}));
+
+  axes(g, o);
+
+  // C=8 断点标记
+  var xb = o.x(8);
+  g.appendChild(el("line", {x1:xb, y1:o.t, x2:xb, y2:o.b, stroke:cv("--crit"),
+    "stroke-width":1.4, "stroke-dasharray":"3 4", opacity:.5}));
+  g.appendChild(txt(xb + 7, o.t + 13, "尾部在此裂开", {fill:cv("--crit"), "font-size":11,
+    "font-weight":600, "font-family":"var(--font-body)"}));
+
+  g.appendChild(path(avg, cv("--accent"), {dash:"5 4", w:1.8, op:.9}));
+  g.appendChild(path(p50, cv("--ink-3"), {w:2.2}));
+  g.appendChild(path(p90, cv("--warn"), {w:2.2}));
+  g.appendChild(path(p99, cv("--crit"), {w:2.8}));
+
+  D.forEach(function(d, i){
+    g.appendChild(dot(p50[i][0], p50[i][1], cv("--ink-3"), 3.6, "C=" + d.c + " · p50 ITL " + d.itl50 + " ms"));
+    g.appendChild(dot(p90[i][0], p90[i][1], cv("--warn"), 3.6, "C=" + d.c + " · p90 ITL " + d.itl90 + " ms"));
+    g.appendChild(dot(p99[i][0], p99[i][1], cv("--crit"), 4.6, "C=" + d.c + " · p99 ITL " + d.itl99 + " ms"));
+  });
+
+  // 倍数标注:同一并发档内 p99 与 p50 的跨度(不是相对上一档的跳跃)
+  [{i:3},{i:4},{i:6}].forEach(function(a){
+    var d = D[a.i];
+    var mult = (d.itl99 / d.itl50).toFixed(1) + "×";
+    g.appendChild(txt(p99[a.i][0], p99[a.i][1] - 25, "p99/p50", {
+      "text-anchor":"middle", fill:cv("--ink-3"), "font-size":9,
+      "font-family":"var(--font-mono)", "letter-spacing":"0.04em"}));
+    g.appendChild(label(p99[a.i][0], p99[a.i][1] - 13, mult, cv("--crit")));
+  });
+
+  // C=4 → C=8 的跃迁:正文里说的那个 5.8 倍
+  var jump = (D[3].itl99 / D[2].itl99).toFixed(1);
+  g.appendChild(el("path", {
+    d:"M" + (p99[2][0] + 6) + " " + (p99[2][1] - 4) + "L" + (p99[3][0] - 6) + " " + (p99[3][1] + 6),
+    fill:"none", stroke:cv("--crit"), "stroke-width":1.4, "stroke-dasharray":"2 3", opacity:.9}));
+  g.appendChild(txt((p99[2][0] + p99[3][0]) / 2 - 4, (p99[2][1] + p99[3][1]) / 2 + 4,
+    "×" + jump, {"text-anchor":"end", fill:cv("--crit"), "font-size":10.5, "font-weight":700,
+    "font-family":"var(--font-mono)"}));
+}
+
+/* ---------- Fig 6 · E2EL 构成 ---------- */
+function figE2el(){
+  var H5 = 320;
+  var host = document.getElementById("ch-e2el");
+  host.innerHTML = "";
+  var svg = el("svg", {viewBox:"0 0 " + W + " " + H5, role:"img"});
+  host.appendChild(svg);
+  var l = 70, r = W - 26, t = 24, b = H5 - 52;
+
+  var y = lin(0, 12500, b, t);
+  var bw = (r - l) / D.length;
+
+  [0,2500,5000,7500,10000,12500].forEach(function(v){
+    var yy = y(v);
+    svg.appendChild(el("line", {x1:l, y1:yy, x2:r, y2:yy, stroke:cv("--grid-2"), "stroke-width":1}));
+    svg.appendChild(txt(l - 9, yy + 4, (v/1000).toFixed(1) + "s", {"text-anchor":"end",
+      fill:cv("--ink-3"), "font-size":11, "font-family":"var(--font-mono)",
+      "font-variant-numeric":"tabular-nums"}));
+  });
+
+  D.forEach(function(d, i){
+    var x = l + i * bw + bw * 0.2;
+    var w = bw * 0.6;
+    var dec = d.e2e50 - d.ttft50;
+    var yT = y(d.e2e50), yD = y(dec);
+
+    var rT = el("rect", {x:x, y:yT, width:w, height:yD - yT, fill:cv("--warn"), opacity:.85, rx:2});
+    var t1 = el("title", {}); t1.textContent = "C=" + d.c + " · TTFT p50 " + d.ttft50 + " ms";
+    rT.appendChild(t1); svg.appendChild(rT);
+
+    var rD = el("rect", {x:x, y:yD, width:w, height:b - yD, fill:cv("--accent"), opacity:.85, rx:2});
+    var t2 = el("title", {}); t2.textContent = "C=" + d.c + " · 解码 " + Math.round(dec) + " ms";
+    rD.appendChild(t2); svg.appendChild(rD);
+
+    svg.appendChild(txt(x + w/2, yT - 8, (d.e2e50/1000).toFixed(1) + "s", {"text-anchor":"middle",
+      fill:cv("--ink"), "font-size":11.5, "font-weight":700, "font-family":"var(--font-mono)",
+      "font-variant-numeric":"tabular-nums"}));
+    svg.appendChild(txt(x + w/2, b + 19, "C=" + d.c, {"text-anchor":"middle",
+      fill:cv("--ink-3"), "font-size":11, "font-family":"var(--font-mono)"}));
+  });
+
+  svg.appendChild(el("line", {x1:l, y1:b, x2:r, y2:b, stroke:cv("--rule"), "stroke-width":1.5}));
+  svg.appendChild(txt(0, 0, "E2E LATENCY p50", {"text-anchor":"middle", fill:cv("--ink-3"),
+    "font-size":11, "font-weight":600, "font-family":"var(--font-mono)",
+    "letter-spacing":"0.09em", transform:"translate(13," + (t+b)/2 + ") rotate(-90)"}));
+}
+
+/* ---------- Fig 7 · KV 占用 ---------- */
+function figKv(){
+  var rows = D.map(function(d){ return {c:d.c, tok:d.c * REQ_TOKENS}; });
+  rows.push({c:128, tok:128 * REQ_TOKENS, ghost:true});
+
+  var H6 = 300;
+  var host = document.getElementById("ch-kv");
+  host.innerHTML = "";
+  var svg = el("svg", {viewBox:"0 0 " + W + " " + H6, role:"img"});
+  host.appendChild(svg);
+  var l = 62, r = W - 78, t = 22, b = H6 - 44;
+
+  var x = lin(0, 100, l, r);          // 百分比,100% = 池满
+  var rowH = (b - t) / rows.length;
+
+  [0,25,50,75,100].forEach(function(v){
+    svg.appendChild(el("line", {x1:x(v), y1:t - 6, x2:x(v), y2:b, stroke:cv("--grid-2"), "stroke-width":1}));
+    svg.appendChild(txt(x(v), b + 18, v + "%", {"text-anchor":"middle", fill:cv("--ink-3"),
+      "font-size":11, "font-family":"var(--font-mono)"}));
+  });
+  // 池满线
+  svg.appendChild(el("line", {x1:x(100), y1:t - 12, x2:x(100), y2:b, stroke:cv("--crit"), "stroke-width":1.8}));
+  svg.appendChild(txt(x(100) + 6, t - 4, KV_TOKENS.toLocaleString("en-US") + " tok", {fill:cv("--crit"), "font-size":10.5,
+    "font-weight":700, "font-family":"var(--font-mono)"}));
+
+  rows.forEach(function(rw, i){
+    var pct = rw.tok / KV_TOKENS * 100;
+    var yy = t + i * rowH + rowH * 0.2;
+    var hh = rowH * 0.6;
+    var col = rw.ghost ? cv("--crit") : (pct > 85 ? cv("--warn") : (pct > 45 ? cv("--accent-2") : cv("--accent")));
+    var wid = Math.min(pct, 106);
+
+    svg.appendChild(el("rect", {x:l, y:yy, width:r - l, height:hh, fill:cv("--surface-2"), rx:2}));
+    var bar = el("rect", {x:l, y:yy, width:x(wid) - l, height:hh, fill:col, rx:2,
+      opacity:rw.ghost ? .3 : .85, "stroke-dasharray":rw.ghost ? "4 3" : "none",
+      stroke:rw.ghost ? cv("--crit") : "none", "stroke-width":rw.ghost ? 1.4 : 0});
+    var ti = el("title", {});
+    ti.textContent = "C=" + rw.c + " · " + rw.tok.toLocaleString("en-US") + " tokens · " + pct.toFixed(1) + "%";
+    bar.appendChild(ti);
+    svg.appendChild(bar);
+
+    svg.appendChild(txt(l - 9, yy + hh/2 + 4, "C=" + rw.c, {"text-anchor":"end",
+      fill:rw.ghost ? cv("--crit") : cv("--ink-2"), "font-size":11.5,
+      "font-weight":rw.ghost ? 700 : 600, "font-family":"var(--font-mono)"}));
+    svg.appendChild(txt(x(wid) + 8, yy + hh/2 + 4,
+      rw.ghost ? pct.toFixed(0) + "% · 装不下" : pct.toFixed(1) + "%", {
+      fill:rw.ghost ? cv("--crit") : cv("--ink-3"), "font-size":11, "font-weight":600,
+      "font-family":"var(--font-mono)", "font-variant-numeric":"tabular-nums"}));
+  });
+
+  svg.appendChild(txt((l+r)/2, H6 - 5, "KV CACHE POOL UTILISATION", {"text-anchor":"middle",
+    fill:cv("--ink-3"), "font-size":11, "font-weight":600,
+    "font-family":"var(--font-mono)", "letter-spacing":"0.09em"}));
+}
+
+/* ---------- 表格 ---------- */
+function tables(){
+  var tb = document.getElementById("tbody");
+  tb.innerHTML = "";
+  D.forEach(function(d){
+    var eff = d.tp / (BASE * d.c) * 100;
+    var kv = d.c * REQ_TOKENS / KV_TOKENS * 100;   // KV 上界:全程满载的理论值
+    var tr = document.createElement("tr");
+    if (d.c === 16) tr.className = "pick";
+    var effCls = eff >= 80 ? "hl" : (eff >= 50 ? "mid" : "bad");
+    var t99Cls = d.ttft99 >= 2000 ? "bad" : (d.ttft99 >= 1000 ? "mid" : "");
+    var i99Cls = d.itl99 >= 100 ? "bad" : (d.itl99 >= 50 ? "mid" : "");
+    var kvCls  = kv >= 85 ? "bad" : (kv >= 45 ? "mid" : "");
+    tr.innerHTML =
+      "<td><strong>" + d.c + "</strong></td>" +
+      "<td>" + d.n + "</td>" +
+      "<td>" + d.dur.toFixed(1) + "</td>" +
+      "<td class='hl'>" + d.tp.toFixed(1) + "</td>" +
+      "<td class='" + effCls + "'>" + eff.toFixed(1) + "%</td>" +
+      "<td>" + d.ttft50.toFixed(1) + "</td>" +
+      "<td class='" + t99Cls + "'>" + d.ttft99.toFixed(1) + "</td>" +
+      "<td>" + d.tpot50.toFixed(2) + "</td>" +
+      "<td>" + d.itl50.toFixed(2) + "</td>" +
+      "<td class='" + i99Cls + "'>" + d.itl99.toFixed(1) + "</td>" +
+      "<td>" + d.e2e50.toLocaleString("en-US") + "</td>" +
+      "<td class='" + kvCls + "'>" + kv.toFixed(1) + "%</td>" +
+      "<td>" + d.kvAvg.toFixed(1) + "%</td>";
+    tb.appendChild(tr);
+  });
+
+  var slo = [
+    {name:"p99 TTFT ≤ 500 ms", c:4},
+    {name:"p99 TTFT ≤ 1 s",    c:8},
+    {name:"p99 TTFT ≤ 1.5 s",  c:16, pick:true},
+    {name:"p99 TTFT ≤ 3 s",    c:32},
+    {name:"只要吞吐最大",       c:64}
+  ];
+  var sb = document.getElementById("slo");
+  sb.innerHTML = "";
+  slo.forEach(function(s){
+    var d = D.filter(function(x){ return x.c === s.c; })[0];
+    var tr = document.createElement("tr");
+    if (s.pick) tr.className = "pick";
+    tr.innerHTML =
+      "<td>" + s.name + "</td>" +
+      "<td><strong>C = " + d.c + "</strong></td>" +
+      "<td class='hl'>" + d.tp.toFixed(0) + " tok/s</td>" +
+      "<td class='" + (d.ttft99 >= 2000 ? "bad" : (d.ttft99 >= 1000 ? "mid" : "")) + "'>" +
+        (d.ttft99 >= 1000 ? (d.ttft99/1000).toFixed(2) + " s" : d.ttft99.toFixed(0) + " ms") + "</td>" +
+      "<td>" + d.itl50.toFixed(1) + " ms</td>";
+    sb.appendChild(tr);
+  });
+}
+
+function drawAll(){
+  figTradeoff(); figScaling(); figMarginal(); figWall();
+  figItl(); figE2el(); figKv(); tables();
+}
+drawAll();
+
+// 主题切换时重绘,保证 SVG 里取到的颜色跟随
+if (window.matchMedia) {
+  var mq = window.matchMedia("(prefers-color-scheme: dark)");
+  if (mq.addEventListener) mq.addEventListener("change", drawAll);
+}
+new MutationObserver(drawAll).observe(document.documentElement, {
+  attributes:true, attributeFilter:["data-theme"]
+});
+})();
+</script>

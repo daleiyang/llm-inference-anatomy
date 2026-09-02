@@ -1,0 +1,1299 @@
+<meta charset="utf-8">
+<title>断崖</title>
+<style>
+  :root{
+    --ground:#F5F7F6; --surface:#FFFFFF; --surface-2:#EDF1F0; --surface-3:#E4EAE8;
+    --ink:#131C1B; --ink-2:#455553; --ink-3:#6E807D;
+    --rule:#D6DFDD; --rule-soft:#E6EBEA;
+    --accent:#0D7A80; --accent-2:#0A5C61; --accent-soft:rgba(13,122,128,.10);
+    --good:#2E7D4F; --warn:#B05A12; --crit:#A32F35; --violet:#5B4A8A;
+    --good-soft:rgba(46,125,79,.12); --warn-soft:rgba(176,90,18,.12); --crit-soft:rgba(163,47,53,.10);
+    --grid:rgba(19,28,27,.09); --grid-2:rgba(19,28,27,.055);
+    --shadow:0 1px 2px rgba(19,28,27,.05), 0 8px 24px -16px rgba(19,28,27,.22);
+    --font-mono:ui-monospace,"Cascadia Mono","SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --font-body:"Segoe UI",system-ui,-apple-system,"Helvetica Neue","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D1312; --surface:#141C1B; --surface-2:#1B2524; --surface-3:#223030;
+      --ink:#E2EAE8; --ink-2:#A3B4B0; --ink-3:#7E8F8B;
+      --rule:#26332F; --rule-soft:#1E2A28;
+      --accent:#45B6BC; --accent-2:#69CBD0; --accent-soft:rgba(69,182,188,.13);
+      --good:#58B87C; --warn:#DF9247; --crit:#E06A70; --violet:#9C88D4;
+      --good-soft:rgba(88,184,124,.13); --warn-soft:rgba(223,146,71,.13); --crit-soft:rgba(224,106,112,.12);
+      --grid:rgba(226,234,232,.11); --grid-2:rgba(226,234,232,.055);
+      --shadow:0 1px 2px rgba(0,0,0,.32), 0 10px 28px -18px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0D1312; --surface:#141C1B; --surface-2:#1B2524; --surface-3:#223030;
+    --ink:#E2EAE8; --ink-2:#A3B4B0; --ink-3:#7E8F8B;
+    --rule:#26332F; --rule-soft:#1E2A28;
+    --accent:#45B6BC; --accent-2:#69CBD0; --accent-soft:rgba(69,182,188,.13);
+    --good:#58B87C; --warn:#DF9247; --crit:#E06A70; --violet:#9C88D4;
+    --good-soft:rgba(88,184,124,.13); --warn-soft:rgba(223,146,71,.13); --crit-soft:rgba(224,106,112,.12);
+    --grid:rgba(226,234,232,.11); --grid-2:rgba(226,234,232,.055);
+    --shadow:0 1px 2px rgba(0,0,0,.32), 0 10px 28px -18px rgba(0,0,0,.7);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--ground); color:var(--ink);
+    font-family:var(--font-body); font-size:16px; line-height:1.65;
+    margin:0; padding:0 20px 96px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:940px; margin:0 auto}
+  .prose{max-width:66ch}
+
+  header{padding:56px 0 32px; border-bottom:1px solid var(--rule)}
+  .eyebrow{
+    font-family:var(--font-mono); font-size:11px; font-weight:600;
+    letter-spacing:.16em; text-transform:uppercase; color:var(--accent);
+    display:flex; align-items:center; gap:10px; margin:0 0 18px;
+  }
+  .eyebrow::after{content:""; flex:1; height:1px; background:var(--rule)}
+  h1{
+    font-size:clamp(30px,4.6vw,44px); line-height:1.16; font-weight:700;
+    letter-spacing:-.018em; margin:0 0 14px; text-wrap:balance;
+  }
+  .standfirst{font-size:17px; color:var(--ink-2); margin:0; max-width:62ch}
+
+  .spec{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(148px,1fr));
+    gap:1px; background:var(--rule); border:1px solid var(--rule);
+    margin:30px 0 0; border-radius:3px; overflow:hidden;
+  }
+  .spec div{background:var(--surface); padding:11px 14px}
+  .spec dt{
+    font-family:var(--font-mono); font-size:10px; font-weight:600;
+    letter-spacing:.12em; text-transform:uppercase; color:var(--ink-3); margin:0 0 3px;
+  }
+  .spec dd{
+    font-family:var(--font-mono); font-size:13px; margin:0; color:var(--ink);
+    font-variant-numeric:tabular-nums; word-break:break-word;
+  }
+
+  section{padding:52px 0 0}
+  h2{font-size:24px; font-weight:700; letter-spacing:-.012em; margin:0 0 8px; text-wrap:balance}
+  h2 .num{
+    font-family:var(--font-mono); font-size:12px; font-weight:600; color:var(--accent);
+    letter-spacing:.1em; display:block; margin-bottom:7px;
+  }
+  h3{font-size:17px; font-weight:650; margin:30px 0 8px; letter-spacing:-.005em}
+  p{margin:0 0 14px}
+  .lede{color:var(--ink-2); font-size:16px; margin-bottom:26px}
+  strong{font-weight:650}
+  code{
+    font-family:var(--font-mono); font-size:.88em; background:var(--surface-2);
+    padding:1px 5px; border-radius:3px; border:1px solid var(--rule-soft);
+    font-variant-numeric:tabular-nums;
+  }
+
+  .verdict{
+    background:var(--surface); border:1px solid var(--rule); border-radius:4px;
+    padding:24px 26px; box-shadow:var(--shadow); margin:0 0 28px;
+    border-left:3px solid var(--crit);
+  }
+  .verdict .k{
+    font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--ink-3); margin:0 0 10px;
+  }
+  .verdict .big{
+    font-family:var(--font-mono); font-size:clamp(21px,3.2vw,29px); font-weight:700;
+    color:var(--crit); letter-spacing:-.01em; margin:0 0 8px; font-variant-numeric:tabular-nums;
+  }
+  .verdict p{margin:0; color:var(--ink-2); font-size:15px}
+
+  .stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin:0 0 8px}
+  .stat{background:var(--surface); border:1px solid var(--rule); border-radius:4px; padding:16px 18px}
+  .stat .k{
+    font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--ink-3); margin:0 0 8px;
+  }
+  .stat .v{
+    font-family:var(--font-mono); font-size:23px; font-weight:700; letter-spacing:-.015em;
+    margin:0 0 4px; font-variant-numeric:tabular-nums; line-height:1.15;
+  }
+  .stat .v small{font-size:13px; font-weight:500; color:var(--ink-3); letter-spacing:0}
+  .stat .n{font-size:13px; color:var(--ink-3); margin:0; line-height:1.45}
+  .stat.ok .v{color:var(--good)} .stat.warn .v{color:var(--warn)} .stat.crit .v{color:var(--crit)}
+
+  figure{
+    margin:26px 0 0; background:var(--surface); border:1px solid var(--rule);
+    border-radius:4px; padding:22px 22px 16px; box-shadow:var(--shadow);
+  }
+  figcaption{
+    font-family:var(--font-mono); font-size:11px; font-weight:600; letter-spacing:.13em;
+    text-transform:uppercase; color:var(--ink-3); margin:0 0 4px;
+  }
+  .fig-title{font-size:16px; font-weight:650; margin:0 0 16px; letter-spacing:-.005em}
+  .chart{width:100%; overflow-x:auto}
+  .chart svg{display:block; width:100%; height:auto; min-width:520px}
+  .legend{
+    display:flex; flex-wrap:wrap; gap:8px 22px; margin:14px 0 0;
+    padding-top:13px; border-top:1px solid var(--rule-soft);
+    font-family:var(--font-mono); font-size:11.5px; color:var(--ink-2);
+  }
+  .legend span{display:flex; align-items:center; gap:7px}
+  .legend i{width:15px; height:2.5px; border-radius:2px; flex:none}
+  .legend i.d{height:0; border-top:2.5px dashed currentColor; border-radius:0}
+  .legend i.sq{width:11px; height:11px; border-radius:2px}
+  .note{font-size:13.5px; color:var(--ink-3); margin:13px 0 0; line-height:1.6; max-width:70ch}
+
+  .tw{overflow-x:auto; margin:22px 0 0; border:1px solid var(--rule); border-radius:4px; background:var(--surface)}
+  table{border-collapse:collapse; width:100%; font-family:var(--font-mono); font-size:12.5px; min-width:720px}
+  th,td{padding:8px 12px; text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap}
+  th{
+    font-size:10px; font-weight:600; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--ink-3); background:var(--surface-2); border-bottom:1px solid var(--rule);
+    position:sticky; top:0;
+  }
+  th:first-child,td:first-child{text-align:left}
+  tbody tr{border-bottom:1px solid var(--rule-soft)}
+  tbody tr:last-child{border-bottom:0}
+  tbody tr:hover{background:var(--surface-2)}
+  td.hl{color:var(--accent); font-weight:650}
+  td.bad{color:var(--crit); font-weight:650}
+  td.mid{color:var(--warn); font-weight:600}
+  td.gd{color:var(--good); font-weight:650}
+  td.wide{white-space:normal; min-width:220px; font-family:var(--font-body); font-size:13.5px; color:var(--ink-2)}
+  tr.pick{background:var(--crit-soft)}
+  tr.pick td:first-child{box-shadow:inset 3px 0 0 var(--crit)}
+  caption{
+    caption-side:bottom; text-align:left; padding:11px 12px; font-family:var(--font-body);
+    font-size:13px; color:var(--ink-3); border-top:1px solid var(--rule-soft);
+  }
+
+  ul.pts{list-style:none; padding:0; margin:16px 0 0; display:flex; flex-direction:column; gap:13px}
+  ul.pts li{padding-left:19px; position:relative; color:var(--ink-2); font-size:15px; max-width:68ch}
+  ul.pts li::before{
+    content:""; position:absolute; left:0; top:.62em; width:7px; height:2px;
+    background:var(--accent); border-radius:1px;
+  }
+  ul.pts li strong{color:var(--ink)}
+
+  .callout{
+    border:1px solid var(--rule); border-left:3px solid var(--warn);
+    background:var(--warn-soft); border-radius:4px; padding:16px 20px; margin:22px 0 0;
+  }
+  .callout.crit{border-left-color:var(--crit); background:var(--crit-soft)}
+  .callout.ok{border-left-color:var(--good); background:var(--good-soft)}
+  .callout .k{
+    font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.13em;
+    text-transform:uppercase; margin:0 0 7px; color:var(--warn);
+  }
+  .callout.crit .k{color:var(--crit)} .callout.ok .k{color:var(--good)}
+  .callout p{margin:0; font-size:14.5px; color:var(--ink-2)}
+  .callout p+p{margin-top:9px}
+
+  pre{
+    background:var(--surface-2); border:1px solid var(--rule); border-radius:4px;
+    padding:15px 17px; overflow-x:auto; margin:16px 0 0;
+    font-family:var(--font-mono); font-size:12.5px; line-height:1.7; color:var(--ink);
+  }
+  pre .c{color:var(--ink-3)}
+  pre .a{color:var(--accent); font-weight:600}
+  pre .w{color:var(--warn); font-weight:600}
+  pre .r{color:var(--crit); font-weight:600}
+
+  footer{
+    margin-top:64px; padding-top:22px; border-top:1px solid var(--rule);
+    font-family:var(--font-mono); font-size:11.5px; color:var(--ink-3);
+    display:flex; flex-wrap:wrap; gap:6px 20px;
+  }
+  @media (max-width:640px){
+    header{padding-top:38px}
+    figure{padding:17px 14px 13px}
+    .verdict{padding:19px}
+  }
+  table.gloss { min-width: 620px; }
+  table.gloss th, table.gloss td {
+    text-align: left; white-space: normal; vertical-align: top; padding: 10px 14px 10px 0;
+  }
+  table.gloss td:nth-child(1) { white-space: nowrap; padding-left: 12px; }
+  table.gloss td:nth-child(2) { white-space: nowrap; color: var(--ink-2); }
+  table.gloss td:nth-child(3) {
+    min-width: 20rem; line-height: 1.6; font-family: var(--font-body); font-size: 13px;
+  }
+  table.gloss td:nth-child(4) {
+    min-width: 12rem; color: var(--accent); font-weight: 650; line-height: 1.55;
+  }
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">Overload Test · Round 2 · RTX 4090</p>
+  <h1>断崖</h1>
+  <p class="standfirst">
+    6144 输入 / 2048 输出 / 并发 64 —— 单请求满上下文要 448 MiB KV,64 条要 28 GiB,
+    而池子只有 6.41 GiB。这一轮的目的是把它压爆,然后看清楚"爆"到底长什么样。
+    128 条请求全部成功返回,零失败,用了 492 秒。
+  </p>
+  <dl class="spec">
+    <div><dt>GPU</dt><dd>RTX 4090 · 24 GB</dd></div>
+    <div><dt>vLLM</dt><dd>0.27.1 · V1</dd></div>
+    <div><dt>输入 / 输出</dt><dd>6144 / 2048 tok</dd></div>
+    <div><dt>并发请求</dt><dd>C = 64 · 128 条</dd></div>
+    <div><dt>KV 需求</dt><dd>28.0 GiB</dd></div>
+    <div><dt>KV 池</dt><dd>6.41 GiB · 120,064 tok</dd></div>
+    <div><dt>超卖倍数</dt><dd>4.4 ×</dd></div>
+    <div><dt>抢占</dt><dd>38 次</dd></div>
+    <div><dt>驱动</dt><dd>580.159.03 · CUDA 13.0</dd></div>
+  </dl>
+</header>
+
+<!-- ============ 术语 ============ -->
+<section>
+  <h2><span class="num">术语</span>先把这些指标定义清楚</h2>
+  <p class="lede prose">
+    下面这些缩写在正文里会反复出现,它们<b>不是同义词</b> ——
+    每一个量的是流水线上不同的一段,彼此之间还有确定的换算关系。
+    本轮负载:<code>6144 输入 / 2048 输出 · 并发 64 · 128 条</code>。这是唯一一份 <code>preemptions</code> 不为零的报告 —— 下表里那一行是本报告的主角。
+  </p>
+
+  <pre>  t=0   客户端发出请求
+        │
+        │  [1] 排队 queue_time —— 在 waiting 队列里等调度器放行
+        │  [2] prefill —— 把 6144 个输入 token 一次算完,写进 KV Cache
+        │  [3] 前端 + IPC —— 分词、HTTP、API server 与引擎之间的通信
+        │
+  <span class="a">━━━━━ [1]+[2]+[3]       = TTFT 首字延迟 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+        │
+        │      第 1 个输出 token 送达
+        │
+        │  [4] ITL × 2047 —— 相邻两个输出 token 之间的间隔
+        │     这 2047 个间隔的平均值 = TPOT
+        │
+  <span class="a">━━━━━ [1]+[2]+[3]+[4]   = E2EL 端到端时延 ━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+
+  <span class="c"># 恒等式:E2EL = TTFT + 2047 × TPOT</span>
+  <span class="c"># 吞吐 = 所有请求的输出 token 总数 ÷ 整段测试的墙钟时间(不是 1/TPOT)</span></pre>
+
+  <div class="tw">
+    <table class="gloss">
+      <caption>本报告用到的全部指标 · 最后一列是本轮的实测范围</caption>
+      <thead><tr><th>指标</th><th>中文</th><th>量的是什么</th><th>本轮实测</th></tr></thead>
+      <tbody>
+        <tr><td><strong>TTFT</strong><br><span class="n" style="opacity:.7">Time To First Token</span></td><td>首字延迟</td><td>从客户端发出请求,到收到<b>第 1 个</b>输出 token。它包含排队 + prefill + 前端开销三段,<b>不含</b>后续解码。</td><td class="hl">p50 <b>169 秒</b>(其中 94.8% 是排队)</td></tr>
+        <tr><td><strong>ITL</strong><br><span class="n" style="opacity:.7">Inter-Token Latency</span></td><td>token 间隔</td><td>相邻两个输出 token 之间的时间。本轮一条 2048 token 的请求有 2,047 个 ITL 样本,128 条共 26.2 万个 —— <b>样本量太大,反而把 38 次抢占稀释到 p99 够不着的地方</b>(见「对照」一节)。</td><td class="hl">23.39 ms(p50)</td></tr>
+        <tr><td><strong>ITL p99</strong></td><td>间隔的尾部</td><td>把所有 ITL 样本排序后第 99% 那个值。一次卡顿只影响少数间隔,均值和中位数都看不出来,<b>只有 p99 会跳</b>。</td><td class="hl">227.7 ms</td></tr>
+        <tr><td><strong>TPOT</strong><br><span class="n" style="opacity:.7">Time Per Output Token</span></td><td>每输出 token 耗时</td><td>一条请求"首 token 之后"的平均出字速度,即 <code>(E2EL − TTFT) ÷ (输出 token 数 − 1)</code>。数值上就是这条请求 ITL 的均值。</td><td class="hl">29.17 ms</td></tr>
+        <tr><td><strong>E2EL</strong><br><span class="n" style="opacity:.7">End-to-End Latency</span></td><td>端到端时延</td><td>从发出请求到收到<b>最后一个</b> token 的总时间。恒等式:<code>E2EL = TTFT + (输出数−1) × TPOT</code>。</td><td class="hl">p50 <b>238 秒</b></td></tr>
+        <tr><td><strong>输出吞吐</strong><br><span class="n" style="opacity:.7">output token/s</span></td><td>用户拿到的</td><td>单位时间产出的<b>输出</b> token 数。这是用户真正感知的产能。</td><td class="hl">532.4 tok/s</td></tr>
+        <tr><td><strong>总吞吐</strong><br><span class="n" style="opacity:.7">total token/s</span></td><td>GPU 处理的</td><td>输入 + 输出一起算。长输入场景下它会上涨而输出吞吐下跌 —— <b>两者不可互相替代</b>。</td><td class="hl">2,129.6 tok/s</td></tr>
+        <tr><td><strong>preemption</strong><br><span class="n" style="opacity:.7">抢占</span></td><td>KV 不够时踢人</td><td>KV 池装不下时,调度器把某条正在跑的请求踢回队列,它已算出的 KV 被丢弃、恢复时要重算 prefill。计数器 <code>vllm:num_preemptions_total</code>,<b>vLLM V1 不打日志行</b>,只能从 /metrics 读。</td><td class="hl"><b>38 次</b>,每 11.2 秒一次</td></tr>
+        <tr><td><strong>KV 占用</strong><br><span class="n" style="opacity:.7">gpu_cache_usage_perc</span></td><td>KV 池用了多少</td><td>KV Cache 池的使用率。池子大小 = 显存扣掉权重与激活之后的余量,由启动日志给出;每 token 占 56 KiB,所以占用率 ≈ <code>并发 × 上下文 ÷ 池容量</code>。</td><td class="hl">中位 95.85%,峰值 99.99%</td></tr>
+        <tr><td><strong>Running / Waiting</strong></td><td>在跑的 / 在等的</td><td>服务端当前正在解码的请求数,和还在队列里等的请求数。两者之和等于客户端在飞的并发数。<b>Running 才是真实产能</b>。</td><td class="hl">Running 均值 15.65;Waiting 均值 36.4、峰值 60</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <p class="k">三个最容易混的地方</p>
+    <p>
+      <b>1 · TPOT 和 ITL 均值是同一件事的两种算法。</b>
+      TPOT 是"每条请求先算自己的平均,再对请求取中位数";ITL 均值是"把所有间隔倒在一起平均"。
+      负载均匀时两者几乎相等,有长尾时会分开 ——
+      <span class="hl">两者一分开,就说明存在少数被拖长的间隔</span>。
+      本轮 TPOT 29.17 ms、ITL 均值 31.29 ms,已经分开了。
+    </p>
+    <p>
+      <b>2 · 看 p50 得不出任何关于抖动的结论。</b>
+      一次 200 ms 的停顿混在本轮这 26.2 万个间隔里,对中位数毫无影响,对均值影响也很小。
+      本系列反复出现的一条经验:<b>抖动只在 p99 上露头</b>;
+      而抢占这种更稀有的事件(万分之一量级)连 p99 都够不着,只能看专门的计数器。
+    </p>
+    <p>
+      <b>3 · 吞吐不是 1 / TPOT。</b>
+      TPOT 是单条请求的出字速度,吞吐是整台机器的产能 —— 后者约等于前者乘以并行的请求条数。
+      并发提高时 TPOT 会变差而吞吐会变好,<span class="hl">这正是压测要权衡的那个交换</span>。
+    </p>
+  </div>
+</section>
+
+
+<!-- ============ 结论 ============ -->
+<section>
+  <h2><span class="num">结论</span>并发旋钮拧到 64,实际只跑了 16 条</h2>
+  <p class="lede prose">
+    前三轮的结论是"加并发换吞吐、加长度换 KV",都还在线性区里。
+    这一轮越过了 KV 池的边界,线性关系全部作废:
+    并发参数写的是 64,服务端能同时驻留的只有 <strong>16 条</strong>(均值 15.65,峰值 19),
+    另外 48 条一直躺在 waiting 队列里 —— 中位数排了 <strong>169 秒</strong>才拿到第一个 token。
+  </p>
+  <p class="prose">
+    <strong>这一轮的对照价值在于:池子比第一轮大 38%,断崖的形状一点没变。</strong>
+    驻留数从 11.17 抬到 15.65(<b>+40%</b>,和池子的 +38% 基本同步),
+    但抢占依然稳定发生、TTFT 依然是三位数秒、p99 ITL 依然看不见抢占 ——
+    <span class="hl">超卖的后果只跟"超了多少倍"有关,跟池子的绝对大小无关</span>。
+  </p>
+  <p class="prose">
+    如果这份报告只能留一句,是这一句:<strong>重算是伤口,并发塌缩才是断崖。</strong>
+    38 次抢占带来的重算只吃掉全程 6.2% 的墙钟;
+    真正让吞吐掉六成的,是 64 条并发被 KV 池砍到只剩 16 条。
+  </p>
+
+  <div class="verdict">
+    <p class="k">同样是 C=64,只改了序列长度</p>
+    <p class="big">1,388 → 532 tok/s &nbsp;·&nbsp; −62%</p>
+    <p>
+      并发扫描里 C=64(1024/256)KV 峰值 67.5%、零抢占、64 条全部驻留;
+      本轮 C=64(6144/2048)KV 顶到 100%、抢占 38 次、只有 16 条驻留。
+      并发数一个字没改,<strong>吞吐掉了六成,首字延迟涨了 215 倍</strong>。
+    </p>
+  </div>
+
+  <div class="stats">
+    <div class="stat crit">
+      <p class="k">TTFT p50</p>
+      <p class="v">169<small> 秒</small></p>
+      <p class="n">均值 137 秒,其中 98.9% 是排队,prefill 只占 0.8%</p>
+    </div>
+    <div class="stat crit">
+      <p class="k">抢占次数</p>
+      <p class="v">38</p>
+      <p class="n">每 11.2 秒一次,触发点稳定在 KV 99.58%</p>
+    </div>
+    <div class="stat warn">
+      <p class="k">实际驻留 / 请求并发</p>
+      <p class="v">16<small> / 64</small></p>
+      <p class="n">与日志预告的 14.66x 上限吻合</p>
+    </div>
+    <div class="stat warn">
+      <p class="k">重算掉的 prefill</p>
+      <p class="v">+30<small> %</small></p>
+      <p class="n">约 24–30 万 token,但只占全程墙钟的 6.2% —— 只有 FLOPs 计数器记下了这笔账</p>
+    </div>
+  </div>
+
+  <div class="callout ok">
+    <p class="k">压爆不等于崩溃 —— 这是本轮最该写进结论的一条</p>
+    <p>
+      超卖 <strong>4.4 倍</strong>、KV 顶到 <strong>100%</strong>、抢占 <strong>38 次</strong>,
+      结果是<strong>零失败、零错误、输出 token 一个不少</strong> ——
+      128 条请求全部返回,每条精确 2,048 个输出 token。
+    </p>
+    <p>
+      PagedAttention 加上抢占重算,把"资源不够"翻译成了<b>排队更久</b>,
+      而不是"请求失败"或"结果不对"。
+      <span class="hl">这是一个把硬失败转化成软降级的设计</span> ——
+      代价全部记在延迟上,一分没记在正确性上。
+      所以下面所有"断崖"的说法,指的都是延迟和吞吐的断崖,不是可用性的断崖。
+    </p>
+  </div>
+
+</section>
+
+<!-- ============ 超卖 ============ -->
+<section>
+  <h2><span class="num">超卖</span>这笔账在启动日志里就写着</h2>
+  <p class="lede prose">
+    压爆之前,能不能爆、什么时候爆,其实是可以算出来的 —— 而且 vLLM 启动时就把答案打在日志里了。
+    长度扫描验证过的那条线性关系(56 KiB/token)在这里直接给出上限。
+  </p>
+
+  <pre><span class="c"># 服务端启动日志(一字未改)</span>
+GPU KV cache size: <span class="a">120,064 tokens</span>
+Maximum concurrency for 8,192 tokens per request: <span class="r">14.66x</span>
+
+<span class="c"># 本轮请求形状</span>
+6144 输入 + 2048 输出 = <span class="a">8,192 token</span>  <span class="c">← 正好顶满 --max-model-len</span>
+单请求满上下文 KV = 8192 × 56 KiB = <span class="a">448 MiB</span>
+
+<span class="c"># 要多少 / 有多少</span>
+64 × 448 MiB = <span class="r">28.0 GiB</span>   需求
+                <span class="a">6.41 GiB</span>   实有        →  超卖 <span class="r">4.4 倍</span>
+
+<span class="c"># 实测</span>
+Running 中位数 <span class="a">16</span> 条,峰值 19 条,均值 15.65
+Waiting 峰值 <span class="r">60</span> 条,均值 36.4 条
+</pre>
+
+  <div class="callout ok">
+    <p class="k">日志里的 14.66x 是可以直接当容量红线用的</p>
+    <p>
+      <code>Maximum concurrency for N tokens per request</code> 这一行是 vLLM 用
+      <code>KV池 ÷ max_model_len</code> 算出来的。本轮实测均值 15.65 略高于 14.66,
+      因为请求刚进来时只占 6144 token,要解码 2048 步才涨到 8192 —— 平均占用比满值低一些。
+      <strong>两轮实测都比预告值高 5%–7%</strong>(见本节末尾的两轮对照表),
+      <span class="hl">方向一致、幅度接近</span> —— 这一行可以放心抄进容量规划文档,略微保守。
+    </p>
+  </div>
+
+  <figure>
+    <figcaption>Figure 1</figcaption>
+    <p class="fig-title">四种配置:KV 需求 vs 实际驻留请求数</p>
+    <div class="chart" id="ch-resident"></div>
+    <div class="legend">
+      <span style="color:var(--accent)"><i class="sq" style="background:currentColor"></i>请求的并发数</span>
+      <span style="color:var(--warn)"><i class="sq" style="background:currentColor"></i>实际驻留(Running 峰值)</span>
+      <span style="color:var(--crit)"><i class="d" style="background:none"></i>KV 需求占池比例(右轴,对数)</span>
+    </div>
+    <p class="note">
+      前三种配置的 KV 需求都在池子以内,请求数 = 驻留数,一条不落。
+      第四种需求是池子的 4.4 倍,两根柱子第一次分家 —— 橙柱取的是 Running 峰值 19,全程均值只有 15.65。
+    </p>
+  </figure>
+</section>
+
+<!-- ============ 波形 ============ -->
+<section>
+  <h2><span class="num">波形</span>492 秒全程实况</h2>
+  <p class="lede prose">
+    这张图是这一轮的核心证据。开测几秒内 Waiting 就冲到 60,
+    队列从头到尾都是满的,直到 128 条请求快跑完才开始泄。
+    紫线(KV 占用)几乎全程贴着顶,红色阶梯是抢占计数。
+  </p>
+
+  <figure>
+    <figcaption>Figure 2</figcaption>
+    <p class="fig-title">Running / Waiting / KV 占用 / 抢占累计</p>
+    <div class="chart" id="ch-wave"></div>
+    <div class="legend">
+      <span style="color:var(--accent)"><i style="background:currentColor"></i>Running(左轴)</span>
+      <span style="color:var(--ink-3)"><i style="background:currentColor"></i>Waiting(左轴)</span>
+      <span style="color:var(--violet)"><i style="background:currentColor"></i>KV 占用(右轴 %)</span>
+      <span style="color:var(--crit)"><i style="background:currentColor"></i>抢占累计(右轴,0–40)</span>
+    </div>
+    <p class="note">
+      KV 占用中位数 95.85%,<strong>74.6% 的采样点在 90% 以上,59.7% 在 95% 以上</strong>。
+      峰值触到 99.99%。这就是"顶到 ~1.0"该有的样子 —— 但它不是"顶住不动",而是一条锯齿。
+    </p>
+  </figure>
+
+  <figure>
+    <figcaption>Figure 3</figcaption>
+    <p class="fig-title">请求都在哪儿:驻留 vs 排队(堆叠)</p>
+    <div class="chart" id="ch-where"></div>
+    <div class="legend">
+      <span style="color:var(--accent)"><i class="sq" style="background:currentColor"></i>Running(正在算)</span>
+      <span style="color:var(--ink-3)"><i class="sq" style="background:currentColor"></i>Waiting(在排队)</span>
+    </div>
+    <p class="note">
+      客户端始终维持 64 条在飞,两段之和恒为 64。绿色那条窄带就是这台机器的全部产能 ——
+      平均 15.65 条,占 24.5%。剩下 75.5% 的"并发"是记账上的,不是物理上的。
+    </p>
+  </figure>
+</section>
+
+<!-- ============ 锯齿 ============ -->
+<section>
+  <h2><span class="num">锯齿</span>抢占是一个负反馈控制环</h2>
+  <p class="lede prose">
+    把前 140 秒放大,能看到一个非常规整的循环,而且每一圈都长一个样:
+    调度器一次放进几条新请求 → KV 冲到 99.6% → 抢占一条 → KV 掉 5.2 个百分点 →
+    继续解码又慢慢涨回 99.6% → 再抢一条。Running 沿着 <code>19 → 18 → 17 → 16</code> 往下走,
+    直到有一批请求跑完,再一次性放进新的。
+  </p>
+
+  <figure>
+    <figcaption>Figure 4</figcaption>
+    <p class="fig-title">抢占控制环(前 140 秒放大)</p>
+    <div class="chart" id="ch-loop"></div>
+    <div class="legend">
+      <span style="color:var(--violet)"><i style="background:currentColor"></i>KV 占用 %</span>
+      <span style="color:var(--accent)"><i style="background:currentColor"></i>Running</span>
+      <span style="color:var(--crit)"><i style="background:currentColor;height:9px;width:9px;border-radius:50%"></i>抢占时刻</span>
+      <span style="color:var(--crit)"><i class="d" style="background:none"></i>触发线 99.58%</span>
+    </div>
+    <p class="note">
+      38 次抢占的触发点极其一致:抢占前一秒的 KV 占用均值 <strong>99.58%</strong>。
+      这不是"随机崩溃",是一个把 KV 稳定在 93%–99.6% 之间的负反馈环。
+      <span class="hl">第一轮量到的触发点也是 99.58%</span> —— 同一个数,两台机器,
+      说明这是调度器里的一个硬阈值,不是巧合。
+    </p>
+  </figure>
+
+  <div class="tw">
+    <table>
+      <thead>
+        <tr><th>抢占事件</th><th>发生时刻</th><th>抢占前 KV</th><th>抢占后 KV</th><th>释放</th><th>Running</th></tr>
+      </thead>
+      <tbody id="tb-ev"></tbody>
+      <caption>只列前 12 次,全部 38 次的统计见正文。「释放」为 KV 占用的下降,括号内换算成 token。</caption>
+    </table>
+  </div>
+
+  <p class="prose" style="margin-top:22px">
+    每次抢占平均释放 <strong>5.20 个百分点 = 6,242 个 token</strong> —— 正好是一条请求当时持有的上下文。
+    也就是说:vLLM 每次只踢一条,踢的是 <code>running</code> 队列末尾那条(最晚进来的),
+    而不是把批次砍半。这是一个非常克制的策略,代价是它必须频繁地踢。
+    释放量取决于请求的上下文长度,而不是池子大小。
+  </p>
+
+  <figure>
+    <figcaption>Figure 5</figcaption>
+    <p class="fig-title">抢占计数:一条几乎笔直的阶梯</p>
+    <div class="chart" id="ch-steps"></div>
+    <div class="legend">
+      <span style="color:var(--crit)"><i style="background:currentColor"></i>num_preemptions_total</span>
+      <span style="color:var(--ink-3)"><i class="d" style="background:none"></i>线性参考(5.4 次/分钟)</span>
+    </div>
+    <p class="note">
+      从第 15 秒的第 1 次到第 430 秒的第 38 次,平均间隔 <strong>11.2 秒</strong>,几乎完全均匀。
+      <strong>过载状态下抢占不是"偶发事件",是稳态的一部分。</strong>
+      它比第一轮更频繁,因为驻留数多了 4.5 条,池子填满得更快。
+    </p>
+  </figure>
+
+  <div class="callout crit">
+    <p class="k">照着核对:日志里没有 "is preempted by"</p>
+    <p>
+      实验计划里写"server 日志里出现类似 <code>Sequence group ... is preempted by ...</code> 的行" ——
+      <strong>这一条在 vLLM V1 上不成立</strong>。服务端日志里 <code>preempt</code> 出现
+      <strong>0 次</strong>,那是 V0 引擎的日志格式。V1 只在 <code>/metrics</code> 里暴露
+      <code>vllm:num_preemptions_total</code>,不打任何日志行。
+    </p>
+    <p>
+      也就是说:<strong>如果你只看服务端日志,这 38 次抢占是完全隐形的</strong>。
+      能抓到它的唯一办法就是本轮用的这个 1 Hz 采样脚本。
+    </p>
+  </div>
+</section>
+
+<!-- ============ 对照 ============ -->
+<section>
+  <h2><span class="num">对照</span>before / after:池子够 vs 池子爆</h2>
+  <p class="lede prose">
+    把四种配置并排放:三组"池子够"、一组"爆 4.4 倍"。
+    吞吐、p99 ITL、抢占计数三个指标同时看,才能看清楚断崖到底断在哪一个维度上。
+  </p>
+
+  <figure>
+    <figcaption>Figure 6</figcaption>
+    <p class="fig-title">三指标并列:输出吞吐 / p99 ITL / 抢占次数</p>
+    <div class="chart" id="ch-triptych"></div>
+    <div class="legend">
+      <span style="color:var(--accent)"><i class="sq" style="background:currentColor"></i>输出 token/s</span>
+      <span style="color:var(--warn)"><i class="sq" style="background:currentColor"></i>p99 ITL (ms)</span>
+      <span style="color:var(--crit)"><i class="sq" style="background:currentColor"></i>抢占次数</span>
+    </div>
+    <p class="note">
+      三个面板各自独立缩放。注意中间那块:<strong>p99 ITL 在四种配置下几乎没变</strong>
+      (197 / 208 / 214 / 228 ms)—— 断崖没有断在这里。
+    </p>
+  </figure>
+
+  <div class="tw">
+    <table>
+      <thead>
+        <tr>
+          <th>配置</th><th>单请求上下文</th><th>KV 需求</th><th>KV 峰值</th>
+          <th>驻留 / 并发</th><th>Waiting 峰值</th><th>抢占</th>
+          <th>输出 tok/s</th><th>总 tok/s</th>
+          <th>TTFT p50</th><th>ITL p50</th><th>ITL p90</th><th>ITL p99</th><th>E2EL p50</th>
+        </tr>
+      </thead>
+      <tbody id="tb-cmp"></tbody>
+      <caption>「KV 需求」= 并发 × 单请求满上下文 ÷ 120,064。四行全部取自 Round 2。延迟单位 ms。</caption>
+    </table>
+  </div>
+
+  <div class="callout crit">
+    <p class="k">断崖断在吞吐和 TTFT,没有断在 ITL</p>
+    <p>
+      这是本轮最反直觉的一条。实验计划预期"P99 ITL 出现巨大尖峰(被抢占的请求要重算)",
+      实测 p99 ITL = <strong>227.7 ms</strong>,和零抢占时的 197–214 ms 属于同一水位;
+      p90 ITL 甚至<strong>好得多</strong>(24.7 ms,并发扫描 C=64 是 187.5 ms)。
+    </p>
+    <p>
+      原因是算术:128 条 × 2047 个间隔 = <strong>262,016 个 ITL 样本</strong>,
+      抢占只制造了 38 个巨大间隔,占 <strong>0.0145%</strong> —— 落在 p99.99 上,
+      <code>--metric-percentiles 50,90,99</code> 根本够不着。
+      而 p90 反而变好,是因为批内只剩 16 条流,别人的 prefill 抢步变少了。
+    </p>
+    <p>
+      <strong>这条经验值得单独记下来:p99 ITL 不是抢占的监控指标。</strong>
+      抢占的指标只有两个 —— <code>num_preemptions_total</code> 和 TTFT 尾部。
+      <span class="hl">两轮独立复现,可以当结论用了</span>。
+    </p>
+  </div>
+
+  <div class="callout">
+    <p class="k">反过来用:ITL 和 TTFT 谁在爆,直接指向两种不同的病</p>
+    <p>
+      上面那条结论有个很实用的逆命题。线上收到"用户抱怨慢"的时候,先分清是哪一个在爆:
+    </p>
+    <pre><span class="a">ITL 正常 + TTFT 爆炸</span>   →  容量不够,请求在排队
+                        药:加卡、减并发、缩 <span class="w">max_model_len</span>、上限流
+                        <span class="c">← 本轮就是这一种:ITL p50 23.39 ms 几乎正常,</span>
+                        <span class="c">  而 TTFT p50 是 169 秒</span>
+
+<span class="w">ITL 也慢</span>              →  解码本身有问题
+                        药:查 batch 配置、kernel、量化实现
+                        <span class="c">← Test 5 里 llama.cpp 遇到的是这一种</span></pre>
+    <p>
+      两种病,两种药。<span class="hl">吃错药的典型是:看到 TTFT 爆了就去换更快的卡</span> ——
+      为什么没用,见下一节。
+    </p>
+  </div>
+
+  <h3>另一组对照:池子大 38%,吞吐只多 21%</h3>
+  <p class="prose">
+    第一轮跑过形状完全相同的一轮压测(6144 / 2048 / C=64 / 128 条),只有 KV 池不同。
+    这构成了一次<b>意外的</b>对照实验 —— 池子大 38%,能换回多少?
+  </p>
+
+  <div class="tw">
+    <table>
+      <caption>两轮形状完全相同,唯一的差别是 KV 池。第一轮的池子数取自<b>它自己那次启动</b>的日志(86,864 / 10.60x)——
+        注意第一轮的 Test 1–2 是另一次启动,池子是 86,896 / 10.61x,不能混用。</caption>
+      <thead><tr><th>指标</th><th>第一轮</th><th>第二轮</th><th>变化</th></tr></thead>
+      <tbody>
+        <tr><td>KV 池</td><td>4.64 GiB · 86,864 tok</td><td>6.41 GiB · 120,064 tok</td><td class="hl">+38.2%</td></tr>
+        <tr><td>日志预告容量</td><td>10.60x</td><td>14.66x</td><td class="hl">+38.3%</td></tr>
+        <tr><td>实测 Running 均值</td><td>11.17</td><td>15.65</td><td class="gd">+40.1%</td></tr>
+        <tr><td>超卖倍数</td><td>6.0×</td><td>4.4×</td><td>−27%</td></tr>
+        <tr class="pick"><td>输出吞吐</td><td>438.8 tok/s</td><td>532.4 tok/s</td><td class="mid">+21.3%</td></tr>
+        <tr><td>耗时</td><td>597.4 s</td><td>492.4 s</td><td class="gd">−17.6%</td></tr>
+        <tr><td>TTFT p50</td><td>219.2 s</td><td>169.0 s</td><td class="gd">−22.9%</td></tr>
+        <tr><td>E2EL p50</td><td>270.4 s</td><td>238.2 s</td><td class="gd">−11.9%</td></tr>
+        <tr><td>抢占次数</td><td>37</td><td>38</td><td class="bad">+2.7%</td></tr>
+        <tr><td>Waiting 均值</td><td>38.94</td><td>36.44</td><td>−6.4%</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout crit">
+    <p class="k">驻留数几乎线性跟随池子,吞吐却是亚线性的</p>
+    <p>
+      池子 <strong>+38.2%</strong> → 驻留 <strong>+40.1%</strong>(几乎 1:1,和日志预告的 +38.3% 也对得上)
+      → 吞吐只有 <strong>+21.3%</strong>。多驻留的那 4.5 条请求,<b>边际吞吐贡献在递减</b> ——
+      并发扫描已经量化过这件事:从 C=16 到 C=32,扩展效率就从 69% 掉到 52%。
+      <span class="hl">在过载区,扩容 KV 池的收益比"能多装几条"看起来的要小</span>。
+    </p>
+    <p>
+      更值得注意的是<strong>抢占次数几乎没变(37 → 38)</strong>。
+      这说明抢占频率是被"KV 顶满"这个<b>状态</b>决定的,而不是被池子的绝对大小决定的。
+      只要还在超卖,扩容只是让断崖挪了个位置,并没有消除它。
+    </p>
+  </div>
+</section>
+
+<!-- ============ TTFT ============ -->
+<section>
+  <h2><span class="num">排队</span>TTFT 里 99% 是排队</h2>
+  <p class="lede prose">
+    长度扫描的结论是"C=16 时 TTFT 已经有 82% 是等待,只有 18% 在算"。
+    过载状态把这个比例推到了极端:排队 135.0 秒,prefill 1.10 秒,前端不到 0.5 秒。
+  </p>
+
+  <figure>
+    <figcaption>Figure 7</figcaption>
+    <p class="fig-title">TTFT 三段分解:四种配置对比(对数纵轴)</p>
+    <div class="chart" id="ch-ttft"></div>
+    <div class="legend">
+      <span style="color:var(--crit)"><i class="sq" style="background:currentColor"></i>排队 queue_time</span>
+      <span style="color:var(--warn)"><i class="sq" style="background:currentColor"></i>prefill</span>
+      <span style="color:var(--ink-3)"><i class="sq" style="background:currentColor"></i>前端 + IPC</span>
+    </div>
+    <p class="note">
+      纵轴是对数,否则本轮那根柱子会把其余三根压成一条线。
+      prefill 段只从 0.48 s 涨到 1.10 s,涨的全部是排队段:0.35 s → 135.0 s,<strong>386 倍</strong>。
+    </p>
+  </figure>
+
+  <pre><span class="c"># 本轮 TTFT 的构成(服务端直方图,全部 128 条)</span>
+排队      <span class="r">135,042 ms</span>   98.9%
+prefill     <span class="a">1,097 ms</span>    0.8%
+前端+IPC       <span class="c">418 ms</span>    0.3%   <span class="c">← 这一段是相减得到的残差</span>
+────────────────────────────
+TTFT mean <span class="r">136,557 ms</span>  100%
+
+<span class="c"># 用排队论核对一遍(Little's Law)</span>
+平均排队长度 <span class="a">36.4</span> 条 ÷ 完成速率 <span class="a">0.260</span> 条/s = <span class="a">140 s</span>
+实测 TTFT p50 = <span class="a">169 s</span>   <span class="c">同量级,差异来自客户端一次性投放 64 条造成的先后次序</span></pre>
+
+  <div class="callout crit">
+    <p class="k">过载下的 TTFT 完全是排队论,和 GPU 无关</p>
+    <p>
+      prefill 本身只要 1.10 秒。用户等的 169 秒里,<strong>有 168 秒是在等前面的人</strong>。
+      这个数由"队列长度 ÷ 出队速率"决定,跟卡多快、KV 多大、模型多小<strong>没有任何关系</strong> ——
+      换一张 H100 也只会让那 1.09 秒变成 0.4 秒。
+    </p>
+    <p>
+      推论很直接:<strong>过载时唯一有效的手段是限流,不是加速。</strong>
+      在服务端设并发上限并对超出的请求快速失败(429),
+      比让它们在队列里排 169 秒有用得多 —— 后者还占着连接和客户端超时预算。
+    </p>
+  </div>
+</section>
+
+<!-- ============ 重算 ============ -->
+<section>
+  <h2><span class="num">对账</span>两个计数器打架:重算到底发生了没有</h2>
+  <p class="lede prose">
+    抢占的教科书代价是"被踢的请求要从头重算 prefill"。这一轮有 38 次抢占,
+    按每条 6,200~8,200 token 算,应该多出二三十万 token 的白干活。
+    结果两个计数器给出了完全相反的答案:<strong>算力账多出近三成,token 账却一个字没记</strong>。
+  </p>
+
+  <pre><span class="c"># 计数器 A:iteration_tokens_total_sum(调度器记的 token 账)</span>
+实测总量 <span class="a">1,048,576</span> token
+理论下限 128 × (6144 + 2048) = <span class="a">1,048,576</span> token
+差额 <span class="a">0</span>  <span class="c">← 一个 token 不多不少,精确停在理论下限上</span>
+
+<span class="c"># 计数器 B:estimated_flops_per_gpu_total(算力账)</span>
+实测 <span class="r">1.9884e16</span> FLOP
+模型 <span class="a">1.5395e16</span> FLOP   <span class="c">← 用长度扫描 5 个零抢占数据点标定</span>
+差额 <span class="r">+4.489e15 FLOP = +29.2%</span>
+
+<span class="c"># 把差额换算回 prefill token</span>
+4.489e15 ÷ 14.77 GFLOP/token = <span class="r">≈ 30.4 万 token</span>
+30.4 万 ÷ 38 次 = <span class="r">7,997 token / 次</span>
+
+<span class="c"># 独立校验:抢占时释放的 KV</span>
+38 次 × 6,242 token = <span class="r">23.7 万 token</span>   <span class="c">← 与上面同量级</span></pre>
+
+  <figure>
+    <figcaption>Figure 8</figcaption>
+    <p class="fig-title">FLOPs 模型标定:长度扫描五个点定线,本轮明显偏高</p>
+    <div class="chart" id="ch-flops"></div>
+    <div class="legend">
+      <span style="color:var(--accent)"><i style="background:currentColor;height:9px;width:9px;border-radius:50%"></i>长度扫描(零抢占)</span>
+      <span style="color:var(--good)"><i class="d" style="background:none"></i>拟合 13.53 + 0.000173·平均上下文</span>
+      <span style="color:var(--crit)"><i style="background:currentColor;height:9px;width:9px;border-radius:50%"></i>本轮(38 次抢占)</span>
+    </div>
+    <p class="note">
+      横轴是每个 token 前向时的平均上下文长度。长度扫描五个点大致在一条直线上(R²=0.90),
+      斜率 0.000173 GFLOP/上下文 token。
+      本轮那个红点高出拟合线 29.2% —— 这就是重算的账。
+    </p>
+  </figure>
+
+  <div class="callout crit">
+    <p class="k">结论:重算发生了,但调度器的 token 计数器没记</p>
+    <p>
+      两条独立证据(FLOPs 差额 30.4 万 token、抢占释放的 KV 23.7 万 token)互相印证,
+      重算量约 <strong>24–30 万 token,相当于 prefill 工作量多做了 30%–39%</strong>。
+      而 <code>iteration_tokens_total</code> 记下的是 <strong>1,048,576</strong> ——
+      <span class="hl">精确等于 128 × 8192 这个理论下限,一个 token 都没多</span>。
+    </p>
+    <p>
+      实际代价没有想象中大:30 万 token 的 prefill 按实测 146 TF/s 算约
+      <strong>31 秒,占全程 492 秒的 6.2%</strong>。
+      真正让吞吐掉到 38% 的不是重算,是<strong>并发被 KV 池砍到了 16 条</strong>。
+      重算是伤口,并发塌缩才是断崖。
+    </p>
+    <p>
+      <span class="hl">这个矛盾在两台不同的机器上原样重现</span>,基本可以排除偶然。
+      在源码层面确认之前,<strong>不要把 <code>iteration_tokens_total</code>
+      当作"GPU 实际算了多少"的依据</strong> —— 在有抢占的场景下它会系统性低报。
+    </p>
+  </div>
+
+  <h3>解码阶段被偷走的 27%</h3>
+  <p class="prose">
+    单条请求的解码阶段实测 65.61 秒,而 2047 个 token × ITL 中位数 23.39 ms 只需要 47.9 秒。
+    差出来的 <strong>17.7 秒(27%)</strong>就是被别人的 prefill、别人的重算、
+    以及自己被抢占后的空档吃掉的。
+  </p>
+
+  <figure>
+    <figcaption>Figure 9</figcaption>
+    <p class="fig-title">全程 492 秒的墙钟去向</p>
+    <div class="chart" id="ch-budget"></div>
+    <div class="legend">
+      <span style="color:var(--accent)"><i class="sq" style="background:currentColor"></i>纯解码(16,457 步 × 23.39 ms)</span>
+      <span style="color:var(--warn)"><i class="sq" style="background:currentColor"></i>正常 prefill(78.6 万 token,已扣除重算)</span>
+      <span style="color:var(--crit)"><i class="sq" style="background:currentColor"></i>抢占重算(约 24–30 万 token)</span>
+    </div>
+    <p class="note">
+      重算那一段只有 31 秒。这张图想说明的是:过载的代价绝大部分花在了"只能跑 16 条流"上,
+      而不是"重算"上 —— 后者只占 6.2%。
+    </p>
+  </figure>
+</section>
+
+<!-- ============ 核对 ============ -->
+<section>
+  <h2><span class="num">预期</span>五个常见预期,哪些站得住</h2>
+  <p class="lede prose">
+    压爆 KV 池之前,大多数人对"会看到什么"有一套直觉。逐条对一遍:
+    <strong>三条完全命中,一条形态不同,一条在 vLLM V1 上根本观测不到</strong>。
+  </p>
+
+  <div class="tw">
+    <table>
+      <thead>
+        <tr><th>常见预期</th><th>结果</th><th>实测</th><th>说明</th></tr>
+      </thead>
+      <tbody id="tb-check"></tbody>
+      <caption>「部分」表示现象存在但形态与预期不同;「不成立」表示在 vLLM V1 上这条无法观测到。</caption>
+    </table>
+  </div>
+</section>
+
+<!-- ============ 数据 ============ -->
+<section>
+  <h2><span class="num">数据</span>本轮完整测量结果</h2>
+  <div class="tw">
+    <table>
+      <thead><tr><th>指标</th><th>数值</th><th>指标</th><th>数值</th></tr></thead>
+      <tbody id="tb-main"></tbody>
+      <caption>延迟取自 <code>stress.json</code>,占用与计数取自 1 Hz 采样窗口(490 秒,489 个采样点)。</caption>
+    </table>
+  </div>
+</section>
+
+<!-- ============ 下一步 ============ -->
+<section>
+  <h2><span class="num">下一步</span>这轮之后该做的五件事</h2>
+  <ul class="pts">
+    <li><strong>把 <code>--max-num-seqs</code> 设成真实容量,而不是 128。</strong>
+      本轮 <code>--max-num-seqs 128</code> 允许调度器放进 18–19 条,然后靠抢占再踢回 15–16 条 ——
+      38 次抢占全部是这个"放多了再踢"造成的。按日志的 14.66x 把它设成
+      <code>--max-num-seqs 14</code>,理论上抢占会降到 0,吞吐不变但 ITL 尾部更干净。
+      <strong>这是最容易验证、收益最直接的一条。</strong>
+      注意这个值跟着机器走:第一轮该设 10,这一轮该设 14。</li>
+    <li><strong>加上服务端前置队列长度上限。</strong>
+      本轮那 48 条排了两分钟以上的请求占着 HTTP 连接和客户端超时预算,
+      对吞吐却毫无贡献 —— 让超出的请求快速失败(429)更有用。
+      这是上一条的配套:<code>--max-num-seqs</code> 管驻留,队列上限管积压。</li>
+    <li><strong>补一组 p99.9 / p99.99 的 ITL。</strong>把
+      <code>--metric-percentiles</code> 改成 <code>50,90,99,99.9,99.99</code> 重跑一次,
+      应该能直接看到那 38 个巨大间隔的量级。</li>
+    <li><strong>在源码层面确认 <code>iteration_tokens_total</code> 的记录点。</strong>
+      两轮都出现了同一个矛盾:token 账等于(甚至略低于)理论下限,FLOPs 账多出 26%–28%。
+      两台机器复现,已经不是偶然。在确认之前,涉及抢占的场景下 MFU / 算术强度这类指标
+      都应该以 FLOPs 计数器为准。</li>
+    <li><strong>把"池子大小 → 驻留数 → 吞吐"做成真正的实验。</strong>
+      上一节那组两轮对照的结论(池子 +38% 只换来吞吐 +21%)值得信,但证据是<b>捡来的</b>,
+      不是设计出来的。用 <code>--kv-cache-memory</code> 把池子显式钉成 4 / 6 / 8 GiB 三档,
+      同一形状各压一次,就能把这条曲线直接画出来 ——
+      顺便还能验证"抢占频率与池子大小无关"这个更强的说法。</li>
+  </ul>
+
+  <div class="callout">
+    <p class="k">口径提醒</p>
+    <p>
+      本轮只有 128 条请求、单次运行,没有重复测量;p99 相当于第 126–127 条,
+      而 TTFT 的分布主要由客户端的发压顺序决定(先发的排队短、后发的排队长),
+      所以 <code>ttft p50 = 169 s</code> 应理解为"批次中位数",不是稳态尾延迟。
+      要量稳态,需要改成固定到达率(<code>--request-rate</code>)而不是固定并发。
+    </p>
+    <p>
+      <b>还有一处:和第一轮的对照不是严格的 A/B。</b>
+      两轮的 KV 池差异来自驱动 / CUDA 版本和显存 profiling 的随机性,
+      <span class="hl">不是人为设定的自变量</span> ——
+      第一轮内部换一次服务端启动,池子就从 86,896 变成了 86,864。
+      所以本报告里所有"第一轮 vs 第二轮"的对照,应当读作
+      <b>"两个池子大小下各观察到一次"</b>,而不是"控制变量实验"。
+      要把它坐实,就是上面第五条那个实验。
+    </p>
+  </div>
+</section>
+
+<p class="note" style="margin-top:56px; max-width:none">
+  <b>这是 Round 2 五份压测报告的第 4 份</b>(vLLM 超卖压爆)。
+  整轮的横向结论与生产选型建议见 <b>《选型指南-vllm-llama-cpp》</b> ——
+  那份把五组测试的数据合起来,回答"两个引擎各自强在哪、生产上怎么选"。
+  同目录另有:<code>vllm-01-Qwen2.5-7B并发曲线</code> · <code>vllm-02-TTFT解剖</code> · <code>vllm-03-KV的线性</code> · <code>llama-cpp-压测</code>。
+</p>
+
+<footer>
+  <span>2026-08-25 · Round 2</span>
+  <span>128 requests · 0 failed · 38 preemptions</span>
+  <span>vLLM 0.27.1 · CUDA 13.0 · driver 580.159.03</span>
+  <span>prefix caching: off · chunked prefill: on</span>
+  <span>采样 489 点 @ 1 Hz</span>
+</footer>
+
+</div>
+
+<script>
+(function(){
+"use strict";
+var DATA = {"stress":{"dur":492.39,"n":128,"C":64,"L":6144,"O":2048,"kvMax":99.99,"kvMed":95.85,"kvMean":92.3,"kvP10":81.1,"pctGE90":74.6,"pctGE95":59.7,"runMean":15.65,"runMax":19,"runMin":2,"runMed":16,"waitMean":36.4,"waitMax":60,"preempt":38,"preInterval":11.2,"preKvBefore":99.58,"preDrop":5.2,"preDropTok":6242,"q":135041.8,"pf":1096.9,"dec":65609.6,"iters":16499,"tok":1048576,"tokIter":63.3,"iterS":33.55,"stepMs":29.8,"tf":40.22,"gb":704.6,"gflopTok":18.93,"gbIter":21.0,"pwr":382.6,"pwrMax":466.7,"temp":73,"util":100.0,"needGiB":28.0,"poolGiB":6.41,"over":4.37,"perReqMiB":448,"capReq":14.66,"recompTokLo":237196,"recompTokHi":293500,"ttft50":169040.7,"ttft90":191395.8,"ttft99":194949.4,"ttftMean":136556.6,"itl50":23.39,"itl90":24.7,"itl99":227.7,"itlAvg":31.29,"tpot":29.17,"e2e50":238234,"e2e99":256059,"outTP":532.39,"totTP":2129.6,"reqTP":0.26,"failed":0,"completed":128,"itlSamples":262016,"mfu":24.3,"mbu":69.9,"recompWall":29.6},"events":[{"t":15.099999999999994,"n":1,"kvBefore":99.72,"kvAfter":95.11,"drop":4.61,"runBefore":19,"runAfter":18},{"t":23.099999999999994,"n":2,"kvBefore":99.41,"kvAfter":94.5,"drop":4.91,"runBefore":18,"runAfter":17},{"t":33.2,"n":3,"kvBefore":99.72,"kvAfter":94.43,"drop":5.29,"runBefore":17,"runAfter":16},{"t":43.2,"n":4,"kvBefore":99.65,"kvAfter":93.98,"drop":5.67,"runBefore":16,"runAfter":15},{"t":55.3,"n":5,"kvBefore":99.96,"kvAfter":93.83,"drop":6.13,"runBefore":15,"runAfter":14},{"t":80.39999999999999,"n":6,"kvBefore":99.51,"kvAfter":94.87,"drop":4.64,"runBefore":18,"runAfter":17},{"t":93.49999999999999,"n":7,"kvBefore":99.88,"kvAfter":95.07,"drop":4.81,"runBefore":17,"runAfter":16},{"t":105.49999999999999,"n":8,"kvBefore":99.63,"kvAfter":94.58,"drop":5.05,"runBefore":16,"runAfter":15},{"t":135.7,"n":9,"kvBefore":99.41,"kvAfter":94.88,"drop":4.53,"runBefore":19,"runAfter":18},{"t":144.7,"n":10,"kvBefore":99.77,"kvAfter":94.9,"drop":4.87,"runBefore":18,"runAfter":17},{"t":153.8,"n":11,"kvBefore":99.53,"kvAfter":94.31,"drop":5.22,"runBefore":17,"runAfter":16},{"t":166.89999999999998,"n":12,"kvBefore":99.8,"kvAfter":94.26,"drop":5.54,"runBefore":16,"runAfter":15},{"t":177.89999999999998,"n":13,"kvBefore":99.65,"kvAfter":93.54,"drop":6.11,"runBefore":15,"runAfter":14},{"t":180.89999999999998,"n":14,"kvBefore":97.29,"kvAfter":94.07,"drop":3.22,"runBefore":15,"runAfter":14},{"t":198.0,"n":15,"kvBefore":97.88,"kvAfter":94.95,"drop":2.93,"runBefore":19,"runAfter":18},{"t":207.10000000000002,"n":16,"kvBefore":99.88,"kvAfter":95.04,"drop":4.84,"runBefore":18,"runAfter":17},{"t":216.10000000000002,"n":17,"kvBefore":99.67,"kvAfter":89.23,"drop":10.44,"runBefore":17,"runAfter":16},{"t":220.10000000000002,"n":18,"kvBefore":99.79,"kvAfter":94.87,"drop":4.92,"runBefore":17,"runAfter":16},{"t":229.2,"n":19,"kvBefore":99.52,"kvAfter":93.88,"drop":5.64,"runBefore":16,"runAfter":15},{"t":243.3,"n":20,"kvBefore":99.91,"kvAfter":93.98,"drop":5.93,"runBefore":15,"runAfter":14},{"t":247.3,"n":21,"kvBefore":99.87,"kvAfter":94.86,"drop":5.01,"runBefore":15,"runAfter":14},{"t":261.40000000000003,"n":22,"kvBefore":99.8,"kvAfter":95.27,"drop":4.53,"runBefore":19,"runAfter":18},{"t":273.40000000000003,"n":23,"kvBefore":99.96,"kvAfter":95.3,"drop":4.66,"runBefore":18,"runAfter":17},{"t":282.5,"n":24,"kvBefore":99.95,"kvAfter":94.68,"drop":5.27,"runBefore":17,"runAfter":16},{"t":292.5,"n":25,"kvBefore":99.91,"kvAfter":94.24,"drop":5.67,"runBefore":16,"runAfter":15},{"t":305.6,"n":26,"kvBefore":99.72,"kvAfter":93.76,"drop":5.96,"runBefore":15,"runAfter":14},{"t":322.7,"n":27,"kvBefore":98.55,"kvAfter":95.27,"drop":3.28,"runBefore":19,"runAfter":18},{"t":330.7,"n":28,"kvBefore":99.57,"kvAfter":94.75,"drop":4.82,"runBefore":18,"runAfter":17},{"t":334.7,"n":29,"kvBefore":99.52,"kvAfter":94.92,"drop":4.6,"runBefore":18,"runAfter":17},{"t":343.8,"n":30,"kvBefore":99.57,"kvAfter":94.35,"drop":5.22,"runBefore":17,"runAfter":16},{"t":356.8,"n":31,"kvBefore":99.84,"kvAfter":94.44,"drop":5.4,"runBefore":16,"runAfter":15},{"t":367.90000000000003,"n":32,"kvBefore":99.84,"kvAfter":93.71,"drop":6.13,"runBefore":15,"runAfter":14},{"t":370.90000000000003,"n":33,"kvBefore":99.75,"kvAfter":94.27,"drop":5.48,"runBefore":15,"runAfter":14},{"t":389.0,"n":34,"kvBefore":99.88,"kvAfter":95.35,"drop":4.53,"runBefore":19,"runAfter":18},{"t":397.0,"n":35,"kvBefore":99.64,"kvAfter":94.78,"drop":4.86,"runBefore":18,"runAfter":17},{"t":407.1,"n":36,"kvBefore":99.99,"kvAfter":94.79,"drop":5.2,"runBefore":17,"runAfter":16},{"t":419.1,"n":37,"kvBefore":99.69,"kvAfter":94.15,"drop":5.54,"runBefore":16,"runAfter":15},{"t":430.2,"n":38,"kvBefore":99.53,"kvAfter":93.42,"drop":6.11,"runBefore":15,"runAfter":14}],"series":[{"t":-36.2,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.3},{"t":-35.2,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.4},{"t":-34.2,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.8},{"t":-33.2,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.7},{"t":-32.2,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.4},{"t":-31.2,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.5},{"t":-30.2,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.7},{"t":-29.2,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.7},{"t":-28.2,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.8},{"t":-27.2,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.8},{"t":-26.1,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.6},{"t":-25.1,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.6},{"t":-24.1,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":33.0},{"t":-23.1,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":33.1},{"t":-22.1,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.9},{"t":-21.1,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.9},{"t":-20.1,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.9},{"t":-19.1,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.8},{"t":-18.1,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.8},{"t":-17.1,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.8},{"t":-16.1,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.9},{"t":-15.1,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":33.0},{"t":-14.1,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.9},{"t":-13.1,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.9},{"t":-12.1,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.8},{"t":-11.1,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.5},{"t":-10.1,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.2},{"t":-9.1,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.1},{"t":-8.1,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.1},{"t":-7.1,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.2},{"t":-6.0,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.3},{"t":-5.0,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.4},{"t":-4.0,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.4},{"t":-3.0,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.4},{"t":-2.0,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":32.4},{"t":-1.0,"r":0,"w":0,"k":0.0,"p":0,"f":0.0,"tk":0,"pw":34.9},{"t":0.0,"r":2,"w":54,"k":10.25,"p":0,"f":0.0,"tk":0,"pw":466.7},{"t":1.0,"r":4,"w":60,"k":18.81,"p":0,"f":0.0,"tk":0,"pw":448.7},{"t":2.0,"r":6,"w":58,"k":27.34,"p":0,"f":0.0,"tk":0,"pw":448.3},{"t":3.0,"r":7,"w":57,"k":35.88,"p":0,"f":0.0,"tk":0,"pw":449.1},{"t":4.0,"r":9,"w":55,"k":42.7,"p":0,"f":0.0,"tk":0,"pw":449.0},{"t":5.0,"r":10,"w":54,"k":51.26,"p":0,"f":0.0,"tk":0,"pw":448.3},{"t":6.0,"r":12,"w":52,"k":59.78,"p":0,"f":0.0,"tk":0,"pw":449.1},{"t":7.0,"r":14,"w":50,"k":68.33,"p":0,"f":0.0,"tk":0,"pw":448.8},{"t":8.0,"r":15,"w":49,"k":75.16,"p":0,"f":0.0,"tk":0,"pw":449.9},{"t":9.0,"r":17,"w":47,"k":83.7,"p":0,"f":0.0,"tk":0,"pw":450.3},{"t":10.0,"r":18,"w":46,"k":90.54,"p":0,"f":0.0,"tk":0,"pw":450.2},{"t":11.0,"r":19,"w":45,"k":97.79,"p":0,"f":0.0,"tk":0,"pw":449.7},{"t":12.0,"r":19,"w":45,"k":98.41,"p":0,"f":0.0,"tk":0,"pw":381.5},{"t":13.1,"r":19,"w":45,"k":99.08,"p":0,"f":0.0,"tk":0,"pw":371.8},{"t":14.1,"r":19,"w":45,"k":99.72,"p":0,"f":0.0,"tk":0,"pw":373.5},{"t":15.1,"r":18,"w":46,"k":95.11,"p":1,"f":0.0,"tk":0,"pw":375.0},{"t":16.1,"r":18,"w":46,"k":95.74,"p":1,"f":0.0,"tk":0,"pw":375.3},{"t":17.1,"r":18,"w":46,"k":96.35,"p":1,"f":0.0,"tk":0,"pw":376.0},{"t":18.1,"r":18,"w":46,"k":96.97,"p":1,"f":0.0,"tk":0,"pw":375.7},{"t":19.1,"r":18,"w":46,"k":97.57,"p":1,"f":0.0,"tk":0,"pw":375.2},{"t":20.1,"r":18,"w":46,"k":98.2,"p":1,"f":0.0,"tk":0,"pw":375.2},{"t":21.1,"r":18,"w":46,"k":98.79,"p":1,"f":0.0,"tk":0,"pw":375.1},{"t":22.1,"r":18,"w":46,"k":99.41,"p":1,"f":0.0,"tk":0,"pw":374.8},{"t":23.1,"r":17,"w":47,"k":94.5,"p":2,"f":0.0,"tk":0,"pw":374.3},{"t":24.1,"r":17,"w":47,"k":95.07,"p":2,"f":0.0,"tk":0,"pw":374.1},{"t":25.1,"r":17,"w":47,"k":95.66,"p":2,"f":0.0,"tk":0,"pw":373.8},{"t":26.1,"r":17,"w":47,"k":96.24,"p":2,"f":0.0,"tk":0,"pw":374.2},{"t":27.1,"r":17,"w":47,"k":96.83,"p":2,"f":0.0,"tk":0,"pw":374.5},{"t":28.1,"r":17,"w":47,"k":97.4,"p":2,"f":0.0,"tk":0,"pw":375.1},{"t":29.1,"r":17,"w":47,"k":97.99,"p":2,"f":0.0,"tk":0,"pw":375.0},{"t":30.1,"r":17,"w":47,"k":98.57,"p":2,"f":0.0,"tk":0,"pw":376.0},{"t":31.2,"r":17,"w":47,"k":99.13,"p":2,"f":0.0,"tk":0,"pw":376.7},{"t":32.2,"r":17,"w":47,"k":99.72,"p":2,"f":0.0,"tk":0,"pw":376.5},{"t":33.2,"r":16,"w":48,"k":94.43,"p":3,"f":0.0,"tk":0,"pw":373.6},{"t":34.2,"r":16,"w":48,"k":95.02,"p":3,"f":0.0,"tk":0,"pw":367.6},{"t":35.2,"r":16,"w":48,"k":95.6,"p":3,"f":0.0,"tk":0,"pw":368.3},{"t":36.2,"r":16,"w":48,"k":96.2,"p":3,"f":0.0,"tk":0,"pw":369.0},{"t":37.2,"r":16,"w":48,"k":96.76,"p":3,"f":0.0,"tk":0,"pw":369.1},{"t":38.2,"r":16,"w":48,"k":97.35,"p":3,"f":0.0,"tk":0,"pw":369.2},{"t":39.2,"r":16,"w":48,"k":97.92,"p":3,"f":0.0,"tk":0,"pw":369.5},{"t":40.2,"r":16,"w":48,"k":98.51,"p":3,"f":0.0,"tk":0,"pw":369.6},{"t":41.2,"r":16,"w":48,"k":99.08,"p":3,"f":0.0,"tk":0,"pw":369.9},{"t":42.2,"r":16,"w":48,"k":99.65,"p":3,"f":0.0,"tk":0,"pw":369.9},{"t":43.2,"r":15,"w":49,"k":93.98,"p":4,"f":0.0,"tk":0,"pw":370.1},{"t":44.2,"r":15,"w":49,"k":94.54,"p":4,"f":0.0,"tk":0,"pw":369.7},{"t":45.2,"r":15,"w":49,"k":95.08,"p":4,"f":0.0,"tk":0,"pw":370.5},{"t":46.2,"r":15,"w":49,"k":95.63,"p":4,"f":0.0,"tk":0,"pw":370.9},{"t":47.2,"r":15,"w":49,"k":96.16,"p":4,"f":0.0,"tk":0,"pw":370.9},{"t":48.2,"r":15,"w":49,"k":96.72,"p":4,"f":0.0,"tk":0,"pw":371.0},{"t":49.2,"r":15,"w":49,"k":97.25,"p":4,"f":0.0,"tk":0,"pw":370.2},{"t":50.3,"r":15,"w":49,"k":97.8,"p":4,"f":0.0,"tk":0,"pw":370.8},{"t":51.3,"r":15,"w":49,"k":98.35,"p":4,"f":0.0,"tk":0,"pw":370.1},{"t":52.3,"r":15,"w":49,"k":98.88,"p":4,"f":0.0,"tk":0,"pw":370.7},{"t":53.3,"r":15,"w":49,"k":99.41,"p":4,"f":0.0,"tk":0,"pw":370.7},{"t":54.3,"r":15,"w":49,"k":99.96,"p":4,"f":0.0,"tk":0,"pw":371.0},{"t":55.3,"r":14,"w":50,"k":93.83,"p":5,"f":0.0,"tk":0,"pw":370.9},{"t":56.3,"r":14,"w":50,"k":94.34,"p":5,"f":0.0,"tk":0,"pw":370.7},{"t":57.3,"r":14,"w":50,"k":94.84,"p":5,"f":0.0,"tk":0,"pw":371.2},{"t":58.3,"r":14,"w":50,"k":95.35,"p":5,"f":0.0,"tk":0,"pw":370.9},{"t":59.3,"r":14,"w":49,"k":90.12,"p":5,"f":0.0,"tk":0,"pw":434.0},{"t":60.3,"r":14,"w":50,"k":90.12,"p":5,"f":0.0,"tk":0,"pw":450.1},{"t":61.3,"r":13,"w":50,"k":85.01,"p":5,"f":0.0,"tk":0,"pw":448.3},{"t":62.3,"r":14,"w":50,"k":84.99,"p":5,"f":0.0,"tk":0,"pw":448.7},{"t":63.3,"r":13,"w":50,"k":79.91,"p":5,"f":0.0,"tk":0,"pw":448.9},{"t":64.3,"r":14,"w":50,"k":79.9,"p":5,"f":0.0,"tk":0,"pw":448.7},{"t":65.3,"r":13,"w":50,"k":74.77,"p":5,"f":0.0,"tk":0,"pw":448.7},{"t":66.3,"r":14,"w":50,"k":74.76,"p":5,"f":0.0,"tk":0,"pw":448.7},{"t":67.3,"r":13,"w":50,"k":69.68,"p":5,"f":0.0,"tk":0,"pw":448.4},{"t":68.4,"r":15,"w":49,"k":76.5,"p":5,"f":0.0,"tk":0,"pw":448.3},{"t":69.4,"r":16,"w":48,"k":85.03,"p":5,"f":0.0,"tk":0,"pw":448.3},{"t":70.4,"r":18,"w":46,"k":91.88,"p":5,"f":0.0,"tk":0,"pw":448.6},{"t":71.4,"r":18,"w":46,"k":96.68,"p":5,"f":0.0,"tk":0,"pw":448.3},{"t":72.4,"r":18,"w":46,"k":97.32,"p":5,"f":0.0,"tk":0,"pw":388.8},{"t":73.4,"r":18,"w":46,"k":97.95,"p":5,"f":0.0,"tk":0,"pw":383.3},{"t":74.4,"r":18,"w":46,"k":98.53,"p":5,"f":0.0,"tk":0,"pw":383.6},{"t":75.4,"r":18,"w":45,"k":95.55,"p":5,"f":0.0,"tk":0,"pw":383.3},{"t":76.4,"r":18,"w":46,"k":97.69,"p":5,"f":0.0,"tk":0,"pw":437.0},{"t":77.4,"r":18,"w":46,"k":98.28,"p":5,"f":0.0,"tk":0,"pw":383.0},{"t":78.4,"r":18,"w":46,"k":98.92,"p":5,"f":0.0,"tk":0,"pw":383.0},{"t":79.4,"r":18,"w":46,"k":99.51,"p":5,"f":0.0,"tk":0,"pw":382.8},{"t":80.4,"r":17,"w":47,"k":94.87,"p":6,"f":0.0,"tk":0,"pw":383.0},{"t":81.4,"r":17,"w":47,"k":95.42,"p":6,"f":0.0,"tk":0,"pw":382.0},{"t":82.4,"r":17,"w":47,"k":96.01,"p":6,"f":0.0,"tk":0,"pw":381.7},{"t":83.4,"r":17,"w":47,"k":96.61,"p":6,"f":0.0,"tk":0,"pw":382.2},{"t":84.4,"r":17,"w":47,"k":97.16,"p":6,"f":0.0,"tk":0,"pw":382.2},{"t":85.4,"r":17,"w":47,"k":97.77,"p":6,"f":0.0,"tk":0,"pw":382.6},{"t":86.4,"r":17,"w":47,"k":98.32,"p":6,"f":0.0,"tk":0,"pw":382.7},{"t":87.4,"r":17,"w":47,"k":98.93,"p":6,"f":0.0,"tk":0,"pw":382.9},{"t":88.5,"r":17,"w":47,"k":95.89,"p":6,"f":0.0,"tk":0,"pw":415.6},{"t":89.5,"r":17,"w":47,"k":98.13,"p":6,"f":0.0,"tk":0,"pw":417.4},{"t":90.5,"r":17,"w":47,"k":98.75,"p":6,"f":0.0,"tk":0,"pw":384.0},{"t":91.5,"r":17,"w":47,"k":99.29,"p":6,"f":0.0,"tk":0,"pw":383.7},{"t":92.5,"r":17,"w":47,"k":99.88,"p":6,"f":0.0,"tk":0,"pw":383.5},{"t":93.5,"r":16,"w":48,"k":95.07,"p":7,"f":0.0,"tk":0,"pw":376.2},{"t":94.5,"r":16,"w":48,"k":95.63,"p":7,"f":0.0,"tk":0,"pw":373.5},{"t":95.5,"r":16,"w":48,"k":96.21,"p":7,"f":0.0,"tk":0,"pw":373.5},{"t":96.5,"r":16,"w":48,"k":96.81,"p":7,"f":0.0,"tk":0,"pw":372.8},{"t":97.5,"r":16,"w":48,"k":97.4,"p":7,"f":0.0,"tk":0,"pw":373.6},{"t":98.5,"r":16,"w":48,"k":97.95,"p":7,"f":0.0,"tk":0,"pw":373.3},{"t":99.5,"r":16,"w":47,"k":93.32,"p":7,"f":0.0,"tk":0,"pw":389.6},{"t":100.5,"r":16,"w":48,"k":97.32,"p":7,"f":0.0,"tk":0,"pw":430.8},{"t":101.5,"r":16,"w":48,"k":97.89,"p":7,"f":0.0,"tk":0,"pw":372.9},{"t":102.5,"r":16,"w":48,"k":98.45,"p":7,"f":0.0,"tk":0,"pw":373.0},{"t":103.5,"r":16,"w":48,"k":99.04,"p":7,"f":0.0,"tk":0,"pw":373.2},{"t":104.5,"r":16,"w":48,"k":99.63,"p":7,"f":0.0,"tk":0,"pw":373.5},{"t":105.5,"r":15,"w":49,"k":94.58,"p":8,"f":0.0,"tk":0,"pw":373.4},{"t":106.5,"r":15,"w":49,"k":95.12,"p":8,"f":0.0,"tk":0,"pw":373.1},{"t":107.6,"r":15,"w":49,"k":95.68,"p":8,"f":0.0,"tk":0,"pw":373.2},{"t":108.6,"r":15,"w":49,"k":96.23,"p":8,"f":0.0,"tk":0,"pw":373.0},{"t":109.6,"r":15,"w":49,"k":93.14,"p":8,"f":0.0,"tk":0,"pw":401.3},{"t":110.6,"r":15,"w":49,"k":95.68,"p":8,"f":0.0,"tk":0,"pw":422.2},{"t":111.6,"r":15,"w":49,"k":96.25,"p":8,"f":0.0,"tk":0,"pw":372.8},{"t":112.6,"r":15,"w":49,"k":96.77,"p":8,"f":0.0,"tk":0,"pw":372.4},{"t":113.6,"r":15,"w":49,"k":97.31,"p":8,"f":0.0,"tk":0,"pw":372.5},{"t":114.6,"r":15,"w":49,"k":97.85,"p":8,"f":0.0,"tk":0,"pw":372.3},{"t":115.6,"r":15,"w":49,"k":98.4,"p":8,"f":0.0,"tk":0,"pw":372.2},{"t":116.6,"r":15,"w":49,"k":98.91,"p":8,"f":0.0,"tk":0,"pw":372.1},{"t":117.6,"r":15,"w":49,"k":99.47,"p":8,"f":0.0,"tk":0,"pw":372.1},{"t":118.6,"r":15,"w":49,"k":98.05,"p":8,"f":0.0,"tk":0,"pw":405.6},{"t":119.6,"r":15,"w":49,"k":98.52,"p":8,"f":0.0,"tk":0,"pw":414.1},{"t":120.6,"r":15,"w":49,"k":99.03,"p":8,"f":0.0,"tk":0,"pw":372.8},{"t":121.6,"r":15,"w":49,"k":99.57,"p":8,"f":0.0,"tk":0,"pw":372.8},{"t":122.6,"r":14,"w":49,"k":91.31,"p":8,"f":0.0,"tk":0,"pw":404.1},{"t":123.6,"r":15,"w":48,"k":91.32,"p":8,"f":0.0,"tk":0,"pw":452.2},{"t":124.6,"r":14,"w":49,"k":86.19,"p":8,"f":0.0,"tk":0,"pw":450.6},{"t":125.6,"r":15,"w":48,"k":86.18,"p":8,"f":0.0,"tk":0,"pw":450.0},{"t":126.7,"r":14,"w":49,"k":81.1,"p":8,"f":0.0,"tk":0,"pw":449.8},{"t":127.7,"r":15,"w":48,"k":81.09,"p":8,"f":0.0,"tk":0,"pw":449.4},{"t":128.7,"r":14,"w":49,"k":75.96,"p":8,"f":0.0,"tk":0,"pw":448.4},{"t":129.7,"r":15,"w":48,"k":75.94,"p":8,"f":0.0,"tk":0,"pw":449.1},{"t":130.7,"r":15,"w":49,"k":77.69,"p":8,"f":0.0,"tk":0,"pw":448.5},{"t":131.7,"r":17,"w":47,"k":84.51,"p":8,"f":0.0,"tk":0,"pw":449.0},{"t":132.7,"r":18,"w":46,"k":91.34,"p":8,"f":0.0,"tk":0,"pw":448.7},{"t":133.7,"r":19,"w":45,"k":98.77,"p":8,"f":0.0,"tk":0,"pw":448.6},{"t":134.7,"r":19,"w":45,"k":99.41,"p":8,"f":0.0,"tk":0,"pw":404.3},{"t":135.7,"r":18,"w":46,"k":94.88,"p":9,"f":0.0,"tk":0,"pw":384.9},{"t":136.7,"r":18,"w":46,"k":95.48,"p":9,"f":0.0,"tk":0,"pw":384.8},{"t":137.7,"r":18,"w":46,"k":96.11,"p":9,"f":0.0,"tk":0,"pw":384.8},{"t":138.7,"r":18,"w":46,"k":96.71,"p":9,"f":0.0,"tk":0,"pw":384.3},{"t":139.7,"r":18,"w":46,"k":97.33,"p":9,"f":0.0,"tk":0,"pw":384.4},{"t":140.7,"r":18,"w":46,"k":97.93,"p":9,"f":0.0,"tk":0,"pw":383.9},{"t":141.7,"r":18,"w":46,"k":98.56,"p":9,"f":0.0,"tk":0,"pw":383.9},{"t":142.7,"r":18,"w":46,"k":99.17,"p":9,"f":0.0,"tk":0,"pw":383.8},{"t":143.7,"r":18,"w":46,"k":99.77,"p":9,"f":0.0,"tk":0,"pw":383.7},{"t":144.7,"r":17,"w":47,"k":94.9,"p":10,"f":0.0,"tk":0,"pw":383.4},{"t":145.7,"r":17,"w":47,"k":95.48,"p":10,"f":0.0,"tk":0,"pw":383.1},{"t":146.8,"r":17,"w":47,"k":96.07,"p":10,"f":0.0,"tk":0,"pw":383.5},{"t":147.8,"r":17,"w":47,"k":96.64,"p":10,"f":0.0,"tk":0,"pw":383.6},{"t":148.8,"r":17,"w":47,"k":97.23,"p":10,"f":0.0,"tk":0,"pw":383.6},{"t":149.8,"r":17,"w":47,"k":97.8,"p":10,"f":0.0,"tk":0,"pw":384.1},{"t":150.8,"r":17,"w":47,"k":98.39,"p":10,"f":0.0,"tk":0,"pw":383.8},{"t":151.8,"r":17,"w":47,"k":98.95,"p":10,"f":0.0,"tk":0,"pw":383.4},{"t":152.8,"r":17,"w":47,"k":99.53,"p":10,"f":0.0,"tk":0,"pw":383.5},{"t":153.8,"r":16,"w":48,"k":94.31,"p":11,"f":0.0,"tk":0,"pw":383.7},{"t":154.8,"r":16,"w":48,"k":94.87,"p":11,"f":0.0,"tk":0,"pw":374.9},{"t":155.8,"r":16,"w":48,"k":95.48,"p":11,"f":0.0,"tk":0,"pw":373.6},{"t":156.8,"r":16,"w":47,"k":90.83,"p":11,"f":0.0,"tk":0,"pw":374.0},{"t":157.8,"r":16,"w":48,"k":95.22,"p":11,"f":0.0,"tk":0,"pw":447.5},{"t":158.8,"r":16,"w":48,"k":95.76,"p":11,"f":0.0,"tk":0,"pw":375.7},{"t":159.8,"r":16,"w":48,"k":96.37,"p":11,"f":0.0,"tk":0,"pw":373.1},{"t":160.8,"r":16,"w":48,"k":96.95,"p":11,"f":0.0,"tk":0,"pw":372.8},{"t":161.8,"r":16,"w":48,"k":97.49,"p":11,"f":0.0,"tk":0,"pw":372.8},{"t":162.8,"r":16,"w":48,"k":98.08,"p":11,"f":0.0,"tk":0,"pw":372.8},{"t":163.8,"r":16,"w":48,"k":98.67,"p":11,"f":0.0,"tk":0,"pw":372.4},{"t":164.8,"r":16,"w":48,"k":99.23,"p":11,"f":0.0,"tk":0,"pw":372.6},{"t":165.8,"r":16,"w":48,"k":99.8,"p":11,"f":0.0,"tk":0,"pw":372.6},{"t":166.9,"r":15,"w":49,"k":94.26,"p":12,"f":0.0,"tk":0,"pw":372.4},{"t":167.9,"r":15,"w":49,"k":94.79,"p":12,"f":0.0,"tk":0,"pw":371.7},{"t":168.9,"r":15,"w":49,"k":95.32,"p":12,"f":0.0,"tk":0,"pw":372.5},{"t":169.9,"r":15,"w":49,"k":95.88,"p":12,"f":0.0,"tk":0,"pw":372.0},{"t":170.9,"r":15,"w":49,"k":96.43,"p":12,"f":0.0,"tk":0,"pw":371.9},{"t":171.9,"r":15,"w":49,"k":96.96,"p":12,"f":0.0,"tk":0,"pw":371.8},{"t":172.9,"r":15,"w":49,"k":97.49,"p":12,"f":0.0,"tk":0,"pw":371.3},{"t":173.9,"r":15,"w":49,"k":98.04,"p":12,"f":0.0,"tk":0,"pw":370.7},{"t":174.9,"r":15,"w":49,"k":98.57,"p":12,"f":0.0,"tk":0,"pw":371.1},{"t":175.9,"r":15,"w":49,"k":99.11,"p":12,"f":0.0,"tk":0,"pw":371.7},{"t":176.9,"r":15,"w":49,"k":99.65,"p":12,"f":0.0,"tk":0,"pw":371.7},{"t":177.9,"r":14,"w":50,"k":93.54,"p":13,"f":0.0,"tk":0,"pw":371.8},{"t":178.9,"r":14,"w":50,"k":90.46,"p":13,"f":0.0,"tk":0,"pw":371.9},{"t":179.9,"r":15,"w":49,"k":97.29,"p":13,"f":0.0,"tk":0,"pw":453.1},{"t":180.9,"r":14,"w":50,"k":94.07,"p":14,"f":0.0,"tk":0,"pw":439.0},{"t":181.9,"r":14,"w":50,"k":94.58,"p":14,"f":0.0,"tk":0,"pw":370.4},{"t":182.9,"r":14,"w":50,"k":95.1,"p":14,"f":0.0,"tk":0,"pw":372.2},{"t":184.0,"r":13,"w":50,"k":86.82,"p":14,"f":0.0,"tk":0,"pw":372.2},{"t":185.0,"r":14,"w":49,"k":86.83,"p":14,"f":0.0,"tk":0,"pw":451.0},{"t":186.0,"r":13,"w":50,"k":81.7,"p":14,"f":0.0,"tk":0,"pw":451.0},{"t":187.0,"r":14,"w":49,"k":81.71,"p":14,"f":0.0,"tk":0,"pw":450.3},{"t":188.0,"r":14,"w":50,"k":81.71,"p":14,"f":0.0,"tk":0,"pw":448.7},{"t":189.0,"r":14,"w":49,"k":76.58,"p":14,"f":0.0,"tk":0,"pw":448.9},{"t":190.0,"r":14,"w":50,"k":76.58,"p":14,"f":0.0,"tk":0,"pw":449.4},{"t":191.0,"r":13,"w":50,"k":71.48,"p":14,"f":0.0,"tk":0,"pw":448.6},{"t":192.0,"r":14,"w":50,"k":73.21,"p":14,"f":0.0,"tk":0,"pw":449.1},{"t":193.0,"r":15,"w":49,"k":80.01,"p":14,"f":0.0,"tk":0,"pw":448.1},{"t":194.0,"r":17,"w":47,"k":86.86,"p":14,"f":0.0,"tk":0,"pw":448.4},{"t":195.0,"r":18,"w":46,"k":95.4,"p":14,"f":0.0,"tk":0,"pw":448.4},{"t":196.0,"r":17,"w":46,"k":89.35,"p":14,"f":0.0,"tk":0,"pw":404.9},{"t":197.0,"r":19,"w":45,"k":97.88,"p":14,"f":0.0,"tk":0,"pw":451.0},{"t":198.0,"r":18,"w":46,"k":94.95,"p":15,"f":0.0,"tk":0,"pw":414.7},{"t":199.0,"r":18,"w":46,"k":95.56,"p":15,"f":0.0,"tk":0,"pw":384.8},{"t":200.0,"r":18,"w":46,"k":96.17,"p":15,"f":0.0,"tk":0,"pw":384.6},{"t":201.0,"r":18,"w":46,"k":96.81,"p":15,"f":0.0,"tk":0,"pw":384.4},{"t":202.0,"r":18,"w":46,"k":97.4,"p":15,"f":0.0,"tk":0,"pw":384.3},{"t":203.1,"r":18,"w":46,"k":98.03,"p":15,"f":0.0,"tk":0,"pw":384.4},{"t":204.1,"r":18,"w":46,"k":98.63,"p":15,"f":0.0,"tk":0,"pw":383.9},{"t":205.1,"r":18,"w":46,"k":99.25,"p":15,"f":0.0,"tk":0,"pw":383.8},{"t":206.1,"r":18,"w":46,"k":99.88,"p":15,"f":0.0,"tk":0,"pw":383.5},{"t":207.1,"r":17,"w":47,"k":95.04,"p":16,"f":0.0,"tk":0,"pw":383.3},{"t":208.1,"r":17,"w":47,"k":95.62,"p":16,"f":0.0,"tk":0,"pw":383.5},{"t":209.1,"r":17,"w":47,"k":96.17,"p":16,"f":0.0,"tk":0,"pw":383.9},{"t":210.1,"r":17,"w":47,"k":96.77,"p":16,"f":0.0,"tk":0,"pw":383.8},{"t":211.1,"r":17,"w":47,"k":97.33,"p":16,"f":0.0,"tk":0,"pw":383.7},{"t":212.1,"r":17,"w":47,"k":97.95,"p":16,"f":0.0,"tk":0,"pw":383.6},{"t":213.1,"r":17,"w":47,"k":98.51,"p":16,"f":0.0,"tk":0,"pw":383.9},{"t":214.1,"r":17,"w":47,"k":99.09,"p":16,"f":0.0,"tk":0,"pw":383.8},{"t":215.1,"r":17,"w":47,"k":99.67,"p":16,"f":0.0,"tk":0,"pw":383.8},{"t":216.1,"r":16,"w":47,"k":89.23,"p":17,"f":0.0,"tk":0,"pw":383.8},{"t":217.1,"r":17,"w":47,"k":97.77,"p":17,"f":0.0,"tk":0,"pw":453.6},{"t":218.1,"r":17,"w":47,"k":99.23,"p":17,"f":0.0,"tk":0,"pw":419.2},{"t":219.1,"r":17,"w":47,"k":99.79,"p":17,"f":0.0,"tk":0,"pw":384.0},{"t":220.1,"r":16,"w":48,"k":94.87,"p":18,"f":0.0,"tk":0,"pw":380.3},{"t":221.1,"r":16,"w":48,"k":95.47,"p":18,"f":0.0,"tk":0,"pw":374.8},{"t":222.2,"r":16,"w":48,"k":96.05,"p":18,"f":0.0,"tk":0,"pw":375.1},{"t":223.2,"r":16,"w":48,"k":96.6,"p":18,"f":0.0,"tk":0,"pw":374.5},{"t":224.2,"r":16,"w":48,"k":97.21,"p":18,"f":0.0,"tk":0,"pw":374.1},{"t":225.2,"r":16,"w":48,"k":97.77,"p":18,"f":0.0,"tk":0,"pw":374.0},{"t":226.2,"r":16,"w":48,"k":98.33,"p":18,"f":0.0,"tk":0,"pw":374.1},{"t":227.2,"r":16,"w":48,"k":98.95,"p":18,"f":0.0,"tk":0,"pw":374.4},{"t":228.2,"r":16,"w":48,"k":99.52,"p":18,"f":0.0,"tk":0,"pw":374.6},{"t":229.2,"r":15,"w":49,"k":93.88,"p":19,"f":0.0,"tk":0,"pw":374.4},{"t":230.2,"r":15,"w":49,"k":94.42,"p":19,"f":0.0,"tk":0,"pw":374.0},{"t":231.2,"r":15,"w":49,"k":94.99,"p":19,"f":0.0,"tk":0,"pw":374.0},{"t":232.2,"r":15,"w":49,"k":95.52,"p":19,"f":0.0,"tk":0,"pw":374.3},{"t":233.2,"r":15,"w":49,"k":96.05,"p":19,"f":0.0,"tk":0,"pw":374.5},{"t":234.2,"r":15,"w":49,"k":96.61,"p":19,"f":0.0,"tk":0,"pw":374.0},{"t":235.2,"r":15,"w":49,"k":97.16,"p":19,"f":0.0,"tk":0,"pw":373.7},{"t":236.2,"r":15,"w":49,"k":96.68,"p":19,"f":0.0,"tk":0,"pw":434.7},{"t":237.2,"r":15,"w":49,"k":97.2,"p":19,"f":0.0,"tk":0,"pw":395.7},{"t":238.2,"r":15,"w":49,"k":97.75,"p":19,"f":0.0,"tk":0,"pw":372.8},{"t":239.2,"r":15,"w":49,"k":98.28,"p":19,"f":0.0,"tk":0,"pw":372.9},{"t":240.3,"r":15,"w":49,"k":98.81,"p":19,"f":0.0,"tk":0,"pw":372.3},{"t":241.3,"r":15,"w":49,"k":99.35,"p":19,"f":0.0,"tk":0,"pw":372.5},{"t":242.3,"r":15,"w":49,"k":99.91,"p":19,"f":0.0,"tk":0,"pw":372.6},{"t":243.3,"r":14,"w":50,"k":93.98,"p":20,"f":0.0,"tk":0,"pw":372.4},{"t":244.3,"r":14,"w":50,"k":94.5,"p":20,"f":0.0,"tk":0,"pw":372.0},{"t":245.3,"r":15,"w":49,"k":96.24,"p":20,"f":0.0,"tk":0,"pw":434.4},{"t":246.3,"r":15,"w":49,"k":99.87,"p":20,"f":0.0,"tk":0,"pw":444.0},{"t":247.3,"r":14,"w":50,"k":94.86,"p":21,"f":0.0,"tk":0,"pw":375.9},{"t":248.3,"r":13,"w":50,"k":86.54,"p":21,"f":0.0,"tk":0,"pw":405.7},{"t":249.3,"r":14,"w":50,"k":88.26,"p":21,"f":0.0,"tk":0,"pw":452.2},{"t":250.3,"r":13,"w":50,"k":81.42,"p":21,"f":0.0,"tk":0,"pw":449.9},{"t":251.3,"r":14,"w":49,"k":81.42,"p":21,"f":0.0,"tk":0,"pw":449.4},{"t":252.3,"r":14,"w":50,"k":83.14,"p":21,"f":0.0,"tk":0,"pw":447.7},{"t":253.3,"r":14,"w":49,"k":76.32,"p":21,"f":0.0,"tk":0,"pw":448.6},{"t":254.3,"r":14,"w":50,"k":78.02,"p":21,"f":0.0,"tk":0,"pw":448.5},{"t":255.3,"r":14,"w":49,"k":71.2,"p":21,"f":0.0,"tk":0,"pw":448.4},{"t":256.3,"r":14,"w":50,"k":72.92,"p":21,"f":0.0,"tk":0,"pw":448.6},{"t":257.3,"r":16,"w":48,"k":81.45,"p":21,"f":0.0,"tk":0,"pw":448.8},{"t":258.3,"r":17,"w":47,"k":88.28,"p":21,"f":0.0,"tk":0,"pw":448.1},{"t":259.4,"r":19,"w":45,"k":95.11,"p":21,"f":0.0,"tk":0,"pw":448.7},{"t":260.4,"r":19,"w":45,"k":99.8,"p":21,"f":0.0,"tk":0,"pw":446.1},{"t":261.4,"r":18,"w":46,"k":95.27,"p":22,"f":0.0,"tk":0,"pw":388.8},{"t":262.4,"r":18,"w":46,"k":95.89,"p":22,"f":0.0,"tk":0,"pw":385.6},{"t":263.4,"r":18,"w":46,"k":96.52,"p":22,"f":0.0,"tk":0,"pw":385.5},{"t":264.4,"r":18,"w":46,"k":97.13,"p":22,"f":0.0,"tk":0,"pw":385.8},{"t":265.4,"r":18,"w":46,"k":97.75,"p":22,"f":0.0,"tk":0,"pw":385.3},{"t":266.4,"r":18,"w":46,"k":98.36,"p":22,"f":0.0,"tk":0,"pw":385.5},{"t":267.4,"r":18,"w":46,"k":98.97,"p":22,"f":0.0,"tk":0,"pw":384.7},{"t":268.4,"r":18,"w":46,"k":99.57,"p":22,"f":0.0,"tk":0,"pw":384.5},{"t":269.4,"r":18,"w":45,"k":98.15,"p":22,"f":0.0,"tk":0,"pw":399.5},{"t":270.4,"r":18,"w":45,"k":98.75,"p":22,"f":0.0,"tk":0,"pw":434.7},{"t":271.4,"r":18,"w":45,"k":99.35,"p":22,"f":0.0,"tk":0,"pw":384.0},{"t":272.4,"r":18,"w":45,"k":99.96,"p":22,"f":0.0,"tk":0,"pw":384.1},{"t":273.4,"r":17,"w":46,"k":95.3,"p":23,"f":0.0,"tk":0,"pw":384.1},{"t":274.4,"r":17,"w":46,"k":95.88,"p":23,"f":0.0,"tk":0,"pw":383.9},{"t":275.4,"r":17,"w":46,"k":96.45,"p":23,"f":0.0,"tk":0,"pw":384.2},{"t":276.4,"r":17,"w":46,"k":97.04,"p":23,"f":0.0,"tk":0,"pw":383.9},{"t":277.4,"r":17,"w":46,"k":97.63,"p":23,"f":0.0,"tk":0,"pw":384.1},{"t":278.4,"r":17,"w":46,"k":98.2,"p":23,"f":0.0,"tk":0,"pw":384.2},{"t":279.4,"r":17,"w":46,"k":98.79,"p":23,"f":0.0,"tk":0,"pw":384.1},{"t":280.5,"r":17,"w":46,"k":99.36,"p":23,"f":0.0,"tk":0,"pw":384.6},{"t":281.5,"r":17,"w":46,"k":99.95,"p":23,"f":0.0,"tk":0,"pw":383.6},{"t":282.5,"r":16,"w":47,"k":94.68,"p":24,"f":0.0,"tk":0,"pw":375.7},{"t":283.5,"r":16,"w":47,"k":95.27,"p":24,"f":0.0,"tk":0,"pw":374.7},{"t":284.5,"r":16,"w":47,"k":95.85,"p":24,"f":0.0,"tk":0,"pw":374.9},{"t":285.5,"r":16,"w":47,"k":96.44,"p":24,"f":0.0,"tk":0,"pw":374.8},{"t":286.5,"r":16,"w":47,"k":97.01,"p":24,"f":0.0,"tk":0,"pw":374.8},{"t":287.5,"r":16,"w":47,"k":97.6,"p":24,"f":0.0,"tk":0,"pw":374.3},{"t":288.5,"r":16,"w":47,"k":98.17,"p":24,"f":0.0,"tk":0,"pw":374.5},{"t":289.5,"r":16,"w":47,"k":98.75,"p":24,"f":0.0,"tk":0,"pw":374.2},{"t":290.5,"r":16,"w":47,"k":99.32,"p":24,"f":0.0,"tk":0,"pw":374.1},{"t":291.5,"r":16,"w":47,"k":99.91,"p":24,"f":0.0,"tk":0,"pw":374.4},{"t":292.5,"r":15,"w":48,"k":94.24,"p":25,"f":0.0,"tk":0,"pw":373.7},{"t":293.5,"r":15,"w":48,"k":94.79,"p":25,"f":0.0,"tk":0,"pw":373.3},{"t":294.5,"r":15,"w":48,"k":95.35,"p":25,"f":0.0,"tk":0,"pw":373.8},{"t":295.5,"r":15,"w":48,"k":95.88,"p":25,"f":0.0,"tk":0,"pw":373.6},{"t":296.5,"r":15,"w":48,"k":96.43,"p":25,"f":0.0,"tk":0,"pw":373.6},{"t":297.5,"r":15,"w":47,"k":94.94,"p":25,"f":0.0,"tk":0,"pw":431.9},{"t":298.5,"r":15,"w":47,"k":96.48,"p":25,"f":0.0,"tk":0,"pw":398.8},{"t":299.5,"r":15,"w":47,"k":97.01,"p":25,"f":0.0,"tk":0,"pw":373.0},{"t":300.6,"r":15,"w":47,"k":97.56,"p":25,"f":0.0,"tk":0,"pw":372.8},{"t":301.6,"r":15,"w":47,"k":98.11,"p":25,"f":0.0,"tk":0,"pw":373.1},{"t":302.6,"r":15,"w":47,"k":98.64,"p":25,"f":0.0,"tk":0,"pw":373.3},{"t":303.6,"r":15,"w":47,"k":99.17,"p":25,"f":0.0,"tk":0,"pw":373.1},{"t":304.6,"r":15,"w":47,"k":99.72,"p":25,"f":0.0,"tk":0,"pw":373.3},{"t":305.6,"r":14,"w":48,"k":93.76,"p":26,"f":0.0,"tk":0,"pw":372.7},{"t":306.6,"r":14,"w":48,"k":94.27,"p":26,"f":0.0,"tk":0,"pw":371.9},{"t":307.6,"r":14,"w":48,"k":94.79,"p":26,"f":0.0,"tk":0,"pw":372.0},{"t":308.6,"r":14,"w":47,"k":90.07,"p":26,"f":0.0,"tk":0,"pw":383.2},{"t":309.6,"r":14,"w":47,"k":95.03,"p":26,"f":0.0,"tk":0,"pw":439.3},{"t":310.6,"r":14,"w":45,"k":89.96,"p":26,"f":0.0,"tk":0,"pw":442.4},{"t":311.6,"r":13,"w":44,"k":83.14,"p":26,"f":0.0,"tk":0,"pw":446.3},{"t":312.6,"r":14,"w":42,"k":83.14,"p":26,"f":0.0,"tk":0,"pw":447.1},{"t":313.6,"r":13,"w":41,"k":78.04,"p":26,"f":0.0,"tk":0,"pw":448.3},{"t":314.6,"r":14,"w":39,"k":78.04,"p":26,"f":0.0,"tk":0,"pw":447.9},{"t":315.6,"r":13,"w":38,"k":72.92,"p":26,"f":0.0,"tk":0,"pw":448.1},{"t":316.6,"r":14,"w":36,"k":72.9,"p":26,"f":0.0,"tk":0,"pw":448.0},{"t":317.6,"r":13,"w":35,"k":67.8,"p":26,"f":0.0,"tk":0,"pw":448.0},{"t":318.6,"r":15,"w":33,"k":74.62,"p":26,"f":0.0,"tk":0,"pw":447.9},{"t":319.6,"r":16,"w":32,"k":83.17,"p":26,"f":0.0,"tk":0,"pw":448.4},{"t":320.7,"r":18,"w":30,"k":90.0,"p":26,"f":0.0,"tk":0,"pw":447.9},{"t":321.7,"r":19,"w":29,"k":98.55,"p":26,"f":0.0,"tk":0,"pw":448.5},{"t":322.7,"r":18,"w":30,"k":95.27,"p":27,"f":0.0,"tk":0,"pw":419.0},{"t":323.7,"r":18,"w":30,"k":95.88,"p":27,"f":0.0,"tk":0,"pw":385.4},{"t":324.7,"r":18,"w":30,"k":96.49,"p":27,"f":0.0,"tk":0,"pw":385.4},{"t":325.7,"r":18,"w":30,"k":97.11,"p":27,"f":0.0,"tk":0,"pw":385.9},{"t":326.7,"r":18,"w":30,"k":97.73,"p":27,"f":0.0,"tk":0,"pw":386.0},{"t":327.7,"r":18,"w":30,"k":98.33,"p":27,"f":0.0,"tk":0,"pw":385.7},{"t":328.7,"r":18,"w":30,"k":98.95,"p":27,"f":0.0,"tk":0,"pw":385.5},{"t":329.7,"r":18,"w":30,"k":99.57,"p":27,"f":0.0,"tk":0,"pw":385.3},{"t":330.7,"r":17,"w":31,"k":94.75,"p":28,"f":0.0,"tk":0,"pw":384.7},{"t":331.7,"r":18,"w":29,"k":94.84,"p":28,"f":0.0,"tk":0,"pw":443.7},{"t":332.7,"r":18,"w":29,"k":98.89,"p":28,"f":0.0,"tk":0,"pw":428.2},{"t":333.7,"r":18,"w":29,"k":99.52,"p":28,"f":0.0,"tk":0,"pw":385.3},{"t":334.7,"r":17,"w":30,"k":94.92,"p":29,"f":0.0,"tk":0,"pw":385.3},{"t":335.7,"r":17,"w":30,"k":95.51,"p":29,"f":0.0,"tk":0,"pw":384.1},{"t":336.7,"r":17,"w":30,"k":96.09,"p":29,"f":0.0,"tk":0,"pw":384.2},{"t":337.7,"r":17,"w":30,"k":96.67,"p":29,"f":0.0,"tk":0,"pw":384.0},{"t":338.7,"r":17,"w":30,"k":97.25,"p":29,"f":0.0,"tk":0,"pw":384.5},{"t":339.7,"r":17,"w":30,"k":97.83,"p":29,"f":0.0,"tk":0,"pw":384.5},{"t":340.8,"r":17,"w":30,"k":98.41,"p":29,"f":0.0,"tk":0,"pw":384.3},{"t":341.8,"r":17,"w":30,"k":98.99,"p":29,"f":0.0,"tk":0,"pw":384.0},{"t":342.8,"r":17,"w":30,"k":99.57,"p":29,"f":0.0,"tk":0,"pw":384.1},{"t":343.8,"r":16,"w":31,"k":94.35,"p":30,"f":0.0,"tk":0,"pw":384.2},{"t":344.8,"r":16,"w":31,"k":94.94,"p":30,"f":0.0,"tk":0,"pw":375.0},{"t":345.8,"r":16,"w":31,"k":95.52,"p":30,"f":0.0,"tk":0,"pw":373.9},{"t":346.8,"r":16,"w":31,"k":96.09,"p":30,"f":0.0,"tk":0,"pw":373.4},{"t":347.8,"r":16,"w":31,"k":96.67,"p":30,"f":0.0,"tk":0,"pw":373.4},{"t":348.8,"r":16,"w":31,"k":97.25,"p":30,"f":0.0,"tk":0,"pw":373.2},{"t":349.8,"r":16,"w":31,"k":97.84,"p":30,"f":0.0,"tk":0,"pw":372.6},{"t":350.8,"r":16,"w":30,"k":93.27,"p":30,"f":0.0,"tk":0,"pw":372.8},{"t":351.8,"r":16,"w":30,"k":97.55,"p":30,"f":0.0,"tk":0,"pw":438.1},{"t":352.8,"r":16,"w":30,"k":98.12,"p":30,"f":0.0,"tk":0,"pw":380.5},{"t":353.8,"r":16,"w":30,"k":98.69,"p":30,"f":0.0,"tk":0,"pw":373.4},{"t":354.8,"r":16,"w":30,"k":99.27,"p":30,"f":0.0,"tk":0,"pw":373.5},{"t":355.8,"r":16,"w":30,"k":99.84,"p":30,"f":0.0,"tk":0,"pw":373.8},{"t":356.8,"r":15,"w":31,"k":94.44,"p":31,"f":0.0,"tk":0,"pw":373.1},{"t":357.8,"r":15,"w":31,"k":94.98,"p":31,"f":0.0,"tk":0,"pw":372.7},{"t":358.8,"r":15,"w":31,"k":95.52,"p":31,"f":0.0,"tk":0,"pw":372.8},{"t":359.8,"r":15,"w":31,"k":96.07,"p":31,"f":0.0,"tk":0,"pw":372.3},{"t":360.9,"r":15,"w":31,"k":96.61,"p":31,"f":0.0,"tk":0,"pw":371.8},{"t":361.9,"r":15,"w":31,"k":97.15,"p":31,"f":0.0,"tk":0,"pw":371.3},{"t":362.9,"r":15,"w":31,"k":97.69,"p":31,"f":0.0,"tk":0,"pw":371.1},{"t":363.9,"r":15,"w":31,"k":98.23,"p":31,"f":0.0,"tk":0,"pw":371.2},{"t":364.9,"r":15,"w":31,"k":98.76,"p":31,"f":0.0,"tk":0,"pw":371.5},{"t":365.9,"r":15,"w":31,"k":99.31,"p":31,"f":0.0,"tk":0,"pw":371.8},{"t":366.9,"r":15,"w":31,"k":99.84,"p":31,"f":0.0,"tk":0,"pw":371.8},{"t":367.9,"r":14,"w":32,"k":93.71,"p":32,"f":0.0,"tk":0,"pw":372.1},{"t":368.9,"r":15,"w":30,"k":93.79,"p":32,"f":0.0,"tk":0,"pw":415.8},{"t":369.9,"r":15,"w":30,"k":99.75,"p":32,"f":0.0,"tk":0,"pw":434.7},{"t":370.9,"r":14,"w":31,"k":94.27,"p":33,"f":0.0,"tk":0,"pw":404.9},{"t":371.9,"r":14,"w":31,"k":94.76,"p":33,"f":0.0,"tk":0,"pw":373.0},{"t":372.9,"r":14,"w":31,"k":95.28,"p":33,"f":0.0,"tk":0,"pw":372.6},{"t":373.9,"r":14,"w":29,"k":88.54,"p":33,"f":0.0,"tk":0,"pw":411.0},{"t":374.9,"r":13,"w":28,"k":83.41,"p":33,"f":0.0,"tk":0,"pw":451.4},{"t":375.9,"r":14,"w":26,"k":83.42,"p":33,"f":0.0,"tk":0,"pw":450.9},{"t":376.9,"r":13,"w":25,"k":78.32,"p":33,"f":0.0,"tk":0,"pw":450.2},{"t":377.9,"r":14,"w":23,"k":78.3,"p":33,"f":0.0,"tk":0,"pw":450.6},{"t":378.9,"r":13,"w":22,"k":73.2,"p":33,"f":0.0,"tk":0,"pw":449.5},{"t":379.9,"r":14,"w":20,"k":73.18,"p":33,"f":0.0,"tk":0,"pw":449.2},{"t":381.0,"r":13,"w":19,"k":68.08,"p":33,"f":0.0,"tk":0,"pw":448.8},{"t":382.0,"r":15,"w":17,"k":74.89,"p":33,"f":0.0,"tk":0,"pw":448.8},{"t":383.0,"r":16,"w":16,"k":83.45,"p":33,"f":0.0,"tk":0,"pw":448.3},{"t":384.0,"r":18,"w":14,"k":90.3,"p":33,"f":0.0,"tk":0,"pw":447.9},{"t":385.0,"r":18,"w":14,"k":95.35,"p":33,"f":0.0,"tk":0,"pw":432.4},{"t":386.0,"r":18,"w":13,"k":93.91,"p":33,"f":0.0,"tk":0,"pw":432.1},{"t":387.0,"r":19,"w":12,"k":99.25,"p":33,"f":0.0,"tk":0,"pw":436.6},{"t":388.0,"r":19,"w":12,"k":99.88,"p":33,"f":0.0,"tk":0,"pw":385.1},{"t":389.0,"r":18,"w":13,"k":95.35,"p":34,"f":0.0,"tk":0,"pw":385.9},{"t":390.0,"r":18,"w":13,"k":95.95,"p":34,"f":0.0,"tk":0,"pw":386.0},{"t":391.0,"r":18,"w":13,"k":96.57,"p":34,"f":0.0,"tk":0,"pw":386.3},{"t":392.0,"r":18,"w":13,"k":97.2,"p":34,"f":0.0,"tk":0,"pw":386.1},{"t":393.0,"r":18,"w":13,"k":97.8,"p":34,"f":0.0,"tk":0,"pw":385.4},{"t":394.0,"r":18,"w":13,"k":98.43,"p":34,"f":0.0,"tk":0,"pw":384.4},{"t":395.0,"r":18,"w":13,"k":99.04,"p":34,"f":0.0,"tk":0,"pw":384.3},{"t":396.0,"r":18,"w":13,"k":99.64,"p":34,"f":0.0,"tk":0,"pw":384.8},{"t":397.0,"r":17,"w":14,"k":94.78,"p":35,"f":0.0,"tk":0,"pw":384.6},{"t":398.0,"r":17,"w":14,"k":95.36,"p":35,"f":0.0,"tk":0,"pw":384.5},{"t":399.0,"r":17,"w":14,"k":95.95,"p":35,"f":0.0,"tk":0,"pw":384.7},{"t":400.0,"r":17,"w":14,"k":96.53,"p":35,"f":0.0,"tk":0,"pw":384.6},{"t":401.1,"r":17,"w":14,"k":97.12,"p":35,"f":0.0,"tk":0,"pw":384.1},{"t":402.1,"r":17,"w":14,"k":97.69,"p":35,"f":0.0,"tk":0,"pw":384.3},{"t":403.1,"r":17,"w":14,"k":98.28,"p":35,"f":0.0,"tk":0,"pw":384.4},{"t":404.1,"r":17,"w":14,"k":98.84,"p":35,"f":0.0,"tk":0,"pw":384.2},{"t":405.1,"r":17,"w":14,"k":99.43,"p":35,"f":0.0,"tk":0,"pw":384.9},{"t":406.1,"r":17,"w":14,"k":99.99,"p":35,"f":0.0,"tk":0,"pw":385.1},{"t":407.1,"r":16,"w":15,"k":94.79,"p":36,"f":0.0,"tk":0,"pw":381.6},{"t":408.1,"r":16,"w":15,"k":95.36,"p":36,"f":0.0,"tk":0,"pw":374.2},{"t":409.1,"r":16,"w":15,"k":95.95,"p":36,"f":0.0,"tk":0,"pw":374.2},{"t":410.1,"r":16,"w":14,"k":94.44,"p":36,"f":0.0,"tk":0,"pw":423.0},{"t":411.1,"r":16,"w":14,"k":95.68,"p":36,"f":0.0,"tk":0,"pw":399.4},{"t":412.1,"r":16,"w":14,"k":96.25,"p":36,"f":0.0,"tk":0,"pw":373.1},{"t":413.1,"r":16,"w":14,"k":96.83,"p":36,"f":0.0,"tk":0,"pw":373.4},{"t":414.1,"r":16,"w":14,"k":97.4,"p":36,"f":0.0,"tk":0,"pw":373.7},{"t":415.1,"r":16,"w":14,"k":97.99,"p":36,"f":0.0,"tk":0,"pw":373.5},{"t":416.1,"r":16,"w":14,"k":98.56,"p":36,"f":0.0,"tk":0,"pw":373.2},{"t":417.1,"r":16,"w":14,"k":99.12,"p":36,"f":0.0,"tk":0,"pw":373.4},{"t":418.1,"r":16,"w":14,"k":99.69,"p":36,"f":0.0,"tk":0,"pw":373.5},{"t":419.1,"r":15,"w":15,"k":94.15,"p":37,"f":0.0,"tk":0,"pw":372.9},{"t":420.1,"r":15,"w":15,"k":94.67,"p":37,"f":0.0,"tk":0,"pw":372.8},{"t":421.2,"r":15,"w":15,"k":95.24,"p":37,"f":0.0,"tk":0,"pw":372.9},{"t":422.2,"r":15,"w":15,"k":95.78,"p":37,"f":0.0,"tk":0,"pw":372.8},{"t":423.2,"r":15,"w":15,"k":96.31,"p":37,"f":0.0,"tk":0,"pw":372.8},{"t":424.2,"r":15,"w":15,"k":96.84,"p":37,"f":0.0,"tk":0,"pw":372.3},{"t":425.2,"r":15,"w":15,"k":97.39,"p":37,"f":0.0,"tk":0,"pw":371.8},{"t":426.2,"r":15,"w":15,"k":97.92,"p":37,"f":0.0,"tk":0,"pw":371.5},{"t":427.2,"r":15,"w":15,"k":98.45,"p":37,"f":0.0,"tk":0,"pw":371.8},{"t":428.2,"r":15,"w":15,"k":99.0,"p":37,"f":0.0,"tk":0,"pw":372.2},{"t":429.2,"r":15,"w":15,"k":99.53,"p":37,"f":0.0,"tk":0,"pw":372.5},{"t":430.2,"r":14,"w":16,"k":93.42,"p":38,"f":0.0,"tk":0,"pw":372.3},{"t":431.2,"r":14,"w":16,"k":93.94,"p":38,"f":0.0,"tk":0,"pw":372.1},{"t":432.2,"r":14,"w":15,"k":89.26,"p":38,"f":0.0,"tk":0,"pw":372.1},{"t":433.2,"r":14,"w":15,"k":94.35,"p":38,"f":0.0,"tk":0,"pw":444.5},{"t":434.2,"r":14,"w":15,"k":94.86,"p":38,"f":0.0,"tk":0,"pw":378.4},{"t":435.2,"r":14,"w":14,"k":90.19,"p":38,"f":0.0,"tk":0,"pw":373.5},{"t":436.2,"r":14,"w":13,"k":90.2,"p":38,"f":0.0,"tk":0,"pw":449.9},{"t":437.2,"r":14,"w":11,"k":85.09,"p":38,"f":0.0,"tk":0,"pw":446.5},{"t":438.2,"r":14,"w":10,"k":85.07,"p":38,"f":0.0,"tk":0,"pw":447.0},{"t":439.2,"r":14,"w":8,"k":79.97,"p":38,"f":0.0,"tk":0,"pw":447.8},{"t":440.2,"r":14,"w":7,"k":79.99,"p":38,"f":0.0,"tk":0,"pw":448.1},{"t":441.3,"r":14,"w":5,"k":74.84,"p":38,"f":0.0,"tk":0,"pw":448.0},{"t":442.3,"r":14,"w":4,"k":74.84,"p":38,"f":0.0,"tk":0,"pw":447.9},{"t":443.3,"r":13,"w":3,"k":69.76,"p":38,"f":0.0,"tk":0,"pw":448.5},{"t":444.3,"r":15,"w":1,"k":76.57,"p":38,"f":0.0,"tk":0,"pw":447.9},{"t":445.3,"r":16,"w":0,"k":85.11,"p":38,"f":0.0,"tk":0,"pw":448.4},{"t":446.3,"r":16,"w":0,"k":85.71,"p":38,"f":0.0,"tk":0,"pw":415.2},{"t":447.3,"r":16,"w":0,"k":86.31,"p":38,"f":0.0,"tk":0,"pw":373.6},{"t":448.3,"r":15,"w":0,"k":80.05,"p":38,"f":0.0,"tk":0,"pw":373.6},{"t":449.3,"r":15,"w":0,"k":80.65,"p":38,"f":0.0,"tk":0,"pw":373.5},{"t":450.3,"r":15,"w":0,"k":81.22,"p":38,"f":0.0,"tk":0,"pw":373.2},{"t":451.3,"r":15,"w":0,"k":81.79,"p":38,"f":0.0,"tk":0,"pw":373.4},{"t":452.3,"r":15,"w":0,"k":82.33,"p":38,"f":0.0,"tk":0,"pw":373.4},{"t":453.3,"r":15,"w":0,"k":82.89,"p":38,"f":0.0,"tk":0,"pw":373.7},{"t":454.3,"r":15,"w":0,"k":83.47,"p":38,"f":0.0,"tk":0,"pw":373.7},{"t":455.3,"r":15,"w":0,"k":84.05,"p":38,"f":0.0,"tk":0,"pw":374.0},{"t":456.3,"r":15,"w":0,"k":84.62,"p":38,"f":0.0,"tk":0,"pw":373.8},{"t":457.3,"r":15,"w":0,"k":85.18,"p":38,"f":0.0,"tk":0,"pw":373.8},{"t":458.3,"r":15,"w":0,"k":85.73,"p":38,"f":0.0,"tk":0,"pw":373.4},{"t":459.3,"r":15,"w":0,"k":86.27,"p":38,"f":0.0,"tk":0,"pw":373.5},{"t":460.3,"r":15,"w":0,"k":86.85,"p":38,"f":0.0,"tk":0,"pw":373.1},{"t":461.3,"r":15,"w":0,"k":87.42,"p":38,"f":0.0,"tk":0,"pw":373.1},{"t":462.4,"r":15,"w":0,"k":87.94,"p":38,"f":0.0,"tk":0,"pw":373.4},{"t":463.4,"r":15,"w":0,"k":88.51,"p":38,"f":0.0,"tk":0,"pw":373.3},{"t":464.4,"r":14,"w":0,"k":82.22,"p":38,"f":0.0,"tk":0,"pw":372.9},{"t":465.4,"r":14,"w":0,"k":82.75,"p":38,"f":0.0,"tk":0,"pw":372.1},{"t":466.4,"r":14,"w":0,"k":83.29,"p":38,"f":0.0,"tk":0,"pw":372.6},{"t":467.4,"r":14,"w":0,"k":83.81,"p":38,"f":0.0,"tk":0,"pw":372.6},{"t":468.4,"r":14,"w":0,"k":84.33,"p":38,"f":0.0,"tk":0,"pw":372.7},{"t":469.4,"r":14,"w":0,"k":84.85,"p":38,"f":0.0,"tk":0,"pw":372.6},{"t":470.4,"r":14,"w":0,"k":85.37,"p":38,"f":0.0,"tk":0,"pw":372.2},{"t":471.4,"r":14,"w":0,"k":85.9,"p":38,"f":0.0,"tk":0,"pw":371.9},{"t":472.4,"r":14,"w":0,"k":86.43,"p":38,"f":0.0,"tk":0,"pw":372.2},{"t":473.4,"r":14,"w":0,"k":86.94,"p":38,"f":0.0,"tk":0,"pw":372.6},{"t":474.4,"r":14,"w":0,"k":87.46,"p":38,"f":0.0,"tk":0,"pw":372.9},{"t":475.4,"r":14,"w":0,"k":87.98,"p":38,"f":0.0,"tk":0,"pw":372.4},{"t":476.4,"r":14,"w":0,"k":88.51,"p":38,"f":0.0,"tk":0,"pw":372.6},{"t":477.4,"r":14,"w":0,"k":88.99,"p":38,"f":0.0,"tk":0,"pw":372.6},{"t":478.4,"r":14,"w":0,"k":89.54,"p":38,"f":0.0,"tk":0,"pw":372.5},{"t":479.4,"r":14,"w":0,"k":90.03,"p":38,"f":0.0,"tk":0,"pw":372.1},{"t":480.4,"r":14,"w":0,"k":90.56,"p":38,"f":0.0,"tk":0,"pw":372.3},{"t":481.4,"r":13,"w":0,"k":84.26,"p":38,"f":0.0,"tk":0,"pw":371.2},{"t":482.5,"r":13,"w":0,"k":84.74,"p":38,"f":0.0,"tk":0,"pw":371.5},{"t":483.5,"r":13,"w":0,"k":85.22,"p":38,"f":0.0,"tk":0,"pw":371.4},{"t":484.5,"r":13,"w":0,"k":85.7,"p":38,"f":0.0,"tk":0,"pw":371.2},{"t":485.5,"r":13,"w":0,"k":86.19,"p":38,"f":0.0,"tk":0,"pw":371.6},{"t":486.5,"r":13,"w":0,"k":86.69,"p":38,"f":0.0,"tk":0,"pw":371.7},{"t":487.5,"r":13,"w":0,"k":87.17,"p":38,"f":0.0,"tk":0,"pw":371.8},{"t":488.5,"r":13,"w":0,"k":87.63,"p":38,"f":0.0,"tk":0,"pw":371.9},{"t":489.5,"r":12,"w":0,"k":81.29,"p":38,"f":0.0,"tk":0,"pw":372.3},{"t":490.5,"r":12,"w":0,"k":81.74,"p":38,"f":0.0,"tk":0,"pw":370.9},{"t":491.5,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":287.5},{"t":492.5,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":140.2},{"t":493.5,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":111.9},{"t":494.5,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":97.6},{"t":495.5,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":97.0},{"t":496.5,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":95.9},{"t":497.5,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":95.0},{"t":498.5,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":94.0},{"t":499.5,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":93.0},{"t":500.5,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":92.0},{"t":501.5,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":91.0},{"t":502.5,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":90.0},{"t":503.6,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":89.1},{"t":504.6,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":88.0},{"t":505.6,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":87.2},{"t":506.6,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":86.3},{"t":507.6,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":85.2},{"t":508.6,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":84.3},{"t":509.6,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":52.1},{"t":510.6,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":46.8},{"t":511.6,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":41.2},{"t":512.6,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":40.6},{"t":513.6,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":39.7},{"t":514.6,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":39.0},{"t":515.6,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":38.5},{"t":516.6,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":37.3},{"t":517.6,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":37.1},{"t":518.6,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":36.7},{"t":519.6,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":36.2},{"t":520.6,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":35.8},{"t":521.6,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":35.6},{"t":522.6,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":35.6},{"t":523.7,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":35.6},{"t":524.7,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":35.2},{"t":525.7,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":34.9},{"t":526.7,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":34.7},{"t":527.7,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":34.4},{"t":528.7,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":34.2},{"t":529.7,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":34.3},{"t":530.7,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":34.4},{"t":531.7,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":34.3},{"t":532.7,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":34.2},{"t":533.7,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":34.2},{"t":534.7,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":34.1},{"t":535.7,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":34.1},{"t":536.7,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":34.3},{"t":537.7,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":34.4},{"t":538.7,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":34.3},{"t":539.7,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":34.5},{"t":540.7,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":34.5},{"t":541.7,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":34.3},{"t":542.7,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":34.3},{"t":543.8,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":34.1},{"t":544.8,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.9},{"t":545.8,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.9},{"t":546.8,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.8},{"t":547.8,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.5},{"t":548.8,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.5},{"t":549.8,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.4},{"t":550.8,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":32.9},{"t":551.8,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":32.9},{"t":552.8,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.3},{"t":553.8,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.1},{"t":554.8,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.3},{"t":555.8,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.8},{"t":556.8,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.6},{"t":557.8,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.4},{"t":558.8,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.1},{"t":559.8,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.0},{"t":560.8,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.1},{"t":561.8,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.1},{"t":562.8,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.2},{"t":563.9,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.3},{"t":564.9,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.3},{"t":565.9,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.5},{"t":566.9,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.6},{"t":567.9,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.3},{"t":568.9,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":32.7},{"t":569.9,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":32.6},{"t":570.9,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":32.6},{"t":571.9,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":32.9},{"t":572.9,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.0},{"t":573.9,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.0},{"t":574.9,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.2},{"t":575.9,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.2},{"t":576.9,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.5},{"t":577.9,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.8},{"t":578.9,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.5},{"t":579.9,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.3},{"t":580.9,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.5},{"t":581.9,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.7},{"t":582.9,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.7},{"t":584.0,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.6},{"t":585.0,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.6},{"t":586.0,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.6},{"t":587.0,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.7},{"t":588.0,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":34.1},{"t":589.0,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":34.0},{"t":590.0,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.7},{"t":591.0,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.7},{"t":592.0,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.6},{"t":593.0,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.5},{"t":594.0,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.5},{"t":595.0,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.5},{"t":596.0,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.3},{"t":597.0,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.3},{"t":598.0,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.7},{"t":599.0,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.7},{"t":600.0,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.8},{"t":601.0,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.8},{"t":602.0,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.5},{"t":603.0,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.4},{"t":604.0,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.5},{"t":605.1,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.5},{"t":606.1,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.6},{"t":607.1,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.8},{"t":608.1,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.8},{"t":609.1,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.7},{"t":610.1,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.6},{"t":611.1,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.5},{"t":612.1,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.4},{"t":613.1,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.4},{"t":614.1,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.5},{"t":615.1,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.5},{"t":616.1,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.6},{"t":617.1,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.5},{"t":618.1,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.2},{"t":619.1,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.1},{"t":620.1,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.1},{"t":621.1,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.1},{"t":622.1,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.2},{"t":623.1,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.2},{"t":624.1,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.2},{"t":625.2,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":32.9},{"t":626.2,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":32.4},{"t":627.2,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":32.2},{"t":628.2,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":32.7},{"t":629.2,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":32.7},{"t":630.2,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":32.7},{"t":631.2,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":32.8},{"t":632.2,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.0},{"t":633.2,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":33.0},{"t":634.2,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":32.6},{"t":635.2,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":32.2},{"t":636.2,"r":0,"w":0,"k":0.0,"p":38,"f":0.0,"tk":0,"pw":32.2}],"cmp":[{"tag":"C=32 · 1024/256","C":32,"L":1024,"O":256,"ctx":1280,"need":34.1,"kvMax":33.95,"runMax":32.0,"waitMax":26,"pre":0,"note":"池子够","n":320,"dur":79.79,"outTP":1026.684,"totTP":5133.4,"reqTP":4.011,"ttft50":588.3,"ttft99":2854.0,"ttftMean":687.5,"tpot":28.6,"itl50":19.82,"itl90":21.16,"itl99":197.2,"itlStd":59.1,"e2e50":7962,"e2e99":10090},{"tag":"C=64 · 1024/256","C":64,"L":1024,"O":256,"ctx":1280,"need":68.2,"kvMax":67.51,"runMax":64.0,"waitMax":55,"pre":0,"note":"还很宽松","n":512,"dur":94.45,"outTP":1387.769,"totTP":6938.8,"reqTP":5.421,"ttft50":786.7,"ttft99":5923.7,"ttftMean":999.7,"tpot":43.41,"itl50":22.5,"itl90":187.48,"itl99":207.6,"itlStd":61.7,"e2e50":11779,"e2e99":16881},{"tag":"C=16 · 4096/256","C":16,"L":4096,"O":256,"ctx":4352,"need":58.0,"kvMax":57.79,"runMax":16,"waitMax":12,"pre":0,"note":"池子够","n":160,"dur":113.99,"outTP":359.32,"totTP":6108.5,"reqTP":1.404,"ttft50":1047.4,"ttft99":6027.1,"ttftMean":1318.5,"tpot":40.46,"itl50":20.26,"itl90":193.16,"itl99":214.2,"itlStd":64.6,"e2e50":11368,"e2e99":16330},{"tag":"C=64 · 6144/2048","C":64,"L":6144,"O":2048,"ctx":8192,"need":436.7,"kvMax":99.99,"runMax":19,"waitMax":60,"pre":38,"note":"池子爆了","n":128,"dur":492.39,"outTP":532.39,"totTP":2129.6,"reqTP":0.26,"ttft50":169040.7,"ttft99":194949.4,"ttftMean":136556.6,"tpot":null,"itl50":23.39,"itl90":24.7,"itl99":227.7,"itlStd":68.1,"e2e50":238234,"e2e99":256059}],"const":{"KV":120064,"KVGiB":6.41,"peakTF":165.2,"peakBW":1008,"kvPerTok":57344}};
+var ST = DATA.stress, EV = DATA.events, S = DATA.series, C = DATA.cmp, K = DATA.const;
+
+var NS = "http://www.w3.org/2000/svg";
+function el(n, a){ var e = document.createElementNS(NS, n); if(a) for(var k in a) e.setAttribute(k, a[k]); return e; }
+function txt(x, y, s, a){ var t = el("text", a||{}); t.setAttribute("x",x); t.setAttribute("y",y); t.textContent = s; return t; }
+function lin(d0,d1,r0,r1){ return function(v){ return r0 + (v-d0)/(d1-d0)*(r1-r0); }; }
+function lg(d0,d1,r0,r1){ var a=Math.log(d0), b=Math.log(d1);
+  return function(v){ v = Math.max(v, d0); return r0 + (Math.log(v)-a)/(b-a)*(r1-r0); }; }
+function cv(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+
+var CW = 860;
+function frame(id, h){
+  var host = document.getElementById(id); if(!host) return null;
+  host.innerHTML = "";
+  var svg = el("svg", {viewBox:"0 0 "+CW+" "+h, role:"img"});
+  host.appendChild(svg); return svg;
+}
+function pathOf(pts){ return pts.map(function(p,i){ return (i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1); }).join(""); }
+function line(pts, color, w, dash){
+  return el("path", {d:pathOf(pts), fill:"none", stroke:color, "stroke-width":w||2.2,
+    "stroke-dasharray":dash||"none", "stroke-linejoin":"round", "stroke-linecap":"round"});
+}
+function tip(node, s){ var t = el("title",{}); t.textContent = s; node.appendChild(t); return node; }
+function mono(x,y,s,color,size,anchor,weight){
+  return txt(x,y,s,{"text-anchor":anchor||"middle", fill:color, "font-size":size||11,
+    "font-weight":weight||600, "font-family":"var(--font-mono)", "font-variant-numeric":"tabular-nums"});
+}
+function gridY(svg, ticks, y, l, r, fmt){
+  ticks.forEach(function(v){
+    var yy = y(v);
+    svg.appendChild(el("line",{x1:l,y1:yy,x2:r,y2:yy,stroke:cv("--grid-2"),"stroke-width":1}));
+    svg.appendChild(mono(l-9, yy+4, fmt?fmt(v):v, cv("--ink-3"), 11, "end", 400));
+  });
+}
+function axisLabel(svg, s, l, r, h){ svg.appendChild(mono((l+r)/2, h-6, s, cv("--ink-3"), 11, "middle", 600)); }
+function yLabel(svg, s, t, b){
+  var e = mono(0,0,s,cv("--ink-3"),11,"middle",600);
+  e.setAttribute("transform","translate(13,"+((t+b)/2)+") rotate(-90)");
+  svg.appendChild(e);
+}
+function baseline(svg,l,r,b){ svg.appendChild(el("line",{x1:l,y1:b,x2:r,y2:b,stroke:cv("--rule"),"stroke-width":1.5})); }
+function fmtN(v){ return Math.round(v).toLocaleString("en-US"); }
+var SHORT = ["C=32\n1024/256","C=64\n1024/256","C=16\n4096/256","C=64\n6144/2048"];
+function twoLine(svg, x, y, s, color){
+  var parts = s.split("\n");
+  svg.appendChild(mono(x, y, parts[0], color, 11, "middle", 700));
+  svg.appendChild(mono(x, y+13, parts[1], cv("--ink-3"), 10, "middle", 500));
+}
+
+/* ---------- Fig 1 · 驻留 ---------- */
+function figResident(){
+  var H = 380, svg = frame("ch-resident", H); if(!svg) return;
+  var l = 62, r = CW-58, t = 30, b = H-62;
+  var y = lin(0, 70, b, t), yR = lg(10, 700, b, t);
+  gridY(svg, [0,20,40,60], y, l, r);
+  [10,30,100,300,700].forEach(function(v){
+    svg.appendChild(mono(r+8, yR(v)+4, v+"%", cv("--crit"), 10.5, "start", 600));
+  });
+  svg.appendChild(el("line",{x1:l,y1:yR(100),x2:r,y2:yR(100),stroke:cv("--crit"),"stroke-width":1.4,"stroke-dasharray":"4 4",opacity:.55}));
+  var bw = (r-l)/C.length, cx = [];
+  C.forEach(function(d,i){
+    var x0 = l + i*bw + bw*0.18, w = bw*0.30;
+    cx.push(x0+w);
+    svg.appendChild(tip(el("rect",{x:x0,y:y(d.C),width:w,height:b-y(d.C),fill:cv("--accent"),opacity:.85,rx:1.5}),
+      d.tag+" · 请求并发 "+d.C));
+    svg.appendChild(mono(x0+w/2, y(d.C)-7, d.C, cv("--accent"), 12, "middle", 700));
+    var x1 = x0 + w + bw*0.04;
+    svg.appendChild(tip(el("rect",{x:x1,y:y(d.runMax),width:w,height:b-y(d.runMax),fill:cv("--warn"),opacity:.85,rx:1.5}),
+      d.tag+" · 实际驻留峰值 "+d.runMax));
+    svg.appendChild(mono(x1+w/2, y(d.runMax)-7, d.runMax, cv("--warn"), 12, "middle", 700));
+    twoLine(svg, x0+w+bw*0.02, b+20, SHORT[i], cv("--ink"));
+  });
+  svg.appendChild(line(C.map(function(d,i){ return [cx[i], yR(d.need)]; }), cv("--crit"), 2.4, "7 5"));
+  C.forEach(function(d,i){
+    svg.appendChild(tip(el("circle",{cx:cx[i],cy:yR(d.need),r:4.2,fill:cv("--crit"),stroke:cv("--surface"),"stroke-width":1.6}),
+      d.tag+" · KV 需求 "+d.need+"% of pool"));
+    svg.appendChild(mono(cx[i], yR(d.need)-11, d.need+"%", cv("--crit"), 11, "middle", 700));
+  });
+  baseline(svg,l,r,b);
+  yLabel(svg, "REQUESTS", t, b);
+}
+
+/* ---------- Fig 2 · 波形 ---------- */
+function figWave(){
+  var H = 400, svg = frame("ch-wave", H); if(!svg) return;
+  var l = 54, r = CW-46, t = 26, b = H-52;
+  var x = lin(-5, 600, l, r);
+  var yL = lin(0, 65, b, t), yR = lin(0, 100, b, t), yP = lin(0, 40, b, t);
+  gridY(svg, [0,20,40,60], yL, l, r);
+  [0,25,50,75,100].forEach(function(v){
+    svg.appendChild(mono(r+8, yR(v)+4, v+"%", cv("--violet"), 10.5, "start", 600));
+  });
+  svg.appendChild(el("line",{x1:l,y1:yR(100),x2:r,y2:yR(100),stroke:cv("--violet"),"stroke-width":1.2,"stroke-dasharray":"3 4",opacity:.6}));
+  svg.appendChild(line(S.map(function(s){ return [x(s.t), yR(s.k)]; }), cv("--violet"), 1.3));
+  svg.appendChild(line(S.map(function(s){ return [x(s.t), yL(s.w)]; }), cv("--ink-3"), 1.5));
+  svg.appendChild(line(S.map(function(s){ return [x(s.t), yL(s.r)]; }), cv("--accent"), 1.8));
+  svg.appendChild(line(S.map(function(s){ return [x(s.t), yP(s.p)]; }), cv("--crit"), 1.8));
+  svg.appendChild(mono(x(560), yP(37)-9, "38 次", cv("--crit"), 11, "middle", 700));
+  baseline(svg,l,r,b);
+  [0,100,200,300,400,500,600].forEach(function(v){
+    svg.appendChild(mono(x(v), b+19, v+"s", cv("--ink-3"), 11, "middle", 400));
+  });
+  yLabel(svg, "REQUESTS", t, b);
+  axisLabel(svg, "ELAPSED", l, r, H);
+}
+
+/* ---------- Fig 3 · 请求去向 ---------- */
+function figWhere(){
+  var H = 320, svg = frame("ch-where", H); if(!svg) return;
+  var l = 54, r = CW-26, t = 26, b = H-52;
+  var x = lin(-5, 600, l, r), y = lin(0, 70, b, t);
+  gridY(svg, [0,16,32,48,64], y, l, r);
+  var top = S.map(function(s){ return [x(s.t), y(s.r+s.w)]; });
+  var mid = S.map(function(s){ return [x(s.t), y(s.r)]; });
+  svg.appendChild(el("path",{d:pathOf(top)+"L"+x(S[S.length-1].t).toFixed(1)+" "+y(0).toFixed(1)+"L"+x(S[0].t).toFixed(1)+" "+y(0).toFixed(1)+"Z",
+    fill:cv("--ink-3"), opacity:.30}));
+  svg.appendChild(el("path",{d:pathOf(mid)+"L"+x(S[S.length-1].t).toFixed(1)+" "+y(0).toFixed(1)+"L"+x(S[0].t).toFixed(1)+" "+y(0).toFixed(1)+"Z",
+    fill:cv("--accent"), opacity:.85}));
+  svg.appendChild(el("line",{x1:l,y1:y(ST.runMean),x2:r,y2:y(ST.runMean),stroke:cv("--good"),"stroke-width":1.6,"stroke-dasharray":"5 4"}));
+  svg.appendChild(mono(r-4, y(ST.runMean)-7, "Running 均值 15.65", cv("--good"), 10.5, "end", 700));
+  baseline(svg,l,r,b);
+  [0,100,200,300,400,500,600].forEach(function(v){
+    svg.appendChild(mono(x(v), b+19, v+"s", cv("--ink-3"), 11, "middle", 400));
+  });
+  yLabel(svg, "IN FLIGHT", t, b);
+  axisLabel(svg, "ELAPSED", l, r, H);
+}
+
+/* ---------- Fig 4 · 控制环 ---------- */
+function figLoop(){
+  var H = 360, svg = frame("ch-loop", H); if(!svg) return;
+  var l = 58, r = CW-46, t = 30, b = H-52;
+  var seg = S.filter(function(s){ return s.t >= -2 && s.t <= 140; });
+  var x = lin(-2, 140, l, r), yK = lin(70, 102, b, t), yR2 = lin(0, 20, b, t);
+  [70,80,90,100].forEach(function(v){
+    svg.appendChild(el("line",{x1:l,y1:yK(v),x2:r,y2:yK(v),stroke:cv("--grid-2"),"stroke-width":1}));
+    svg.appendChild(mono(l-9, yK(v)+4, v+"%", cv("--violet"), 11, "end", 400));
+  });
+  [0,5,10,15,20].forEach(function(v){
+    svg.appendChild(mono(r+8, yR2(v)+4, v, cv("--accent"), 10.5, "start", 600));
+  });
+  svg.appendChild(el("line",{x1:l,y1:yK(ST.preKvBefore),x2:r,y2:yK(ST.preKvBefore),stroke:cv("--crit"),"stroke-width":1.5,"stroke-dasharray":"6 4",opacity:.8}));
+  svg.appendChild(mono(l+6, yK(ST.preKvBefore)-7, "触发线 99.58%", cv("--crit"), 10.5, "start", 700));
+  svg.appendChild(line(seg.map(function(s){ return [x(s.t), yR2(s.r)]; }), cv("--accent"), 1.8));
+  svg.appendChild(line(seg.map(function(s){ return [x(s.t), yK(s.k)]; }), cv("--violet"), 2));
+  EV.filter(function(e){ return e.t <= 140; }).forEach(function(e){
+    svg.appendChild(tip(el("circle",{cx:x(e.t),cy:yK(e.kvAfter),r:4,fill:cv("--crit"),stroke:cv("--surface"),"stroke-width":1.5}),
+      "第 "+e.n+" 次抢占 · t="+e.t+"s · KV "+e.kvBefore+"% → "+e.kvAfter+"% · Running "+e.runBefore+"→"+e.runAfter));
+    svg.appendChild(el("line",{x1:x(e.t),y1:t,x2:x(e.t),y2:b,stroke:cv("--crit"),"stroke-width":1,opacity:.18}));
+  });
+  baseline(svg,l,r,b);
+  [0,20,40,60,80,100,120,140].forEach(function(v){
+    svg.appendChild(mono(x(v), b+19, v+"s", cv("--ink-3"), 11, "middle", 400));
+  });
+  yLabel(svg, "KV USAGE", t, b);
+  axisLabel(svg, "ELAPSED (first 140 s)", l, r, H);
+}
+
+/* ---------- Fig 5 · 阶梯 ---------- */
+function figSteps(){
+  var H = 320, svg = frame("ch-steps", H); if(!svg) return;
+  var l = 58, r = CW-26, t = 26, b = H-52;
+  var x = lin(0, 600, l, r), y = lin(0, 40, b, t);
+  gridY(svg, [0,10,20,30,40], y, l, r);
+  svg.appendChild(line([[x(0),y(0)],[x(596),y(37)]], cv("--ink-3"), 2, "6 4"));
+  var pts = [];
+  S.filter(function(s){ return s.t>=0; }).forEach(function(s){ pts.push([x(s.t), y(s.p)]); });
+  svg.appendChild(line(pts, cv("--crit"), 2));
+  EV.forEach(function(e){
+    svg.appendChild(tip(el("circle",{cx:x(e.t),cy:y(e.n),r:2.8,fill:cv("--crit"),opacity:.9}),
+      "第 "+e.n+" 次 · t="+e.t+"s"));
+  });
+  baseline(svg,l,r,b);
+  [0,100,200,300,400,500,600].forEach(function(v){
+    svg.appendChild(mono(x(v), b+19, v+"s", cv("--ink-3"), 11, "middle", 400));
+  });
+  yLabel(svg, "PREEMPTIONS", t, b);
+  axisLabel(svg, "ELAPSED", l, r, H);
+}
+
+/* ---------- Fig 6 · 三联 ---------- */
+function figTriptych(){
+  var H = 340, svg = frame("ch-triptych", H); if(!svg) return;
+  var t = 44, b = H-58, pw = (CW-40)/3;
+  var panels = [
+    {key:"outTP", max:1500, color:cv("--accent"), title:"输出 token/s", fmt:function(v){return fmtN(v);}},
+    {key:"itl99", max:250,  color:cv("--warn"),   title:"p99 ITL (ms)", fmt:function(v){return v.toFixed(0);}},
+    {key:"pre",   max:40,   color:cv("--crit"),   title:"抢占次数",      fmt:function(v){return String(v);}}
+  ];
+  panels.forEach(function(P, pi){
+    var l = 22 + pi*pw + 34, r = 22 + (pi+1)*pw - 8;
+    var y = lin(0, P.max, b, t);
+    svg.appendChild(mono((l+r)/2, t-22, P.title, P.color, 12, "middle", 700));
+    [0, P.max/2, P.max].forEach(function(v){
+      svg.appendChild(el("line",{x1:l,y1:y(v),x2:r,y2:y(v),stroke:cv("--grid-2"),"stroke-width":1}));
+      svg.appendChild(mono(l-7, y(v)+4, P.fmt(v), cv("--ink-3"), 10, "end", 400));
+    });
+    var bw = (r-l)/C.length;
+    C.forEach(function(d,i){
+      var x0 = l + i*bw + bw*0.18, w = bw*0.64;
+      var v = d[P.key], yy = y(v);
+      svg.appendChild(tip(el("rect",{x:x0,y:yy,width:w,height:Math.max(b-yy,1),fill:P.color,
+        opacity:i===3?.95:.55,rx:1.5}), d.tag+" · "+P.title+" "+v));
+      svg.appendChild(mono(x0+w/2, yy-6, P.fmt(v), P.color, 10.5, "middle", 700));
+      svg.appendChild(mono(x0+w/2, b+15, ["32","64","16","64"][i], cv("--ink-3"), 10, "middle", 600));
+      svg.appendChild(mono(x0+w/2, b+27, ["1k","1k","4k","6k"][i], cv("--ink-3"), 9.5, "middle", 400));
+    });
+    svg.appendChild(el("line",{x1:l,y1:b,x2:r,y2:b,stroke:cv("--rule"),"stroke-width":1.4}));
+  });
+  svg.appendChild(mono(CW/2, H-8, "每组四根柱 = C=32/1k · C=64/1k · C=16/4k · C=64/6k(最右为本轮)", cv("--ink-3"), 10.5, "middle", 500));
+}
+
+/* ---------- Fig 7 · TTFT 分解 ---------- */
+function figTTFT(){
+  var H = 380, svg = frame("ch-ttft", H); if(!svg) return;
+  var l = 66, r = CW-24, t = 30, b = H-62;
+  var y = lg(1, 400000, b, t);
+  [1,10,100,1000,10000,100000].forEach(function(v){
+    svg.appendChild(el("line",{x1:l,y1:y(v),x2:r,y2:y(v),stroke:cv("--grid-2"),"stroke-width":1}));
+    svg.appendChild(mono(l-9, y(v)+4, v>=1000?(v/1000)+"s":v+"ms", cv("--ink-3"), 10.5, "end", 400));
+  });
+  var D = [
+    {lab:"C=32\n1024/256", q:125.1, pf:411.8, o:135.7, tot:672.6},
+    {lab:"C=64\n1024/256", q:370.6, pf:455.9, o:149.6, tot:976.1},
+    {lab:"C=16\n4096/256", q:372.9, pf:806.2, o:158.9, tot:1338.0},
+    {lab:"C=64\n6144/2048", q:ST.q, pf:ST.pf, o:729.4, tot:179357.6}
+  ];
+  var bw = (r-l)/D.length;
+  D.forEach(function(d,i){
+    var x0 = l + i*bw + bw*0.26, w = bw*0.48;
+    var segs = [[d.q,cv("--crit"),"排队"],[d.pf,cv("--warn"),"prefill"],[d.o,cv("--ink-3"),"前端+IPC"]];
+    var acc = 0;
+    segs.forEach(function(s){
+      var y1 = y(Math.max(acc+s[0],1)), y0 = y(Math.max(acc,1));
+      svg.appendChild(tip(el("rect",{x:x0,y:y1,width:w,height:Math.max(y0-y1,1),fill:s[1],opacity:.86,rx:1.5}),
+        d.lab.replace("\n"," ")+" · "+s[2]+" "+fmtN(s[0])+" ms"));
+      acc += s[0];
+    });
+    svg.appendChild(mono(x0+w/2, y(acc)-8, acc>=1000?(acc/1000).toFixed(1)+" s":fmtN(acc)+" ms", cv("--ink"), 11.5, "middle", 700));
+    twoLine(svg, x0+w/2, b+20, d.lab, cv("--ink"));
+  });
+  baseline(svg,l,r,b);
+  yLabel(svg, "TTFT (log)", t, b);
+  svg.appendChild(mono(l+8, t+2, "四组的排队 / prefill 段全部取自各轮服务端直方图实测", cv("--ink-3"), 10, "start", 500));
+}
+
+/* ---------- Fig 8 · FLOPs 标定 ---------- */
+function figFlops(){
+  var H = 360, svg = frame("ch-flops", H); if(!svg) return;
+  var l = 62, r = CW-26, t = 26, b = H-52;
+  var x = lin(0, 4400, l, r), y = lin(13, 19.5, b, t);
+  gridY(svg, [13,14,15,16,17,18,19], y, l, r, function(v){ return v; });
+  [0,1000,2000,3000,4000].forEach(function(v){
+    svg.appendChild(el("line",{x1:x(v),y1:t,x2:x(v),y2:b,stroke:cv("--grid-2"),"stroke-width":1}));
+    svg.appendChild(mono(x(v), b+19, fmtN(v), cv("--ink-3"), 11, "middle", 400));
+  });
+  var R3 = [[256,13.73],[384,13.64],[640,13.61],[1152,13.89],[2176,14.30]];
+  var base = 13.532, k = 0.000173;
+  svg.appendChild(line([[x(0),y(base)],[x(4400),y(base+k*4400)]], cv("--good"), 2.4, "7 5"));
+  R3.forEach(function(p){
+    svg.appendChild(tip(el("circle",{cx:x(p[0]),cy:y(p[1]),r:4.2,fill:cv("--accent"),stroke:cv("--surface"),"stroke-width":1.6}),
+      "第三轮 · 平均上下文 "+p[0]+" · "+p[1]+" GFLOP/token"));
+  });
+  var xs = x(4096), ys = y(ST.gflopTok), yf = y(base+k*4096);
+  svg.appendChild(el("line",{x1:xs,y1:yf,x2:xs,y2:ys,stroke:cv("--crit"),"stroke-width":1.6,"stroke-dasharray":"3 3"}));
+  svg.appendChild(tip(el("circle",{cx:xs,cy:ys,r:5.2,fill:cv("--crit"),stroke:cv("--surface"),"stroke-width":1.8}),
+    "本轮 · 平均上下文 4096 · 实测 "+ST.gflopTok+" vs 拟合 "+(base+k*4096).toFixed(2)+" GFLOP/token"));
+  svg.appendChild(mono(xs-8, ys+4, "本轮 "+ST.gflopTok, cv("--crit"), 11.5, "end", 700));
+  svg.appendChild(mono(xs-8, (ys+yf)/2+4, "+28.2%", cv("--crit"), 11, "end", 700));
+  svg.appendChild(mono(xs-8, yf+4, "拟合 "+(base+k*4096).toFixed(2), cv("--good"), 11, "end", 700));
+  baseline(svg,l,r,b);
+  yLabel(svg, "GFLOP / TOKEN", t, b);
+  axisLabel(svg, "AVERAGE CONTEXT LENGTH (tokens)", l, r, H);
+}
+
+/* ---------- Fig 9 · 墙钟去向 ---------- */
+function figBudget(){
+  var H = 200, svg = frame("ch-budget", H); if(!svg) return;
+  var l = 26, r = CW-26, t = 50, b = 110;
+  var total = 490.5;
+  var x = lin(0, total, l, r);
+  var segs = [
+    ["纯解码", 385.0, cv("--accent")],
+    ["正常 prefill", 490.5-385.0-ST.recompWall, cv("--warn")],
+    ["抢占重算", ST.recompWall, cv("--crit")]
+  ];
+  var acc = 0;
+  segs.forEach(function(s){
+    var x0 = x(acc), x1 = x(acc+s[1]);
+    svg.appendChild(tip(el("rect",{x:x0,y:t,width:Math.max(x1-x0,1),height:b-t,fill:s[2],opacity:.88,rx:2}),
+      s[0]+" · "+s[1].toFixed(1)+" s ("+(s[1]/total*100).toFixed(1)+"%)"));
+    if (x1-x0 > 60) svg.appendChild(mono((x0+x1)/2, (t+b)/2+5, s[0]+" "+s[1].toFixed(0)+"s", "#fff", 12, "middle", 700));
+    else svg.appendChild(mono((x0+x1)/2, t-10, s[1].toFixed(0)+"s", s[2], 11, "middle", 700));
+    svg.appendChild(mono((x0+x1)/2, b+18, (s[1]/total*100).toFixed(1)+"%", s[2], 11, "middle", 700));
+    acc += s[1];
+  });
+  svg.appendChild(mono(l, t-24, "采样窗口 490 s", cv("--ink-3"), 11, "start", 600));
+  svg.appendChild(mono(r, t-24, fmtN(ST.iters)+" 次迭代", cv("--ink-3"), 11, "end", 600));
+  svg.appendChild(mono(CW/2, b+42, "抢占重算只占 6.0%;真正的代价是这 490 秒里只有 16 条流在跑",
+    cv("--ink-3"), 11, "middle", 500));
+}
+
+/* ---------- 表格 ---------- */
+function cell(v, cls){ return "<td"+(cls?' class="'+cls+'"':"")+">"+v+"</td>"; }
+function tbEv(){
+  var tb = document.getElementById("tb-ev"); if(!tb) return;
+  tb.innerHTML = EV.slice(0,12).map(function(e){
+    return "<tr>" + cell("#"+e.n) + cell("t + "+e.t+" s")
+      + cell(e.kvBefore+"%","bad") + cell(e.kvAfter+"%")
+      + cell("−"+e.drop+" pp ("+fmtN(e.drop/100*K.KV)+" tok)","mid")
+      + cell(e.runBefore+" → "+e.runAfter);
+  }).join("");
+}
+function tbCmp(){
+  var tb = document.getElementById("tb-cmp"); if(!tb) return;
+  tb.innerHTML = C.map(function(d,i){
+    var last = i===3;
+    return "<tr"+(last?' class="pick"':"")+">"
+      + cell(d.tag) + cell(fmtN(d.ctx)+" tok")
+      + cell(d.need+"%", d.need>100?"bad":(d.need>80?"mid":"gd"))
+      + cell(d.kvMax+"%", d.kvMax>=99?"bad":"")
+      + cell(d.runMax+" / "+d.C, last?"bad":"gd")
+      + cell(d.waitMax)
+      + cell(d.pre, d.pre>0?"bad":"gd")
+      + cell(fmtN(d.outTP), last?"bad":"hl") + cell(fmtN(d.totTP), last?"bad":"")
+      + cell(d.ttft50>=10000?(d.ttft50/1000).toFixed(0)+" s":fmtN(d.ttft50), last?"bad":"")
+      + cell(d.itl50.toFixed(1)) + cell(d.itl90.toFixed(1)) + cell(d.itl99.toFixed(0))
+      + cell(d.e2e50>=10000?(d.e2e50/1000).toFixed(0)+" s":fmtN(d.e2e50));
+  }).join("");
+}
+function tbCheck(){
+  var tb = document.getElementById("tb-check"); if(!tb) return;
+  var rows = [
+    ["num_requests_waiting 从 0 变成一个大数","命中","峰值 60,均值 36.4,中位数 46",
+     "客户端 64 并发,减去驻留的 16 条,剩下的全在队列里。"],
+    ["gpu_cache_usage_perc 顶到 ~1.0 后不动","部分","峰值 99.99%,中位数 95.85%,74.6% 的采样 ≥90%",
+     "确实顶到了 1.0,但不是「不动」—— 它是一条 93%↔99.6% 的锯齿,由抢占驱动。"],
+    ["num_preemptions 开始单调增长","命中","0 → 38,平均每 11.2 秒一次,近乎线性",
+     "过载下抢占是稳态的一部分,不是偶发。"],
+    ["日志出现 Sequence group ... is preempted","不成立","服务端日志里 preempt 出现 0 次",
+     "那是 V0 引擎的日志。V1 只在 /metrics 暴露计数器,不打日志行。"],
+    ["P99 ITL 出现巨大尖峰","不成立","227.7 ms,与零抢占时的 197–214 ms 同水位",
+     "38 次抢占 ÷ 262,016 个 ITL 样本 = 0.0145%,落在 p99.99,p99 看不见。"],
+    ["输出吞吐不再增长甚至下降","命中","1,388 → 532.4 tok/s,同一并发下掉了 62%",
+     "总 token 吞吐也从 6,939 掉到 2,130,连 GPU 的总工作量都塌了。"]
+  ];
+  var cls = {"命中":"gd","部分":"mid","不成立":"bad"};
+  tb.innerHTML = rows.map(function(r){
+    return "<tr>" + cell(r[0]) + cell(r[1], cls[r[1]]) + cell(r[2]) + cell(r[3],"wide");
+  }).join("");
+}
+function tbMain(){
+  var tb = document.getElementById("tb-main"); if(!tb) return;
+  var rows = [
+    ["请求数 / 失败", "128 / 0", "总耗时", ST.dur+" s"],
+    ["输出吞吐", fmtN(532.4)+" tok/s", "总 token 吞吐", fmtN(2129.6)+" tok/s"],
+    ["请求吞吐", "0.260 req/s", "TTFT 均值", fmtN(ST.ttftMean)+" ms"],
+    ["TTFT p50", fmtN(ST.ttft50)+" ms", "TTFT p99", fmtN(ST.ttft99)+" ms"],
+    ["排队均值", fmtN(ST.q)+" ms", "prefill 均值", fmtN(ST.pf)+" ms"],
+    ["解码阶段均值", fmtN(ST.dec)+" ms", "E2EL p50", fmtN(ST.e2e50)+" ms"],
+    ["TPOT 均值", ST.tpot+" ms", "ITL p50 / p90 / p99", ST.itl50+" / "+ST.itl90+" / "+ST.itl99+" ms"],
+    ["ITL 均值", ST.itlAvg+" ms", "ITL 样本数", fmtN(ST.itlSamples)],
+    ["KV 峰值 / 中位数", ST.kvMax+"% / "+ST.kvMed+"%", "KV ≥90% 的采样占比", ST.pctGE90+"%"],
+    ["Running 均值 / 峰值", ST.runMean+" / "+ST.runMax, "Waiting 均值 / 峰值", ST.waitMean+" / "+ST.waitMax],
+    ["抢占次数", ST.preempt, "抢占平均间隔", ST.preInterval+" s"],
+    ["抢占触发点 KV", ST.preKvBefore+"%", "每次释放", ST.preDrop+" pp ("+fmtN(ST.preDropTok)+" tok)"],
+    ["迭代次数", fmtN(ST.iters), "平均步长", ST.stepMs+" ms"],
+    ["调度 token 总量", fmtN(ST.tok), "理论下限", fmtN(1048576)],
+    ["实测算力", ST.tf+" TF/s (MFU "+ST.mfu+"%)", "实测带宽", ST.gb+" GB/s (MBU "+ST.mbu+"%)"],
+    ["每 token FLOPs", ST.gflopTok+" GFLOP", "每次迭代读字节", ST.gbIter+" GB"],
+    ["功耗均值 / 峰值", ST.pwr+" / "+ST.pwrMax+" W", "温度峰值", ST.temp+" °C"]
+  ];
+  tb.innerHTML = rows.map(function(r){
+    return "<tr>" + cell(r[0]) + cell(r[1],"hl") + cell(r[2]) + cell(r[3],"hl");
+  }).join("");
+}
+
+function drawAll(){
+  figResident(); figWave(); figWhere(); figLoop(); figSteps();
+  figTriptych(); figTTFT(); figFlops(); figBudget();
+  tbEv(); tbCmp(); tbCheck(); tbMain();
+}
+drawAll();
+if (window.matchMedia){
+  var mq = window.matchMedia("(prefers-color-scheme: dark)");
+  if (mq.addEventListener) mq.addEventListener("change", drawAll);
+}
+new MutationObserver(drawAll).observe(document.documentElement, {attributes:true, attributeFilter:["data-theme"]});
+})();
+</script>

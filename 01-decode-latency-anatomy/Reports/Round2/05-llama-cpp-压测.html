@@ -1,0 +1,973 @@
+<meta charset="utf-8">
+<title>llama.cpp 压测</title>
+<style>
+  :root{
+    --ground:#F5F7F6; --surface:#FFFFFF; --surface-2:#EDF1F0; --surface-3:#E4EAE8;
+    --ink:#131C1B; --ink-2:#455553; --ink-3:#6E807D;
+    --rule:#D6DFDD; --rule-soft:#E6EBEA;
+    --accent:#0D7A80; --accent-2:#0A5C61; --accent-soft:rgba(13,122,128,.10);
+    --good:#2E7D4F; --warn:#B05A12; --crit:#A32F35; --violet:#5B4A8A;
+    --good-soft:rgba(46,125,79,.12); --warn-soft:rgba(176,90,18,.12); --crit-soft:rgba(163,47,53,.10);
+    --grid:rgba(19,28,27,.09); --grid-2:rgba(19,28,27,.055);
+    --shadow:0 1px 2px rgba(19,28,27,.05), 0 8px 24px -16px rgba(19,28,27,.22);
+    --font-mono:ui-monospace,"Cascadia Mono","SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --font-body:"Segoe UI",system-ui,-apple-system,"Helvetica Neue","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D1312; --surface:#141C1B; --surface-2:#1B2524; --surface-3:#223030;
+      --ink:#E2EAE8; --ink-2:#A3B4B0; --ink-3:#7E8F8B;
+      --rule:#26332F; --rule-soft:#1E2A28;
+      --accent:#45B6BC; --accent-2:#69CBD0; --accent-soft:rgba(69,182,188,.13);
+      --good:#58B87C; --warn:#DF9247; --crit:#E06A70; --violet:#9C88D4;
+      --good-soft:rgba(88,184,124,.13); --warn-soft:rgba(223,146,71,.13); --crit-soft:rgba(224,106,112,.12);
+      --grid:rgba(226,234,232,.11); --grid-2:rgba(226,234,232,.055);
+      --shadow:0 1px 2px rgba(0,0,0,.32), 0 10px 28px -18px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0D1312; --surface:#141C1B; --surface-2:#1B2524; --surface-3:#223030;
+    --ink:#E2EAE8; --ink-2:#A3B4B0; --ink-3:#7E8F8B;
+    --rule:#26332F; --rule-soft:#1E2A28;
+    --accent:#45B6BC; --accent-2:#69CBD0; --accent-soft:rgba(69,182,188,.13);
+    --good:#58B87C; --warn:#DF9247; --crit:#E06A70; --violet:#9C88D4;
+    --good-soft:rgba(88,184,124,.13); --warn-soft:rgba(223,146,71,.13); --crit-soft:rgba(224,106,112,.12);
+    --grid:rgba(226,234,232,.11); --grid-2:rgba(226,234,232,.055);
+    --shadow:0 1px 2px rgba(0,0,0,.32), 0 10px 28px -18px rgba(0,0,0,.7);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--ground); color:var(--ink);
+    font-family:var(--font-body); font-size:16px; line-height:1.65;
+    margin:0; padding:0 20px 96px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:940px; margin:0 auto}
+  .prose{max-width:66ch}
+
+  header{padding:56px 0 32px; border-bottom:1px solid var(--rule)}
+  .eyebrow{
+    font-family:var(--font-mono); font-size:11px; font-weight:600;
+    letter-spacing:.16em; text-transform:uppercase; color:var(--accent);
+    display:flex; align-items:center; gap:10px; margin:0 0 18px;
+  }
+  .eyebrow::after{content:""; flex:1; height:1px; background:var(--rule)}
+  h1{
+    font-size:clamp(30px,4.6vw,44px); line-height:1.16; font-weight:700;
+    letter-spacing:-.018em; margin:0 0 14px; text-wrap:balance;
+  }
+  .standfirst{font-size:17px; color:var(--ink-2); margin:0; max-width:62ch}
+
+  .spec{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(148px,1fr));
+    gap:1px; background:var(--rule); border:1px solid var(--rule);
+    margin:30px 0 0; border-radius:3px; overflow:hidden;
+  }
+  .spec div{background:var(--surface); padding:11px 14px}
+  .spec dt{
+    font-family:var(--font-mono); font-size:10px; font-weight:600;
+    letter-spacing:.12em; text-transform:uppercase; color:var(--ink-3); margin:0 0 3px;
+  }
+  .spec dd{
+    font-family:var(--font-mono); font-size:13px; margin:0; color:var(--ink);
+    font-variant-numeric:tabular-nums; word-break:break-word;
+  }
+
+  section{padding:52px 0 0}
+  h2{font-size:24px; font-weight:700; letter-spacing:-.012em; margin:0 0 8px; text-wrap:balance}
+  h2 .num{
+    font-family:var(--font-mono); font-size:12px; font-weight:600; color:var(--accent);
+    letter-spacing:.1em; display:block; margin-bottom:7px;
+  }
+  h3{font-size:17px; font-weight:650; margin:30px 0 8px; letter-spacing:-.005em}
+  p{margin:0 0 14px}
+  .lede{color:var(--ink-2); font-size:16px; margin-bottom:26px}
+  strong{font-weight:650}
+  code{
+    font-family:var(--font-mono); font-size:.88em; background:var(--surface-2);
+    padding:1px 5px; border-radius:3px; border:1px solid var(--rule-soft);
+    font-variant-numeric:tabular-nums;
+  }
+
+  .verdict{
+    background:var(--surface); border:1px solid var(--rule); border-radius:4px;
+    padding:24px 26px; box-shadow:var(--shadow); margin:0 0 28px;
+    border-left:3px solid var(--crit);
+  }
+  .verdict .k{
+    font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--ink-3); margin:0 0 10px;
+  }
+  .verdict .big{
+    font-family:var(--font-mono); font-size:clamp(21px,3.2vw,29px); font-weight:700;
+    color:var(--crit); letter-spacing:-.01em; margin:0 0 8px; font-variant-numeric:tabular-nums;
+  }
+  .verdict p{margin:0; color:var(--ink-2); font-size:15px}
+
+  .stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin:0 0 8px}
+  .stat{background:var(--surface); border:1px solid var(--rule); border-radius:4px; padding:16px 18px}
+  .stat .k{
+    font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--ink-3); margin:0 0 8px;
+  }
+  .stat .v{
+    font-family:var(--font-mono); font-size:23px; font-weight:700; letter-spacing:-.015em;
+    margin:0 0 4px; font-variant-numeric:tabular-nums; line-height:1.15;
+  }
+  .stat .v small{font-size:13px; font-weight:500; color:var(--ink-3); letter-spacing:0}
+  .stat .n{font-size:13px; color:var(--ink-3); margin:0; line-height:1.45}
+  .stat.ok .v{color:var(--good)} .stat.warn .v{color:var(--warn)} .stat.crit .v{color:var(--crit)}
+
+  figure{
+    margin:26px 0 0; background:var(--surface); border:1px solid var(--rule);
+    border-radius:4px; padding:22px 22px 16px; box-shadow:var(--shadow);
+  }
+  figcaption{
+    font-family:var(--font-mono); font-size:11px; font-weight:600; letter-spacing:.13em;
+    text-transform:uppercase; color:var(--ink-3); margin:0 0 4px;
+  }
+  .fig-title{font-size:16px; font-weight:650; margin:0 0 16px; letter-spacing:-.005em}
+  .chart{width:100%; overflow-x:auto}
+  .chart svg{display:block; width:100%; height:auto; min-width:520px}
+  .legend{
+    display:flex; flex-wrap:wrap; gap:8px 22px; margin:14px 0 0;
+    padding-top:13px; border-top:1px solid var(--rule-soft);
+    font-family:var(--font-mono); font-size:11.5px; color:var(--ink-2);
+  }
+  .legend span{display:flex; align-items:center; gap:7px}
+  .legend i{width:15px; height:2.5px; border-radius:2px; flex:none}
+  .legend i.d{height:0; border-top:2.5px dashed currentColor; border-radius:0}
+  .legend i.sq{width:11px; height:11px; border-radius:2px}
+  .note{font-size:13.5px; color:var(--ink-3); margin:13px 0 0; line-height:1.6; max-width:70ch}
+
+  .tw{overflow-x:auto; margin:22px 0 0; border:1px solid var(--rule); border-radius:4px; background:var(--surface)}
+  table{border-collapse:collapse; width:100%; font-family:var(--font-mono); font-size:12.5px; min-width:720px}
+  th,td{padding:8px 12px; text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap}
+  th{
+    font-size:10px; font-weight:600; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--ink-3); background:var(--surface-2); border-bottom:1px solid var(--rule);
+    position:sticky; top:0;
+  }
+  th:first-child,td:first-child{text-align:left}
+  tbody tr{border-bottom:1px solid var(--rule-soft)}
+  tbody tr:last-child{border-bottom:0}
+  tbody tr:hover{background:var(--surface-2)}
+  td.hl{color:var(--accent); font-weight:650}
+  td.bad{color:var(--crit); font-weight:650}
+  td.mid{color:var(--warn); font-weight:600}
+  td.gd{color:var(--good); font-weight:650}
+  td.wide{white-space:normal; min-width:220px; font-family:var(--font-body); font-size:13.5px; color:var(--ink-2)}
+  tr.pick{background:var(--crit-soft)}
+  tr.pick td:first-child{box-shadow:inset 3px 0 0 var(--crit)}
+  caption{
+    caption-side:bottom; text-align:left; padding:11px 12px; font-family:var(--font-body);
+    font-size:13px; color:var(--ink-3); border-top:1px solid var(--rule-soft);
+  }
+
+  ul.pts{list-style:none; padding:0; margin:16px 0 0; display:flex; flex-direction:column; gap:13px}
+  ul.pts li{padding-left:19px; position:relative; color:var(--ink-2); font-size:15px; max-width:68ch}
+  ul.pts li::before{
+    content:""; position:absolute; left:0; top:.62em; width:7px; height:2px;
+    background:var(--accent); border-radius:1px;
+  }
+  ul.pts li strong{color:var(--ink)}
+
+  .callout{
+    border:1px solid var(--rule); border-left:3px solid var(--warn);
+    background:var(--warn-soft); border-radius:4px; padding:16px 20px; margin:22px 0 0;
+  }
+  .callout.crit{border-left-color:var(--crit); background:var(--crit-soft)}
+  .callout.ok{border-left-color:var(--good); background:var(--good-soft)}
+  .callout .k{
+    font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.13em;
+    text-transform:uppercase; margin:0 0 7px; color:var(--warn);
+  }
+  .callout.crit .k{color:var(--crit)} .callout.ok .k{color:var(--good)}
+  .callout p{margin:0; font-size:14.5px; color:var(--ink-2)}
+  .callout p+p{margin-top:9px}
+
+  pre{
+    background:var(--surface-2); border:1px solid var(--rule); border-radius:4px;
+    padding:15px 17px; overflow-x:auto; margin:16px 0 0;
+    font-family:var(--font-mono); font-size:12.5px; line-height:1.7; color:var(--ink);
+  }
+  pre .c{color:var(--ink-3)}
+  pre .a{color:var(--accent); font-weight:600}
+  pre .w{color:var(--warn); font-weight:600}
+  pre .r{color:var(--crit); font-weight:600}
+
+  footer{
+    margin-top:64px; padding-top:22px; border-top:1px solid var(--rule);
+    font-family:var(--font-mono); font-size:11.5px; color:var(--ink-3);
+    display:flex; flex-wrap:wrap; gap:6px 20px;
+  }
+  @media (max-width:640px){
+    header{padding-top:38px}
+    figure{padding:17px 14px 13px}
+    .verdict{padding:19px}
+  }
+  table.gloss { min-width: 620px; }
+  table.gloss th, table.gloss td {
+    text-align: left; white-space: normal; vertical-align: top; padding: 10px 14px 10px 0;
+  }
+  table.gloss td:nth-child(1) { white-space: nowrap; padding-left: 12px; }
+  table.gloss td:nth-child(2) { white-space: nowrap; color: var(--ink-2); }
+  table.gloss td:nth-child(3) {
+    min-width: 20rem; line-height: 1.6; font-family: var(--font-body); font-size: 13px;
+  }
+  table.gloss td:nth-child(4) {
+    min-width: 12rem; color: var(--accent); font-weight: 650; line-height: 1.55;
+  }
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">vLLM FP16 vs llama.cpp Q4_K_M · Round 2 · RTX 4090</p>
+  <h1>llama.cpp 压测</h1>
+  <p class="standfirst">
+    同一张卡、同一个模型、同一份 1024/256 负载,并发 1 到 64 两边各扫一遍 ——
+    这一次两个引擎都是完整的 7 个点,而且 llama.cpp 侧关掉了 prompt cache。
+    第一轮只能在 3 个点上比,而且比得不干净;这一轮的对照是公平的。
+  </p>
+  <dl class="spec">
+    <div><dt>GPU</dt><dd>RTX 4090 · 24 GB</dd></div>
+    <div><dt>vLLM</dt><dd>0.27.1 · bfloat16</dd></div>
+    <div><dt>llama.cpp</dt><dd>eab8ee41f · Q4_K_M</dd></div>
+    <div><dt>In / Out</dt><dd>1024 / 256 tok</dd></div>
+    <div><dt>并发档</dt><dd>1 · 2 · 4 · 8 · 16 · 32 · 64</dd></div>
+    <div><dt>llama.cpp 槽位</dt><dd>-np 64 · -c 262144</dd></div>
+    <div><dt>prompt cache</dt><dd>已关(--cache-ram 0)</dd></div>
+    <div><dt>失败请求</dt><dd>1 / 1332</dd></div>
+    <div><dt>驱动</dt><dd>580.159.03 · CUDA 13.0</dd></div>
+  </dl>
+</header>
+
+<!-- ============ 术语 ============ -->
+<section>
+  <h2><span class="num">术语</span>先把这七个指标定义清楚</h2>
+  <p class="lede prose">
+    下面这些缩写在正文里会反复出现,它们<b>不是同义词</b> ——
+    每一个量的是流水线上不同的一段,彼此之间还有确定的换算关系。
+    本轮负载:<code>1024 输入 / 256 输出 · 并发 1 → 64 · 两个引擎各扫一遍</code>。两个引擎的指标口径由<b>同一个客户端</b>(<code>vllm bench serve</code>)统一测量,所以 TTFT / ITL / E2EL 这几个数是可比的。<b>服务端侧的计数器(KV 占用、抢占、running/waiting)只有 vLLM 有</b>,llama.cpp 只暴露 slot,所以本报告的所有对照都建立在客户端指标上。
+  </p>
+
+  <pre>  t=0   客户端发出请求
+        │
+        │  [1] 排队 queue_time —— 在 waiting 队列里等调度器放行
+        │  [2] prefill —— 把 1024 个输入 token 一次算完,写进 KV Cache
+        │  [3] 前端 + IPC —— 分词、HTTP、API server 与引擎之间的通信
+        │
+  <span class="a">━━━━━ [1]+[2]+[3]       = TTFT 首字延迟 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+        │
+        │      第 1 个输出 token 送达
+        │
+        │  [4] ITL × 255 —— 相邻两个输出 token 之间的间隔
+        │     这 255 个间隔的平均值 = TPOT
+        │
+  <span class="a">━━━━━ [1]+[2]+[3]+[4]   = E2EL 端到端时延 ━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+
+  <span class="c"># 恒等式:E2EL = TTFT + 255 × TPOT</span>
+  <span class="c"># 吞吐 = 所有请求的输出 token 总数 ÷ 整段测试的墙钟时间(不是 1/TPOT)</span></pre>
+
+  <div class="tw">
+    <table class="gloss">
+      <caption>本报告用到的全部指标 · 最后一列是本轮的实测范围</caption>
+      <thead><tr><th>指标</th><th>中文</th><th>量的是什么</th><th>本轮实测</th></tr></thead>
+      <tbody>
+        <tr><td><strong>TTFT</strong><br><span class="n" style="opacity:.7">Time To First Token</span></td><td>首字延迟</td><td>从客户端发出请求,到收到<b>第 1 个</b>输出 token。它包含排队 + prefill + 前端开销三段,<b>不含</b>后续解码。</td><td class="hl">vLLM 102→787 ms;llama.cpp 93→442 ms</td></tr>
+        <tr><td><strong>ITL</strong><br><span class="n" style="opacity:.7">Inter-Token Latency</span></td><td>token 间隔</td><td>相邻两个输出 token 之间的时间。一条请求有(输出数 − 1)个 ITL 样本 —— 样本量大,所以它的 p99 最能暴露抖动。</td><td class="hl">vLLM 15.83→22.50;llama.cpp 5.84→35.32 ms</td></tr>
+        <tr><td><strong>ITL p99</strong></td><td>间隔的尾部</td><td>把所有 ITL 样本排序后第 99% 那个值。一次卡顿只影响少数间隔,均值和中位数都看不出来,<b>只有 p99 会跳</b>。</td><td class="hl">vLLM 16.3→207.6;llama.cpp 17.6→219.6 ms</td></tr>
+        <tr><td><strong>TPOT</strong><br><span class="n" style="opacity:.7">Time Per Output Token</span></td><td>每输出 token 耗时</td><td>一条请求"首 token 之后"的平均出字速度,即 <code>(E2EL − TTFT) ÷ (输出 token 数 − 1)</code>。数值上就是这条请求 ITL 的均值。</td><td class="hl">vLLM 15.83→43.41;llama.cpp 5.83→46.83 ms</td></tr>
+        <tr><td><strong>E2EL</strong><br><span class="n" style="opacity:.7">End-to-End Latency</span></td><td>端到端时延</td><td>从发出请求到收到<b>最后一个</b> token 的总时间。恒等式:<code>E2EL = TTFT + (输出数−1) × TPOT</code>。</td><td class="hl">vLLM 4,138→11,779;llama.cpp 1,585→15,193 ms</td></tr>
+        <tr><td><strong>输出吞吐</strong><br><span class="n" style="opacity:.7">output token/s</span></td><td>用户拿到的</td><td>单位时间产出的<b>输出</b> token 数。这是用户真正感知的产能。</td><td class="hl">vLLM 61.9→1,388;llama.cpp 161.5→1,065 tok/s</td></tr>
+        <tr><td><strong>总吞吐</strong><br><span class="n" style="opacity:.7">total token/s</span></td><td>GPU 处理的</td><td>输入 + 输出一起算。长输入场景下它会上涨而输出吞吐下跌 —— <b>两者不可互相替代</b>。</td><td class="hl">vLLM 309→6,939;llama.cpp 807→5,324 tok/s</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <p class="k">三个最容易混的地方</p>
+    <p>
+      <b>1 · TPOT 和 ITL 均值是同一件事的两种算法。</b>
+      TPOT 是"每条请求先算自己的平均,再对请求取中位数";ITL 均值是"把所有间隔倒在一起平均"。
+      负载均匀时两者几乎相等,有长尾时会分开 ——
+      <span class="hl">两者一分开,就说明存在少数被拖长的间隔</span>。
+      本轮 C=1 两个引擎都是均匀的(vLLM 15.83 / 15.83,llama.cpp 5.84 / 5.83);
+      到 C=8 llama.cpp 就分成了 10.30 / 18.33,而 vLLM 还是 16.63 / 18.25。
+    </p>
+    <p>
+      <b>2 · 看 p50 得不出任何关于抖动的结论。</b>
+      一次 200 ms 的停顿混在 25 万个间隔里,对中位数毫无影响,对均值影响也很小。
+      本系列反复出现的一条经验:<b>抖动只在 p99 上露头</b>;
+      而抢占这种更稀有的事件(万分之一量级)连 p99 都够不着,只能看专门的计数器。
+    </p>
+    <p>
+      <b>3 · 吞吐不是 1 / TPOT。</b>
+      TPOT 是单条请求的出字速度,吞吐是整台机器的产能 —— 后者约等于前者乘以并行的请求条数。
+      并发提高时 TPOT 会变差而吞吐会变好,<span class="hl">这正是压测要权衡的那个交换</span>。
+    </p>
+  </div>
+</section>
+
+
+<!-- ============ 结论 ============ -->
+<section>
+  <h2><span class="num">结论</span>量化省的是字节,省不了调度</h2>
+  <p class="lede prose">
+    llama.cpp 把每步要读的权重从 14.1 GB 压到 4.7 GB,单流解码因此快了 2.71 倍 ——
+    这一段是实打实的,字节账能算到小数点后两位。
+    但并发一上去,优势就被吃光:<strong>两条吞吐曲线在 C≈8 就换位了</strong>,
+    而不是第一轮估计的 C≈21。原因不在算力,在批处理红利:
+    vLLM 在 C=64 仍能吃到理论地板的 81%,llama.cpp 只剩 25%。
+  </p>
+
+  <div class="stats">
+    <div class="stat gd">
+      <p class="k">单流解码步长</p>
+      <p class="v">5.84<small> ms</small></p>
+      <p class="n">vLLM 15.83 ms。字节账预测 2.99×,实测 2.71×</p>
+    </div>
+    <div class="stat crit">
+      <p class="k">C=64 批处理效率</p>
+      <p class="v">25<small> %</small></p>
+      <p class="n">vLLM 81%。同一条 roofline,差 3.2 倍</p>
+    </div>
+    <div class="stat warn">
+      <p class="k">每多一条并发的边际成本</p>
+      <p class="v">0.47<small> ms/tok</small></p>
+      <p class="n">vLLM 0.11 ms,理论地板 0.066 ms</p>
+    </div>
+    <div class="stat crit">
+      <p class="k">C=32 反常塌陷</p>
+      <p class="v">444<small> tok/s</small></p>
+      <p class="n">比 C=16 的 548 还低,比 C=64 的 1065 低 2.4 倍</p>
+    </div>
+  </div>
+
+  <div class="callout">
+    <p class="k">第一轮的三条数据瑕疵,两条已消除、一条大幅改善</p>
+    <p>
+      第一轮的对照有三个问题:① llama.cpp 的 prompt cache 默认开着,C=32 有 23% 的请求白拿了 prefill;
+      ② C=32 掉了 8 条请求;③ 只测了 1 / 8 / 32 三个点。
+      本轮 ① 已用 <code>--cache-ram 0 --slot-prompt-similarity 0</code> 关掉,
+      ③ 补齐到 7 个点,② 改善到只掉 1 条(C=32,319/320)。
+      <span class="hl">所以这一轮的交叉点 C≈8 比第一轮的 C≈21 更可信</span> ——
+      第一轮那个数是被 prompt cache 抬高的。
+    </p>
+    <p>
+      显存这一项本轮也补上了:<code>nvidia-smi</code> 实测 19,089 MiB,与权重加 KV 的推算差 1.5%。
+    </p>
+  </div>
+</section>
+
+<!-- ============ 交叉 ============ -->
+<section>
+  <h2><span class="num">交叉</span>两条吞吐曲线在 C≈8 换位</h2>
+  <p class="lede prose">
+    这一轮两边都是 7 个点,不用再靠三点插值。
+    两条线不是平移关系,是<strong>斜率</strong>不同 —— llama.cpp 起点高、爬得慢,vLLM 起点低、爬得快。
+    C=8 时两边几乎重合(411 vs 416),C=16 就分开了(681 vs 548)。
+  </p>
+
+  <figure>
+    <figcaption>Figure 1</figcaption>
+    <p class="fig-title">输出吞吐 vs 并发(双对数)</p>
+    <div class="chart" id="ch-cross"></div>
+    <div class="legend">
+      <span style="color:var(--accent)"><i style="background:currentColor"></i>vLLM FP16(7 点)</span>
+      <span style="color:var(--warn)"><i style="background:currentColor"></i>llama.cpp Q4_K_M(7 点)</span>
+      <span style="color:var(--crit)"><i class="d" style="background:none"></i>交叉点 C ≈ 8.3</span>
+    </div>
+    <p class="note">
+      交叉点由 C=8 与 C=16 两点在 log–log 空间插值得到:llama/vLLM 的吞吐比从 1.010 降到 0.804,
+      过 1 的位置是 C = 8.3。
+      注意 llama.cpp 的 C=32 点(444 tok/s)<strong>低于它自己的 C=16(548)</strong> ——
+      那一档是反常的,见「反常」一节。
+    </p>
+  </figure>
+
+  <div class="tw">
+    <table>
+      <caption>七个并发点的正面对照,倍数 &gt;1 表示 llama.cpp 更好。</caption>
+      <thead><tr><th>并发</th><th>vLLM tok/s</th><th>llama tok/s</th><th>倍数</th>
+        <th>vLLM ITL p50</th><th>llama ITL p50</th><th>vLLM TTFT p50</th><th>llama TTFT p50</th></tr></thead>
+      <tbody>
+        <tr><td><strong>1</strong></td><td class="hl">61.9</td><td>161.5</td><td class="gd">2.61×</td><td>15.83</td><td>5.84</td><td>102</td><td>93</td></tr>
+        <tr><td><strong>2</strong></td><td class="hl">118.7</td><td>242.2</td><td class="gd">2.04×</td><td>16.15</td><td>6.53</td><td>154</td><td>104</td></tr>
+        <tr><td><strong>4</strong></td><td class="hl">225.1</td><td>318.4</td><td class="gd">1.41×</td><td>16.32</td><td>7.75</td><td>288</td><td>189</td></tr>
+        <tr class="pick"><td><strong>8</strong></td><td class="hl">411.4</td><td>415.6</td><td class="gd">1.01×</td><td>16.63</td><td>10.30</td><td>306</td><td>204</td></tr>
+        <tr><td><strong>16</strong></td><td class="hl">681.5</td><td>548.0</td><td class="bad">0.80×</td><td>17.23</td><td>23.35</td><td>474</td><td>324</td></tr>
+        <tr><td><strong>32</strong></td><td class="hl">1026.7</td><td>443.7</td><td class="bad">0.43×</td><td>19.82</td><td>61.36</td><td>588</td><td>478</td></tr>
+        <tr><td><strong>64</strong></td><td class="hl">1387.8</td><td>1064.8</td><td class="bad">0.77×</td><td>22.50</td><td>35.32</td><td>787</td><td>442</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ 字节账 ============ -->
+<section>
+  <h2><span class="num">字节账</span>单流那 2.71 倍,能算到小数点后两位</h2>
+  <p class="lede prose">
+    单流解码是纯带宽问题:每生成一个 token,把整个模型的权重从显存读一遍。
+    量化把这堆字节压小,步长就该按同样的比例变短。这是全篇唯一一处理论与实测能对到 10% 以内的地方。
+  </p>
+
+  <pre><span class="c"># 每个 decode step 要读的字节</span>
+vLLM  bf16    参与矩阵乘的参数 7,070,619,136 × 2 B = <span class="a">14.14 GB</span>
+              + KV(1 条 × 1152 tok × 56 KiB)      = <span class="a"> 0.07 GB</span>
+                                                    ──────────
+                                                     <span class="a">14.21 GB</span>
+
+llama Q4_K_M  Qwen2.5-7B-Instruct-Q4_K_M.gguf      = <span class="w"> 4.68 GB</span>
+              + KV(fp16,和 vLLM 同价)             = <span class="w"> 0.07 GB</span>
+                                                    ──────────
+                                                     <span class="w"> 4.75 GB</span>
+
+<span class="c"># 字节账预测的步长比</span>
+14.21 ÷ 4.75 = <span class="a">2.99 ×</span>
+
+<span class="c"># 实测</span>
+15.83 ms ÷ 5.84 ms = <span class="a">2.71 ×</span>      <span class="c">达成预测的 91%</span>
+
+<span class="c"># 差在哪:反推各自的实际带宽</span>
+vLLM   14.21 GB ÷ 15.83 ms = <span class="a">898 GB/s</span>  = <span class="a">89%</span> MBU
+llama   4.75 GB ÷  5.84 ms = <span class="w">813 GB/s</span>  = <span class="w">81%</span> MBU</pre>
+
+  <div class="callout ok">
+    <p class="k">2.71 而不是 2.99,差的那 9% 是带宽效率</p>
+    <p>
+      两边跑的是同一张卡、同一条 1,008 GB/s 的总线。
+      vLLM 的 decode kernel 把带宽跑到 89%,llama.cpp 的 Q4_K_M 反量化路径跑到 81% ——
+      <strong>解量化本身要花掉一点带宽预算</strong>(读 4-bit 权重、在寄存器里展开成 fp16 再乘)。
+      这 8 个百分点就是 2.99 与 2.71 之间的全部差距。
+    </p>
+    <p>
+      换个说法:<span class="hl">量化没有骗人,它确实把字节数降到了 1/3;
+      但它换来的加速是 2.7 倍而不是 3.0 倍</span>,因为省下的字节里有一小部分被解码开销吃回去了。
+    </p>
+  </div>
+
+  <h3>prefill 这一头,量化一点忙都帮不上</h3>
+  <p class="prose">
+    prefill 是算力密集的(第三节那张 roofline 图量过:prefill 秒能跑到 146 TF/s)。
+    量化省的是<strong>读权重的字节</strong>,而 prefill 的瓶颈根本不在读权重 ——
+    一次读进来要算 1024 个 token。所以 TTFT 这一栏,llama.cpp 从 C=1 到 C=64 <strong>没有一档赢过</strong>:
+  </p>
+
+  <pre><span class="c"># TTFT p50(ms),越小越好</span>
+C=1    vLLM <span class="a">102</span>   llama  93    <span class="c">llama 略快</span>
+C=8    vLLM <span class="a">306</span>   llama 204    <span class="c">llama 快(它此时批更小)</span>
+C=16   vLLM <span class="a">474</span>   llama 324
+C=32   vLLM <span class="a">588</span>   llama 478
+C=64   vLLM <span class="a">787</span>   llama 442
+
+<span class="c"># 但这是拿吞吐换的:同一档下 llama.cpp 的 ITL 差得多</span>
+C=64   vLLM ITL 22.5 ms   llama ITL <span class="w">35.3 ms</span></pre>
+
+  <p class="prose">
+    上面比的是<b>客户端</b>量到的 TTFT,里面含调度与网络。
+    换成两边<b>服务端</b>自己记的纯 prefill 再比一次,结论一样、幅度也一样 ——
+    两条独立路径同向,说明这 9% 不是测量噪声:
+  </p>
+
+  <pre><span class="c"># A · 服务端量到的纯 prefill(1024 tok,C=1)</span>
+llama.cpp  prompt eval          <span class="a"> 85.3 ms</span>   <span class="c">日志中位数,40 条</span>
+vLLM       request_prefill_time <span class="a"> 93.5 ms</span>   <span class="c">← llama 快 8.8%</span>
+
+<span class="c"># B · 客户端量到的 TTFT(两边都含调度与网络)</span>
+llama.cpp  TTFT p50             <span class="a"> 92.7 ms</span>
+vLLM       TTFT p50             <span class="a">102.3 ms</span>   <span class="c">← llama 快 9.4%</span></pre>
+
+  <div class="callout">
+    <p class="k">这 9% 不是量化的功劳</p>
+    <p>
+      prefill 一次前向要算 1024 个 token,权重只读一遍就摊给了所有 token ——
+      瓶颈在 FLOPs 不在带宽,而 Q4_K 的解量化只会让 FLOPs 更多。
+      所以这 9% 来自实现细节(kernel、框架开销),不是"少读了 3 倍字节"换来的。
+      <span class="hl">量化换来的是解码速度和显存,不是首字延迟</span> ——
+      对话类负载(短输入长输出)收益大;RAG / 长文摘要(长输入短输出)收益小得多。
+    </p>
+  </div>
+</section>
+
+<!-- ============ 摊薄 ============ -->
+<section>
+  <h2><span class="num">摊薄</span>批处理红利,vLLM 吃到 81%,llama.cpp 只吃到 25%</h2>
+  <p class="lede prose">
+    批处理的全部价值在于:<strong>一次读进来的权重,给批内所有请求共用</strong>。
+    所以并发翻倍时,单步耗时不该翻倍 —— 它只该多出"多读那些 KV"的时间。
+    这个"只多出 KV"的下限就是 roofline 地板,拿它去除实测步长,就得到批处理效率。
+  </p>
+
+  <figure>
+    <figcaption>Figure 2</figcaption>
+    <p class="fig-title">解码步长:实测 vs roofline 地板</p>
+    <div class="chart" id="ch-roof"></div>
+    <div class="legend">
+      <span style="color:var(--accent)"><i style="background:currentColor"></i>vLLM 实测 ITL</span>
+      <span style="color:var(--accent)"><i class="d" style="background:none"></i>vLLM 地板</span>
+      <span style="color:var(--warn)"><i style="background:currentColor"></i>llama.cpp 实测 ITL</span>
+      <span style="color:var(--warn)"><i class="d" style="background:none"></i>llama.cpp 地板</span>
+    </div>
+    <p class="note">
+      地板 = (权重字节 + 并发 × 1152 tok × 56 KiB) ÷ 1,008 GB/s。
+      vLLM 的实测线始终贴着自己的地板(81%–89%);
+      llama.cpp 从 C=1 的 81% 掉到 C=16 的 24%、C=32 的 11%,C=64 回到 25%
+      —— <b>掉下去容易,回不到 vLLM 那条水平线</b>。
+      <strong>两条地板之间的距离(量化红利)是恒定的,拉开差距的是各自离地板有多远。</strong>
+    </p>
+  </figure>
+
+  <h3>换个说法:每多接一条并发,要多付多少</h3>
+  <pre><span class="c"># 理论地板:每多一条并发,每步多读 1152 tok × 56 KiB = 0.066 GB</span>
+0.066 GB ÷ 1,008 GB/s = <span class="a">0.0655 ms / 槽位</span>
+
+<span class="c"># 实测斜率(C=1 → C=64 的 ITL 增量 ÷ 63)</span>
+vLLM       (22.50 − 15.83) ÷ 63 = <span class="a">0.106 ms / 槽位</span>   <span class="c">地板的 1.6 倍</span>
+llama.cpp  (35.32 −  5.84) ÷ 63 = <span class="w">0.468 ms / 槽位</span>   <span class="c">地板的 7.1 倍</span></pre>
+
+  <div class="callout crit">
+    <p class="k">这就是"量化省不了调度"的量化版本</p>
+    <p>
+      llama.cpp 每多接一条并发,单步要多花 0.47 ms;vLLM 只多花 0.11 ms。
+      差的这 0.36 ms<strong>和权重精度毫无关系</strong> —— 它是 PagedAttention、
+      continuous batching、CUDA graph 复用这些调度侧工程的价值。
+    </p>
+    <p>
+      这 0.36 ms 的差价,就是「交叉」那一节 C≈8 换位的全部来源。
+    </p>
+  </div>
+</section>
+
+<!-- ============ 波次 ============ -->
+<section>
+  <h2><span class="num">波次</span>10 个整整齐齐的 32:llama.cpp 没在做 continuous batching</h2>
+  <p class="lede prose">
+    效率掉得这么快,直接原因能从时间账上读出来。
+    如果引擎在做 continuous batching,一条请求结束就该立刻补进下一条,
+    总耗时应该远小于"批数 × 单条端到端时延"。实测正好相反。
+  </p>
+
+  <pre><span class="c"># llama.cpp C=32:320 条请求 ÷ 32 个槽位 = 10 批</span>
+单条 e2e p50            = <span class="a">17.85 s</span>
+总耗时 ÷ 10             = 179.73 ÷ 10 = <span class="a">17.97 s</span>
+                                        ──────────
+                          两者相差 <span class="a">0.7%</span>
+
+<span class="c"># 同样的检验用在 C=64 上</span>
+单条 e2e p50            = <span class="a">15.19 s</span>
+总耗时 ÷ 8              = 121.61 ÷ 8  = <span class="a">15.20 s</span>   <span class="c">相差 0.1%</span>
+
+<span class="c"># 对照 vLLM C=32</span>
+单条 e2e p50            = 7.96 s
+总耗时 ÷ 10             = 79.79 ÷ 10  = 7.98 s   <span class="c">← 也吻合,因为负载是定长齐发</span></pre>
+
+  <p class="prose">
+    这个 0.7% / 0.1% 的吻合度就是结论本身:<strong>总耗时几乎等于"批数 × 单条端到端时延"</strong>,
+    说明新请求只在整批结束后才成批进场,每 18.0 秒一次。
+    如果引擎在做 continuous batching,一条结束就补一条,这种整齐的批边界根本不会存在。
+    换手间隙只有约 0.5 秒(= 实测 TTFT p50 478 ms),占一波的 3%。
+    <span class="hl">注意本轮没有对 llama.cpp 做 1 Hz 采样</span>,
+    所以这里只有时间账,没有槽位占用的实测曲线 —— 补采样是「下一步」的第 3 条。
+  </p>
+
+  <h3>停顿的证据:ITL 的中位数和均值分家</h3>
+  <p class="prose">
+    如果解码是均匀的,ITL 的中位数和均值应该几乎相等。llama.cpp 在高并发下这两个数分开了 ——
+    说明存在一批远大于中位数的间隔,把均值拉了上去。
+  </p>
+
+  <pre><span class="c">          ITL p50    ITL 均值   均值/中位</span>
+C=1        5.84       5.83      <span class="a">1.00</span>   <span class="c">完全均匀</span>
+C=2        6.53       7.79      <span class="a">1.19</span>
+C=4        7.75      11.71      <span class="w">1.51</span>
+C=8       10.30      18.33      <span class="w">1.78</span>
+C=16      23.35      26.50      <span class="a">1.13</span>
+C=32      61.36      67.96      <span class="a">1.11</span>
+C=64      35.32      56.25      <span class="r">1.59</span>
+
+<span class="c"># 对照 vLLM,两个数几乎粘在一起</span>
+C=64      22.50      42.22      1.88   <span class="c">← vLLM 也有,来自 chunked prefill 抢步</span>
+C=1       15.83      15.83      1.00</pre>
+
+  <h3>换个算法量同一件事:解码时间里有多少在等别人</h3>
+  <p class="prose">
+    上面那张表用的是 ITL 自己的均值与中位数。换成
+    <code>TPOT 均值 ÷ ITL p50 − 1</code> 更直接 —— 它量的是
+    <b>"一条请求的平均出字间隔,比它自己的典型间隔多出了多少"</b>,
+    多出来的部分就是被别人的 prefill 堵住的时间。两个引擎并排:
+  </p>
+
+  <pre><span class="c">  C        llama.cpp        vLLM</span>
+  1           0.2%          -0.0%    <span class="c">单流,两边都没有别人可等</span>
+  2          <span class="w">19.8%</span>           1.0%
+  4          <span class="w">50.7%</span>           3.4%    <span class="c">← llama 已有一半时间在等,vLLM 还不到 4%</span>
+  8          <span class="w">78.7%</span>           9.8%
+ 16          <span class="w">46.8%</span>          21.9%
+ 32          <span class="r">89.5%</span>          44.0%
+ 64         <span class="r">105.4%</span>          <span class="w">87.7%</span>    <span class="c">← 到这一档两边都很难看了</span></pre>
+
+  <div class="callout">
+    <p class="k">差别在于 prefill 是切片插入还是整块插入</p>
+    <p>
+      vLLM 开着 <code>enable_chunked_prefill</code>:新请求的 prompt 被切成块,
+      和正在进行的 decode 混在同一个 step 里,每一步只堵一小会儿。
+      llama.cpp 是<b>整块插入</b> —— 一条新请求进来就要把所有正在解码的 slot 一起堵住,
+      直到它的 1024 个 token 算完。
+      <span class="hl">所以 llama.cpp 在 C=4 就已经有一半解码时间在等待,vLLM 到 C=8 才 9.8%</span>。
+    </p>
+  </div>
+</section>
+
+<!-- ============ C=32 反常 ============ -->
+<section>
+  <h2><span class="num">反常</span>C=32 那一档塌了,而且不是噪声</h2>
+  <p class="lede prose">
+    这一轮最扎眼的一个数:llama.cpp 在 C=32 只跑出 <strong>444 tok/s</strong>,
+    <strong>比它自己的 C=16(548)还低</strong>,更比 C=64(1065)低 2.4 倍。
+    单调性在这里断了 —— 一个吞吐曲线不该长这样。
+  </p>
+
+  <pre><span class="c"># 逐槽解码速率 = 1000 ÷ ITL p50</span>
+C=1    171.2 tok/s/槽
+C=2    153.1
+C=4    129.0
+C=8     97.1
+C=16    42.8
+C=32    <span class="r">16.3</span>   <span class="c">← 比 C=64 还慢</span>
+C=64    <span class="a">28.3</span>
+
+<span class="c"># 总吞吐 = 逐槽速率 × 槽数</span>
+C=16    42.8 × 16 = 685   <span class="c">(实测 548,因为不是所有槽都满)</span>
+C=32    16.3 × 32 = 522   <span class="c">(实测 444)</span>
+C=64    28.3 × 64 = 1811  <span class="c">(实测 1065)</span></pre>
+
+  <p class="prose">
+    换个角度看,反常的也可能是 <b>C=64 太好</b>,而不只是 C=32 太差:
+    C=64 的 ITL p50(35.32 ms)明显优于 C=32(61.36),roofline 达成率也从 11% 回到 25%,
+    <b>而它的 CUDA graph 复用率同样只有 1.35%</b> —— 复用率解释不了这次回升。
+    两种读法都指向同一件事:<span class="hl">C=32 与 C=64 之间还有一个没被这一轮抓到的变量</span>,
+    所以下面的对照实验要在 C=16 / 32 / 64 三档同时做,而不是只重跑 C=32。
+  </p>
+
+  <div class="callout crit">
+    <p class="k">三条线索,但还不足以定案</p>
+    <p>
+      ① <strong>CUDA graph 复用率整档归零</strong>。服务端每条请求结束时会打印累计的
+      <code>graphs reused</code>。按并发档切段做差分,再除以该档的解码步总数,
+      就得到"多少比例的解码步复用了已捕获的 CUDA graph" —— 这条曲线和逐槽速率的塌陷同步:
+    </p>
+  </div>
+
+  <div class="tw">
+    <table>
+      <caption>取自 <code>llamacpp-server.log</code> 的 1,359 条 <code>print_timing</code>,
+        按各档切段(31 条 warmup + 40 / 59 / 79 / 120 / 200 / 318 / 512)。
+        <b>增量</b> = 本档最后一条的读数 − 上一档最后一条的读数;
+        <b>解码步总数</b> = 本档实际产出的输出 token 数(llama.cpp 每条 250–256 不等,见「数据」节自检)。
+        roofline 达成率 = 地板 ÷ 实测 ITL p50,地板 = (4.68 GB + C × 1152 tok × 56 KiB) ÷ 1,008 GB/s。</caption>
+      <thead><tr><th>C</th><th>条数</th><th>解码步总数</th><th>graph 增量</th><th>复用率</th><th>ITL p50</th><th>roofline 达成率</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>40</td><td>10,240</td><td>10,160</td><td class="gd">99.22%</td><td>5.84</td><td class="gd">80.6%</td></tr>
+        <tr><td>2</td><td>59</td><td>15,104</td><td>6,487</td><td class="gd">42.95%</td><td>6.53</td><td>73.1%</td></tr>
+        <tr><td>4</td><td>79</td><td>20,224</td><td>3,273</td><td>16.18%</td><td>7.75</td><td>63.3%</td></tr>
+        <tr><td>8</td><td>120</td><td>30,720</td><td>1,980</td><td class="mid">6.45%</td><td>10.30</td><td class="mid">50.2%</td></tr>
+        <tr><td>16</td><td>200</td><td>51,200</td><td>1,457</td><td class="mid">2.85%</td><td>23.35</td><td class="bad">24.4%</td></tr>
+        <tr class="pick"><td>32</td><td>318</td><td>81,408</td><td class="bad">0</td><td class="bad">0.00%</td><td>61.36</td><td class="bad">11.0%</td></tr>
+        <tr><td>64</td><td>512</td><td>131,072</td><td>1,773</td><td class="bad">1.35%</td><td>35.32</td><td class="bad">25.0%</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout crit">
+    <p class="k">这张表是相关性,不是因果</p>
+    <p>
+      C=32 那一档 <strong>81,408 步里一次都没复用</strong>,而它正是塌得最狠的一档;
+      C=1 复用 <strong>99.22%</strong> —— 几乎每一步都命中(理论上限也就 99.6%,
+      因为每条请求的那一次 prefill 步本来就复用不了),正是唯一贴住 roofline 的一档。
+      两列几乎同起同落。
+      机制上也说得通:CUDA graph 把几百次 kernel launch 打包成一次提交,
+      <b>batch 形状一变就要重新捕获</b> —— vLLM 把 batch padding 到固定的几个桶,
+      任何实际 batch 都能命中已捕获的图;llama.cpp 的活跃 slot 数每步都在变(30/31/32 来回跳),
+      图就一直命中不了。
+    </p>
+    <p>
+      但服务端日志没有解释原因(verbosity 已开到 3),
+      <span class="hl">要坐实因果必须做对照实验</span>:用
+      <code>-DGGML_CUDA_USE_GRAPHS=OFF</code> 重编一份再扫一遍 ——
+      如果关掉图之后 C=1 大幅变慢而 C=32 几乎不变,因果链就闭合了。
+    </p>
+  </div>
+
+  <div class="callout crit">
+    <p class="k">另外两条线索</p>
+    <p>
+      ② <strong>唯一一条失败请求也出在这一档</strong>(319/320)。
+    </p>
+    <p>
+      ③ 排除项:不是显存(llama.cpp 的 KV 池按 <code>-c 262144</code> 分配,C=32 只用掉一半)、
+      不是温度(全程 ≤73 °C)、不是 prompt cache(本轮已关)。
+    </p>
+    <p>
+      <span class="hl">在补上对照实验之前,C=32 这一档不应该写进任何结论</span> ——
+      本报告的交叉点是用 C=8/16 算的,批处理效率引用的是 C=64,都绕开了这一档。
+    </p>
+  </div>
+</section>
+
+<!-- ============ 显存 ============ -->
+<section>
+  <h2><span class="num">显存</span>Q4 省下的那 10 GiB,这一轮全花在 KV 上了</h2>
+  <p class="lede prose">
+    量化最直观的好处是权重变小:14.49 GiB → 4.36 GiB,省下 10 GiB。
+    但这一轮给 llama.cpp 开了 <code>-np 64 -c 262144</code>(64 个槽位 × 4096 上下文),
+    KV 池按满配分配,把省下的显存又吃回去了。
+  </p>
+
+  <figure>
+    <figcaption>Figure 3</figcaption>
+    <p class="fig-title">24 GiB 显存的两种分法</p>
+    <div class="chart" id="ch-mem"></div>
+    <p class="note">
+      vLLM 侧是启动日志实测;llama.cpp 侧的<b>总量</b>也是实测 ——
+      <code>fingerprint.txt</code> 里 <code>nvidia-smi</code> 记到 <b>19,089 MiB = 18.64 GiB</b>。
+      只有分段是推算:权重 4.36 GiB + KV(262,144 tok × 56 KiB = 14.0 GiB)= 18.36 GiB,
+      <span class="hl">与实测总量差 1.5%,账是闭合的</span>。
+    </p>
+  </figure>
+
+  <div class="callout">
+    <p class="k">这是一个配置选择,不是引擎的性质</p>
+    <p>
+      如果把 llama.cpp 的 <code>-c</code> 调成和 vLLM 一样的有效容量,
+      它的 KV 池会小得多,空出来的显存可以拿去开更多槽位或跑更大的模型。
+      <strong>Q4 的显存红利是真的,只是这一轮的启动参数没让它体现出来。</strong>
+    </p>
+    <p>
+      反过来说,vLLM 侧的 6.41 GiB KV 池换算成 120,064 token,
+      而 llama.cpp 的 262,144 token 是它的 <strong>2.18 倍</strong> ——
+      <span class="hl">在"能同时装多少上下文"这一项上,量化确实赢了</span>,
+      只是本轮的负载(1280 tok/请求)根本用不到那么多。
+    </p>
+  </div>
+</section>
+
+<!-- ============ 数据 ============ -->
+<section>
+  <h2><span class="num">数据</span>完整测量结果</h2>
+  <div class="tw">
+    <table>
+      <caption>两个引擎七个并发点的全部指标。延迟单位 ms。</caption>
+      <thead><tr><th>引擎</th><th>并发</th><th>请求</th><th>完成</th><th>耗时 s</th>
+        <th>输出 tok/s</th><th>总 tok/s</th>
+        <th>TTFT p50</th><th>TTFT p99</th>
+        <th>ITL p50</th><th>ITL 均值</th><th>ITL p99</th>
+        <th>E2EL p50</th></tr></thead>
+      <tbody>
+        <tr><td>vLLM</td><td><strong>1</strong></td><td>40</td><td>40</td><td>165.54</td><td class="hl">61.9</td><td>309</td><td>102</td><td>109</td><td>15.83</td><td>15.83</td><td>16.3</td><td>4,138</td></tr>
+        <tr><td>vLLM</td><td><strong>2</strong></td><td>60</td><td>60</td><td>129.42</td><td class="hl">118.7</td><td>593</td><td>154</td><td>203</td><td>16.15</td><td>16.31</td><td>16.9</td><td>4,313</td></tr>
+        <tr><td>vLLM</td><td><strong>4</strong></td><td>80</td><td>80</td><td>90.99</td><td class="hl">225.1</td><td>1125</td><td>288</td><td>388</td><td>16.32</td><td>16.88</td><td>17.6</td><td>4,549</td></tr>
+        <tr><td>vLLM</td><td><strong>8</strong></td><td>120</td><td>120</td><td>74.67</td><td class="hl">411.4</td><td>2057</td><td>306</td><td>734</td><td>16.63</td><td>18.25</td><td>102.1</td><td>4,978</td></tr>
+        <tr><td>vLLM</td><td><strong>16</strong></td><td>200</td><td>200</td><td>75.13</td><td class="hl">681.5</td><td>3408</td><td>474</td><td>1407</td><td>17.23</td><td>21.01</td><td>183.7</td><td>5,850</td></tr>
+        <tr><td>vLLM</td><td><strong>32</strong></td><td>320</td><td>320</td><td>79.79</td><td class="hl">1026.7</td><td>5133</td><td>588</td><td>2854</td><td>19.82</td><td>28.53</td><td>197.2</td><td>7,962</td></tr>
+        <tr><td>vLLM</td><td><strong>64</strong></td><td>512</td><td>512</td><td>94.45</td><td class="hl">1387.8</td><td>6939</td><td>787</td><td>5924</td><td>22.50</td><td>42.22</td><td>207.6</td><td>11,779</td></tr>
+        <tr><td>llama.cpp</td><td><strong>1</strong></td><td>40</td><td>40</td><td>63.40</td><td class="hl">161.5</td><td>808</td><td>93</td><td>97</td><td>5.84</td><td>5.83</td><td>6.0</td><td>1,585</td></tr>
+        <tr><td>llama.cpp</td><td><strong>2</strong></td><td>60</td><td>60</td><td>62.63</td><td class="hl">242.2</td><td>1223</td><td>104</td><td>189</td><td>6.53</td><td>7.79</td><td>13.1</td><td>1,859</td></tr>
+        <tr><td>llama.cpp</td><td><strong>4</strong></td><td>80</td><td>80</td><td>63.50</td><td class="hl">318.4</td><td>1609</td><td>189</td><td>376</td><td>7.75</td><td>11.71</td><td>20.3</td><td>2,349</td></tr>
+        <tr><td>llama.cpp</td><td><strong>8</strong></td><td>120</td><td>120</td><td>73.58</td><td class="hl">415.6</td><td>2086</td><td>204</td><td>760</td><td>10.30</td><td>18.33</td><td>104.8</td><td>3,416</td></tr>
+        <tr><td>llama.cpp</td><td><strong>16</strong></td><td>200</td><td>200</td><td>92.51</td><td class="hl">548.0</td><td>2762</td><td>324</td><td>1600</td><td>23.35</td><td>26.50</td><td>187.5</td><td>6,467</td></tr>
+        <tr><td>llama.cpp</td><td><strong>32</strong></td><td>320</td><td>319</td><td>179.73</td><td class="hl">443.7</td><td>2261</td><td>478</td><td>3206</td><td>61.36</td><td>67.96</td><td>239.7</td><td>17,851</td></tr>
+        <tr><td>llama.cpp</td><td><strong>64</strong></td><td>512</td><td>512</td><td>121.61</td><td class="hl">1064.8</td><td>5376</td><td>442</td><td>6268</td><td>35.32</td><td>56.25</td><td>223.8</td><td>15,193</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>这批数据能不能信:三条自检</h3>
+  <ul class="pts">
+    <li><strong>两个引擎的输出工作量差 1.35%,不是零。</strong>
+      vLLM 七档<b>每条精确 256 个输出 token</b>(<code>--ignore-eos</code> 严格生效);
+      llama.cpp 是 <b>250–256 不等</b>(C=1 为 255.95,C=32 为 250.00),
+      七档合计 336,142 token,比 vLLM 的同口径值少 <strong>4,594 个(1.35%)</strong>。
+      吞吐是"输出 token ÷ 墙钟",所以 llama.cpp 侧被<b>低估了约 1.35%</b> ——
+      <span class="hl">方向对它不利,但幅度远小于 C≥16 时 20%–57% 的差距,不影响 C≈8 这个交叉点</span>。
+      做跨引擎对比时这一项必须现场核对,不能假设 <code>--ignore-eos</code> 在两边行为一致。</li>
+    <li><strong>prompt cache 确实关着</strong>:<code>--cache-ram 0 --slot-prompt-similarity 0</code>,
+      这是第一轮那个 C≈21 交叉点被抬高的原因,本轮已消除。</li>
+    <li><strong>一条失败请求出在 C=32</strong>(319/320),而那一档恰好也是每条输出最少的
+      (250.00,七档最低)、CUDA graph 复用率归零的一档 —— 三个异常同源,见「反常」一节。</li>
+  </ul>
+</section>
+
+<!-- ============ 下一步 ============ -->
+<section>
+  <h2><span class="num">下一步</span>这轮之后该补的四件事</h2>
+  <ul class="pts">
+    <li><strong>C=32 的对照实验。</strong>用 <code>-DGGML_CUDA_USE_GRAPHS=OFF</code> 重编一次,
+      在 C=16 / 32 / 64 三档上重跑。如果关掉 CUDA graph 之后 C=32 的塌陷消失(或者三档一起变慢但恢复单调),
+      因果就定了。<strong>这是本轮唯一一个悬而未决的问题,优先级最高。</strong></li>
+    <li><strong>把 llama.cpp 的 <code>-c</code> 调到和 vLLM 等效。</strong>
+      本轮 262,144 的上下文预算让显存对比失去意义。设成
+      <code>-np 64 -c 81920</code>(64 × 1280)再测一次,才能看到 Q4 真正的显存红利。</li>
+    <li><strong>给 llama.cpp 补一个 1 Hz 采样器。</strong>
+      显存已有单点实测(19,089 MiB),但功耗、槽位占用、以及显存随时间的变化仍然空白。
+      套一个和 vLLM 侧同样的轮询就能补齐,成本极低。</li>
+    <li><strong>补 C=4 与 C=8 之间的点。</strong>交叉点算出来在 C≈8.3,
+      而 C=8 正好是两条线几乎重合的地方(411 vs 416,差 1%)。
+      加测 C=6 和 C=12 能把这个阈值钉得更准 —— 它是"什么时候该换引擎"的实操分界线。</li>
+  </ul>
+</section>
+
+<p class="note" style="margin-top:56px; max-width:none">
+  <b>这是 Round 2 五份压测报告的第 5 份</b>(llama.cpp 对照)。
+  整轮的横向结论与生产选型建议见 <b>《选型指南-vllm-llama-cpp》</b> ——
+  那份把五组测试的数据合起来,回答"两个引擎各自强在哪、生产上怎么选"。
+  同目录另有:<code>vllm-01-Qwen2.5-7B并发曲线</code> · <code>vllm-02-TTFT解剖</code> · <code>vllm-03-KV的线性</code> · <code>vllm-04-断崖</code>。
+</p>
+
+<footer>
+  <span>2026-08-25 · Round 2</span>
+  <span>vLLM 1,332 条 · 0 failed &nbsp;|&nbsp; llama.cpp 1,332 条 · 1 failed</span>
+  <span>vLLM 0.27.1 bf16 · llama.cpp eab8ee41f Q4_K_M</span>
+  <span>prompt cache off · prefix caching off</span>
+</footer>
+
+</div>
+
+<script>
+(function(){
+"use strict";
+
+var VLLM = [[1, 61.9], [2, 118.7], [4, 225.1], [8, 411.4], [16, 681.5], [32, 1026.7], [64, 1387.8]];
+var LCPP = [[1, 161.5], [2, 242.2], [4, 318.4], [8, 415.6], [16, 548.0], [32, 443.7], [64, 1064.8]];
+var XC = 8.3, YC = 422;
+var ROOF = {"c":[1,8,16,32,64],"vFloor":[14.09,14.55,15.08,16.13,18.22],"vMeas":[15.83,16.63,17.23,19.82,22.5],"lFloor":[4.71,5.17,5.69,6.74,8.84],"lMeas":[5.84,10.3,23.35,61.36,35.32]};
+var ACT = [[0.0,32],[1.0,32],[2.0,32],[3.0,32],[4.0,32],[5.0,32],[6.0,32],[7.0,32],[8.0,32],[9.0,32],[10.0,32],[11.0,32],[12.0,32],[13.0,32],[14.0,32],[15.0,32],[16.0,32],[17.0,32],[18.0,32],[19.0,32],[20.0,32],[21.0,32],[22.0,32],[23.0,32],[24.0,32],[25.0,32],[26.0,32],[27.0,32],[28.0,32],[29.0,32],[30.0,32],[31.0,32],[32.0,32],[33.0,32],[34.0,32],[35.0,32],[36.0,32],[37.0,32],[38.0,32],[39.0,32],[40.0,32],[41.0,32],[42.0,32],[43.0,32],[44.0,32],[45.0,32],[46.0,32],[47.0,32],[48.0,32],[49.0,32],[50.0,32],[51.0,32],[52.0,32],[53.0,32],[54.0,32],[55.0,32],[56.0,32],[57.0,32],[58.0,32],[59.0,32],[60.0,32],[61.0,32],[62.0,32],[63.0,32],[64.0,32],[65.0,32],[66.0,32],[67.0,32],[68.0,32],[69.0,32],[70.0,32],[71.0,32],[72.0,32],[73.0,32],[74.0,32],[75.0,32],[76.0,32],[77.0,32],[78.0,32],[79.0,32],[80.0,32],[81.0,32],[82.0,32],[83.0,32],[84.0,32],[85.0,32],[86.0,32],[87.0,32],[88.0,32],[89.0,32],[90.0,32],[91.0,32],[92.0,32],[93.0,32],[94.0,32],[95.0,32],[96.0,32],[97.0,32],[98.0,32],[99.0,32],[100.0,32],[101.0,32],[102.0,32],[103.0,32],[104.0,32],[105.0,32],[106.0,32],[107.0,32],[108.0,32],[109.0,32],[110.0,32],[111.0,32],[112.0,32],[113.0,32],[114.0,32],[115.0,32],[116.0,32],[117.0,32],[118.0,32],[119.0,32],[120.0,32],[121.0,32],[122.0,32],[123.0,32],[124.0,32],[125.0,32],[126.0,32],[127.0,32],[128.0,32],[129.0,32],[130.0,32],[131.0,32],[132.0,32],[133.0,32],[134.0,32],[135.0,32],[136.0,32],[137.0,32],[138.0,32],[139.0,32],[140.0,32],[141.0,32],[142.0,32],[143.0,32],[144.0,32],[145.0,32],[146.0,32],[147.0,32],[148.0,32],[149.0,32],[150.0,32],[151.0,32],[152.0,32],[153.0,32],[154.0,32],[155.0,32],[156.0,32],[157.0,32],[158.0,32],[159.0,32],[160.0,32],[161.0,32],[162.0,32],[163.0,32],[164.0,32],[165.0,32],[166.0,32],[167.0,32],[168.0,32],[169.0,32],[170.0,32],[171.0,32],[172.0,32],[173.0,32],[174.0,32],[175.0,32],[176.0,32],[177.0,32],[178.0,32],[179.0,32]];
+var WAVES = [[0.0,32],[18.0,32],[35.9,32],[53.9,32],[71.9,32],[89.9,32],[107.8,32],[125.8,32],[143.8,32],[161.8,32]];
+var MEM = [{"name":"vLLM FP16","seg":[["权重 + non-torch",14.49,"--accent"],["KV cache",6.41,"--violet"],["激活/graph",0.6,"--ink-3"]],"idle":2.02,"note":"21.50 GiB 已用 · 启动日志实测"},{"name":"llama.cpp Q4","seg":[["权重",4.36,"--accent"],["KV cache(-c 262144)",14.0,"--violet"],["其他",0.6,"--ink-3"]],"idle":4.56,"note":"≈18.96 GiB 已用 · 按 -np 64 × 4096 推算,未采集"}];
+
+var NS = "http://www.w3.org/2000/svg";
+function el(n,a){ var e=document.createElementNS(NS,n); if(a) for(var k in a) e.setAttribute(k,a[k]); return e; }
+function txt(x,y,s,a){ var t=el("text",a||{}); t.setAttribute("x",x); t.setAttribute("y",y); t.textContent=s; return t; }
+function lin(d0,d1,r0,r1){ return function(v){ return r0+(v-d0)/(d1-d0)*(r1-r0); }; }
+function lg(d0,d1,r0,r1){ var a=Math.log(d0),b=Math.log(d1);
+  return function(v){ v=Math.max(v,d0); return r0+(Math.log(v)-a)/(b-a)*(r1-r0); }; }
+function cv(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+var CW = 860;
+function frame(id,h){ var host=document.getElementById(id); if(!host) return null;
+  host.innerHTML=""; var svg=el("svg",{viewBox:"0 0 "+CW+" "+h,role:"img"}); host.appendChild(svg); return svg; }
+function pathOf(p){ return p.map(function(q,i){ return (i?"L":"M")+q[0].toFixed(1)+" "+q[1].toFixed(1); }).join(""); }
+function line(p,color,w,dash){ return el("path",{d:pathOf(p),fill:"none",stroke:color,"stroke-width":w||2.2,
+  "stroke-dasharray":dash||"none","stroke-linejoin":"round","stroke-linecap":"round"}); }
+function tip(node,s){ var t=el("title",{}); t.textContent=s; node.appendChild(t); return node; }
+function mono(x,y,s,color,size,anchor,weight){ return txt(x,y,s,{"text-anchor":anchor||"middle",fill:color,
+  "font-size":size||11,"font-weight":weight||600,"font-family":"var(--font-mono)","font-variant-numeric":"tabular-nums"}); }
+function gridY(svg,ticks,y,l,r,fmt){ ticks.forEach(function(v){ var yy=y(v);
+  svg.appendChild(el("line",{x1:l,y1:yy,x2:r,y2:yy,stroke:cv("--grid-2"),"stroke-width":1}));
+  svg.appendChild(mono(l-9,yy+4,fmt?fmt(v):v,cv("--ink-3"),11,"end",400)); }); }
+function axisLabel(svg,s,l,r,h){ svg.appendChild(mono((l+r)/2,h-6,s,cv("--ink-3"),11,"middle",600)); }
+function yLabel(svg,s,t,b){ var e=mono(0,0,s,cv("--ink-3"),11,"middle",600);
+  e.setAttribute("transform","translate(13,"+((t+b)/2)+") rotate(-90)"); svg.appendChild(e); }
+function baseline(svg,l,r,b){ svg.appendChild(el("line",{x1:l,y1:b,x2:r,y2:b,stroke:cv("--rule"),"stroke-width":1.5})); }
+function dot(svg,x,y,color,r){ svg.appendChild(el("circle",{cx:x,cy:y,r:r||4,fill:cv("--surface"),stroke:color,"stroke-width":2.4})); }
+
+/* ---------- Fig 1 ---------- */
+function figCross(){
+  var H=400, svg=frame("ch-cross",H); if(!svg) return;
+  var l=66,r=CW-30,t=26,b=H-56;
+  var x=lg(1,64,l,r), y=lg(50,1600,b,t);
+  [50,100,200,400,800,1600].forEach(function(v){ var yy=y(v);
+    svg.appendChild(el("line",{x1:l,y1:yy,x2:r,y2:yy,stroke:cv("--grid-2"),"stroke-width":1}));
+    svg.appendChild(mono(l-9,yy+4,v,cv("--ink-3"),11,"end",400)); });
+  [1,2,4,8,16,32,64].forEach(function(c){ var xx=x(c);
+    svg.appendChild(el("line",{x1:xx,y1:t,x2:xx,y2:b,stroke:cv("--grid-2"),"stroke-width":1}));
+    svg.appendChild(mono(xx,b+19,"C="+c,cv("--ink-3"),11,"middle",600)); });
+  baseline(svg,l,r,b);
+  svg.appendChild(el("line",{x1:x(XC),y1:t,x2:x(XC),y2:b,stroke:cv("--crit"),"stroke-width":1.6,"stroke-dasharray":"5 4"}));
+  svg.appendChild(mono(x(XC),t+13,"C ≈ "+XC,cv("--crit"),11.5,"middle",700));
+  svg.appendChild(line(VLLM.map(function(p){return [x(p[0]),y(p[1])];}),cv("--accent"),2.6));
+  svg.appendChild(line(LCPP.map(function(p){return [x(p[0]),y(p[1])];}),cv("--warn"),2.6));
+  VLLM.forEach(function(p){ dot(svg,x(p[0]),y(p[1]),cv("--accent")); });
+  LCPP.forEach(function(p){ dot(svg,x(p[0]),y(p[1]),cv("--warn"),5); });
+  VLLM.forEach(function(p){ svg.appendChild(tip(el("circle",{cx:x(p[0]),cy:y(p[1]),r:9,fill:"transparent"}),"vLLM C="+p[0]+"  "+p[1]+" tok/s")); });
+  LCPP.forEach(function(p){ svg.appendChild(tip(el("circle",{cx:x(p[0]),cy:y(p[1]),r:9,fill:"transparent"}),"llama.cpp C="+p[0]+"  "+p[1]+" tok/s")); });
+  svg.appendChild(el("circle",{cx:x(XC),cy:y(YC),r:6.5,fill:cv("--crit"),opacity:.9}));
+  svg.appendChild(mono(x(1)+16,y(VLLM[0][1])+16,VLLM[0][1],cv("--accent"),11,"start",700));
+  svg.appendChild(mono(x(1)+13,y(LCPP[0][1])-17,LCPP[0][1],cv("--warn"),11,"start",700));
+  svg.appendChild(mono(x(32),y(VLLM[5][1])-13,VLLM[5][1],cv("--accent"),11,"middle",700));
+  svg.appendChild(mono(x(32),y(LCPP[5][1])+19,LCPP[5][1],cv("--warn"),11,"middle",700));
+  yLabel(svg,"OUTPUT tok/s (log)",t,b); axisLabel(svg,"CONCURRENCY (log)",l,r,H);
+}
+
+/* ---------- Fig 2 ---------- */
+function figRoof(){
+  var H=390, svg=frame("ch-roof",H); if(!svg) return;
+  var l=66,r=CW-168,t=26,b=H-56;
+  var cs=ROOF.c, last=cs.length-1;
+  // 纵轴改成对数:llama 在 C=32 塌到 61 ms,线性轴会把其余三条线压成一团
+  var x=lg(cs[0],cs[last],l,r), y=lg(4,70,b,t);
+  gridY(svg,[4,8,16,32,64],y,l,r,function(v){return v+" ms";});
+  cs.forEach(function(c){ var xx=x(c);
+    svg.appendChild(el("line",{x1:xx,y1:t,x2:xx,y2:b,stroke:cv("--grid-2"),"stroke-width":1}));
+    svg.appendChild(mono(xx,b+19,"C="+c,cv("--ink-3"),11,"middle",600)); });
+  baseline(svg,l,r,b);
+  function put(vals,color,dash,lab,floors,labDy){
+    var pts=cs.map(function(c,i){return [x(c),y(vals[i])];});
+    svg.appendChild(line(pts,color,dash?2:2.8,dash?"6 4":null));
+    pts.forEach(function(p,i){ dot(svg,p[0],p[1],color,dash?3.2:4.6);
+      svg.appendChild(tip(el("circle",{cx:p[0],cy:p[1],r:9,fill:"transparent"}),
+        lab+" C="+cs[i]+"  "+vals[i].toFixed(2)+" ms")); });
+    svg.appendChild(mono(r+12,y(vals[last])+(labDy||0)+4,lab,color,11,"start",700));
+    if(floors) cs.forEach(function(c,i){
+      var eff=(floors[i]/vals[i]*100).toFixed(0)+"%";
+      svg.appendChild(mono(x(c),y(vals[i])-11,eff,color,10.5,"middle",700)); });
+  }
+  put(ROOF.vFloor,cv("--accent"),1,"vLLM 地板",null,4);
+  put(ROOF.lFloor,cv("--warn"),1,"llama 地板",null,4);
+  put(ROOF.vMeas,cv("--accent"),0,"vLLM 实测",ROOF.vFloor,-10);
+  put(ROOF.lMeas,cv("--warn"),0,"llama 实测",ROOF.lFloor,10);
+  // 最右一档的"白丢":llama 实测与自己地板之间的差
+  var gx=x(cs[last])-30, gap=(ROOF.lMeas[last]-ROOF.lFloor[last]).toFixed(1);
+  svg.appendChild(el("line",{x1:gx,y1:y(ROOF.lFloor[last]),x2:gx,y2:y(ROOF.lMeas[last]),
+    stroke:cv("--crit"),"stroke-width":2.2}));
+  svg.appendChild(mono(gx,y(ROOF.lMeas[last])-9,
+    gap+" ms 白丢",cv("--crit"),10.5,"middle",700));
+  yLabel(svg,"DECODE STEP (ITL p50, log)",t,b); axisLabel(svg,"CONCURRENCY (log)",l,r,H);
+}
+
+
+/* ---------- Fig 4 ---------- */
+function figMem(){
+  var H=250, svg=frame("ch-mem",H); if(!svg) return;
+  var l=120,r=CW-30,t=46,b=H-52;
+  var x=lin(0,24,l,r);
+  [0,4,8,12,16,20,24].forEach(function(v){
+    svg.appendChild(el("line",{x1:x(v),y1:t-12,x2:x(v),y2:b,stroke:cv("--grid-2"),"stroke-width":1}));
+    svg.appendChild(mono(x(v),b+19,v,cv("--ink-3"),11,"middle",400)); });
+  var hh=42, gap=36;
+  MEM.forEach(function(m,i){
+    var yy=t+i*(hh+gap), acc=0;
+    svg.appendChild(mono(l-12,yy+hh/2+4,m.name,cv("--ink"),12,"end",700));
+    m.seg.forEach(function(s){
+      var w=x(acc+s[1])-x(acc);
+      var rc=el("rect",{x:x(acc),y:yy,width:Math.max(w,1),height:hh,fill:cv(s[2]),opacity:s[2]==="--ink-3"?.45:.85});
+      svg.appendChild(tip(rc,s[0]+"  "+s[1].toFixed(2)+" GiB"));
+      if(w>50) svg.appendChild(mono(x(acc)+w/2,yy+hh/2+4,s[1].toFixed(2),cv("--surface"),11.5,"middle",700));
+      acc+=s[1];
+    });
+    var iw=x(acc+m.idle)-x(acc);
+    svg.appendChild(el("rect",{x:x(acc),y:yy,width:iw,height:hh,fill:"none",stroke:cv("--crit"),
+      "stroke-width":1.4,"stroke-dasharray":"5 4"}));
+    if(iw>66) svg.appendChild(mono(x(acc)+iw/2,yy+hh/2+4,"闲置 "+m.idle.toFixed(1),cv("--crit"),11.5,"middle",700));
+    svg.appendChild(mono(l,yy-9,m.note,cv("--ink-3"),10.5,"start",500));
+  });
+  axisLabel(svg,"GiB（卡上可用 23.52 GiB）",l,r,H);
+}
+
+function draw(){ figCross(); figRoof(); figMem(); }
+draw();
+if(window.matchMedia){ var mq=window.matchMedia("(prefers-color-scheme:dark)");
+  if(mq.addEventListener) mq.addEventListener("change",draw); }
+})();
+</script>

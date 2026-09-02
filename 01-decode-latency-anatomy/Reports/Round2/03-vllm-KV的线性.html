@@ -1,0 +1,1776 @@
+<meta charset="utf-8">
+<title>KV 的线性</title>
+<style>
+  :root{
+    --ground:#F5F7F6; --surface:#FFFFFF; --surface-2:#EDF1F0; --surface-3:#E4EAE8;
+    --ink:#131C1B; --ink-2:#455553; --ink-3:#6E807D;
+    --rule:#D6DFDD; --rule-soft:#E6EBEA;
+    --accent:#0D7A80; --accent-2:#0A5C61; --accent-soft:rgba(13,122,128,.10);
+    --good:#2E7D4F; --warn:#B05A12; --crit:#A32F35; --violet:#5B4A8A;
+    --good-soft:rgba(46,125,79,.12); --warn-soft:rgba(176,90,18,.12); --crit-soft:rgba(163,47,53,.10);
+    --grid:rgba(19,28,27,.09); --grid-2:rgba(19,28,27,.055);
+    --shadow:0 1px 2px rgba(19,28,27,.05), 0 8px 24px -16px rgba(19,28,27,.22);
+    --font-mono:ui-monospace,"Cascadia Mono","SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --font-body:"Segoe UI",system-ui,-apple-system,"Helvetica Neue","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D1312; --surface:#141C1B; --surface-2:#1B2524; --surface-3:#223030;
+      --ink:#E2EAE8; --ink-2:#A3B4B0; --ink-3:#7E8F8B;
+      --rule:#26332F; --rule-soft:#1E2A28;
+      --accent:#45B6BC; --accent-2:#69CBD0; --accent-soft:rgba(69,182,188,.13);
+      --good:#58B87C; --warn:#DF9247; --crit:#E06A70; --violet:#9C88D4;
+      --good-soft:rgba(88,184,124,.13); --warn-soft:rgba(223,146,71,.13); --crit-soft:rgba(224,106,112,.12);
+      --grid:rgba(226,234,232,.11); --grid-2:rgba(226,234,232,.055);
+      --shadow:0 1px 2px rgba(0,0,0,.32), 0 10px 28px -18px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0D1312; --surface:#141C1B; --surface-2:#1B2524; --surface-3:#223030;
+    --ink:#E2EAE8; --ink-2:#A3B4B0; --ink-3:#7E8F8B;
+    --rule:#26332F; --rule-soft:#1E2A28;
+    --accent:#45B6BC; --accent-2:#69CBD0; --accent-soft:rgba(69,182,188,.13);
+    --good:#58B87C; --warn:#DF9247; --crit:#E06A70; --violet:#9C88D4;
+    --good-soft:rgba(88,184,124,.13); --warn-soft:rgba(223,146,71,.13); --crit-soft:rgba(224,106,112,.12);
+    --grid:rgba(226,234,232,.11); --grid-2:rgba(226,234,232,.055);
+    --shadow:0 1px 2px rgba(0,0,0,.32), 0 10px 28px -18px rgba(0,0,0,.7);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--ground); color:var(--ink);
+    font-family:var(--font-body); font-size:16px; line-height:1.65;
+    margin:0; padding:0 20px 96px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:940px; margin:0 auto}
+  .prose{max-width:66ch}
+
+  header{padding:56px 0 32px; border-bottom:1px solid var(--rule)}
+  .eyebrow{
+    font-family:var(--font-mono); font-size:11px; font-weight:600;
+    letter-spacing:.16em; text-transform:uppercase; color:var(--accent);
+    display:flex; align-items:center; gap:10px; margin:0 0 18px;
+  }
+  .eyebrow::after{content:""; flex:1; height:1px; background:var(--rule)}
+  h1{
+    font-size:clamp(30px,4.6vw,44px); line-height:1.16; font-weight:700;
+    letter-spacing:-.018em; margin:0 0 14px; text-wrap:balance;
+  }
+  .standfirst{font-size:17px; color:var(--ink-2); margin:0; max-width:62ch}
+
+  .spec{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(148px,1fr));
+    gap:1px; background:var(--rule); border:1px solid var(--rule);
+    margin:30px 0 0; border-radius:3px; overflow:hidden;
+  }
+  .spec div{background:var(--surface); padding:11px 14px}
+  .spec dt{
+    font-family:var(--font-mono); font-size:10px; font-weight:600;
+    letter-spacing:.12em; text-transform:uppercase; color:var(--ink-3); margin:0 0 3px;
+  }
+  .spec dd{
+    font-family:var(--font-mono); font-size:13px; margin:0; color:var(--ink);
+    font-variant-numeric:tabular-nums; word-break:break-word;
+  }
+
+  section{padding:52px 0 0}
+  h2{font-size:24px; font-weight:700; letter-spacing:-.012em; margin:0 0 8px; text-wrap:balance}
+  h2 .num{
+    font-family:var(--font-mono); font-size:12px; font-weight:600; color:var(--accent);
+    letter-spacing:.1em; display:block; margin-bottom:7px;
+  }
+  h3{font-size:17px; font-weight:650; margin:30px 0 8px; letter-spacing:-.005em}
+  p{margin:0 0 14px}
+  .lede{color:var(--ink-2); font-size:16px; margin-bottom:26px}
+  strong{font-weight:650}
+  code{
+    font-family:var(--font-mono); font-size:.88em; background:var(--surface-2);
+    padding:1px 5px; border-radius:3px; border:1px solid var(--rule-soft);
+    font-variant-numeric:tabular-nums;
+  }
+
+  .verdict{
+    background:var(--surface); border:1px solid var(--rule); border-radius:4px;
+    padding:24px 26px; box-shadow:var(--shadow); margin:0 0 28px;
+    border-left:3px solid var(--accent);
+  }
+  .verdict .k{
+    font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--ink-3); margin:0 0 10px;
+  }
+  .verdict .big{
+    font-family:var(--font-mono); font-size:clamp(21px,3.2vw,29px); font-weight:700;
+    color:var(--accent); letter-spacing:-.01em; margin:0 0 8px; font-variant-numeric:tabular-nums;
+  }
+  .verdict p{margin:0; color:var(--ink-2); font-size:15px}
+
+  .stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin:0 0 8px}
+  .stat{background:var(--surface); border:1px solid var(--rule); border-radius:4px; padding:16px 18px}
+  .stat .k{
+    font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--ink-3); margin:0 0 8px;
+  }
+  .stat .v{
+    font-family:var(--font-mono); font-size:23px; font-weight:700; letter-spacing:-.015em;
+    margin:0 0 4px; font-variant-numeric:tabular-nums; line-height:1.15;
+  }
+  .stat .v small{font-size:13px; font-weight:500; color:var(--ink-3); letter-spacing:0}
+  .stat .n{font-size:13px; color:var(--ink-3); margin:0; line-height:1.45}
+  .stat.ok .v{color:var(--good)} .stat.warn .v{color:var(--warn)} .stat.crit .v{color:var(--crit)}
+
+  figure{
+    margin:26px 0 0; background:var(--surface); border:1px solid var(--rule);
+    border-radius:4px; padding:22px 22px 16px; box-shadow:var(--shadow);
+  }
+  figcaption{
+    font-family:var(--font-mono); font-size:11px; font-weight:600; letter-spacing:.13em;
+    text-transform:uppercase; color:var(--ink-3); margin:0 0 4px;
+  }
+  .fig-title{font-size:16px; font-weight:650; margin:0 0 16px; letter-spacing:-.005em}
+  .chart{width:100%; overflow-x:auto}
+  .chart svg{display:block; width:100%; height:auto; min-width:520px}
+  .legend{
+    display:flex; flex-wrap:wrap; gap:8px 22px; margin:14px 0 0;
+    padding-top:13px; border-top:1px solid var(--rule-soft);
+    font-family:var(--font-mono); font-size:11.5px; color:var(--ink-2);
+  }
+  .legend span{display:flex; align-items:center; gap:7px}
+  .legend i{width:15px; height:2.5px; border-radius:2px; flex:none}
+  .legend i.d{height:0; border-top:2.5px dashed currentColor; border-radius:0}
+  .legend i.sq{width:11px; height:11px; border-radius:2px}
+  .note{font-size:13.5px; color:var(--ink-3); margin:13px 0 0; line-height:1.6; max-width:70ch}
+
+  .tw{overflow-x:auto; margin:22px 0 0; border:1px solid var(--rule); border-radius:4px; background:var(--surface)}
+  table{border-collapse:collapse; width:100%; font-family:var(--font-mono); font-size:12.5px; min-width:720px}
+  th,td{padding:8px 12px; text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap}
+  th{
+    font-size:10px; font-weight:600; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--ink-3); background:var(--surface-2); border-bottom:1px solid var(--rule);
+    position:sticky; top:0;
+  }
+  th:first-child,td:first-child{text-align:left}
+  tbody tr{border-bottom:1px solid var(--rule-soft)}
+  tbody tr:last-child{border-bottom:0}
+  tbody tr:hover{background:var(--surface-2)}
+  td.hl{color:var(--accent); font-weight:650}
+  td.bad{color:var(--crit); font-weight:650}
+  td.mid{color:var(--warn); font-weight:600}
+  td.gd{color:var(--good); font-weight:650}
+  tr.pick{background:var(--accent-soft)}
+  tr.pick td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+  tr.sep td{border-top:2px solid var(--rule)}
+  caption{
+    caption-side:bottom; text-align:left; padding:11px 12px; font-family:var(--font-body);
+    font-size:13px; color:var(--ink-3); border-top:1px solid var(--rule-soft);
+  }
+
+  ul.pts{list-style:none; padding:0; margin:16px 0 0; display:flex; flex-direction:column; gap:13px}
+  ul.pts li{padding-left:19px; position:relative; color:var(--ink-2); font-size:15px; max-width:68ch}
+  ul.pts li::before{
+    content:""; position:absolute; left:0; top:.62em; width:7px; height:2px;
+    background:var(--accent); border-radius:1px;
+  }
+  ul.pts li strong{color:var(--ink)}
+
+  .callout{
+    border:1px solid var(--rule); border-left:3px solid var(--warn);
+    background:var(--warn-soft); border-radius:4px; padding:16px 20px; margin:22px 0 0;
+  }
+  .callout.crit{border-left-color:var(--crit); background:var(--crit-soft)}
+  .callout.ok{border-left-color:var(--good); background:var(--good-soft)}
+  .callout .k{
+    font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.13em;
+    text-transform:uppercase; margin:0 0 7px; color:var(--warn);
+  }
+  .callout.crit .k{color:var(--crit)} .callout.ok .k{color:var(--good)}
+  .callout p{margin:0; font-size:14.5px; color:var(--ink-2)}
+  .callout p+p{margin-top:9px}
+
+  pre{
+    background:var(--surface-2); border:1px solid var(--rule); border-radius:4px;
+    padding:15px 17px; overflow-x:auto; margin:16px 0 0;
+    font-family:var(--font-mono); font-size:12.5px; line-height:1.7; color:var(--ink);
+  }
+  pre .c{color:var(--ink-3)}
+  pre .a{color:var(--accent); font-weight:600}
+  pre .w{color:var(--warn); font-weight:600}
+
+  footer{
+    margin-top:64px; padding-top:22px; border-top:1px solid var(--rule);
+    font-family:var(--font-mono); font-size:11.5px; color:var(--ink-3);
+    display:flex; flex-wrap:wrap; gap:6px 20px;
+  }
+  @media (max-width:640px){
+    header{padding-top:38px}
+    figure{padding:17px 14px 13px}
+    .verdict{padding:19px}
+  }
+  table.gloss { min-width: 620px; }
+  table.gloss th, table.gloss td {
+    text-align: left; white-space: normal; vertical-align: top; padding: 10px 14px 10px 0;
+  }
+  table.gloss td:nth-child(1) { white-space: nowrap; padding-left: 12px; }
+  table.gloss td:nth-child(2) { white-space: nowrap; color: var(--ink-2); }
+  table.gloss td:nth-child(3) {
+    min-width: 20rem; line-height: 1.6; font-family: var(--font-body); font-size: 13px;
+  }
+  table.gloss td:nth-child(4) {
+    min-width: 12rem; color: var(--accent); font-weight: 650; line-height: 1.55;
+  }
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">Length Sweep · Round 2 · RTX 4090</p>
+  <h1>KV 的线性</h1>
+  <p class="standfirst">
+    固定并发 16,输入长度从 256 扫到 4096,800 条请求全部成功,1 Hz 采样 501 个点。
+    这一轮回答三件事:KV 占用到底是不是线性的;在有并发的情况下,首字延迟里有多少是在"算"、
+    多少是在"等";以及<strong>并发和长度这两条轴,是不是同一件事的两种走法</strong>。
+  </p>
+  <dl class="spec">
+    <div><dt>GPU</dt><dd>RTX 4090 · 24 GB</dd></div>
+    <div><dt>vLLM</dt><dd>0.27.1 · V1</dd></div>
+    <div><dt>Torch</dt><dd>2.13.0+cu130</dd></div>
+    <div><dt>输入长度</dt><dd>256 → 4096 tok</dd></div>
+    <div><dt>输出 / 并发</dt><dd>256 tok / C=16</dd></div>
+    <div><dt>KV 池</dt><dd>6.41 GiB · 120,064 tok</dd></div>
+    <div><dt>请求</dt><dd>800 · 0 failed</dd></div>
+    <div><dt>抢占</dt><dd>0 次</dd></div>
+    <div><dt>驱动</dt><dd>580.159.03 · CUDA 13.0</dd></div>
+  </dl>
+</header>
+
+<!-- ============ 术语 ============ -->
+<section>
+  <h2><span class="num">术语</span>先把这些指标定义清楚</h2>
+  <p class="lede prose">
+    下面这些缩写在正文里会反复出现,它们<b>不是同义词</b> ——
+    每一个量的是流水线上不同的一段,彼此之间还有确定的换算关系。
+    本轮负载:<code>输入 256 → 4096 · 输出 256 · 固定并发 16</code>。本报告固定并发、只动输入长度,所以"输出吞吐"和"总吞吐"会朝相反方向走 —— 下表里那两行务必分清。
+  </p>
+
+  <pre>  t=0   客户端发出请求
+        │
+        │  [1] 排队 queue_time —— 在 waiting 队列里等调度器放行
+        │  [2] prefill —— 把 L 个输入 token 一次算完,写进 KV Cache
+        │  [3] 前端 + IPC —— 分词、HTTP、API server 与引擎之间的通信
+        │
+  <span class="a">━━━━━ [1]+[2]+[3]       = TTFT 首字延迟 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+        │
+        │      第 1 个输出 token 送达
+        │
+        │  [4] ITL × 255 —— 相邻两个输出 token 之间的间隔
+        │     这 255 个间隔的平均值 = TPOT
+        │
+  <span class="a">━━━━━ [1]+[2]+[3]+[4]   = E2EL 端到端时延 ━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+
+  <span class="c"># 恒等式:E2EL = TTFT + 255 × TPOT</span>
+  <span class="c"># 吞吐 = 所有请求的输出 token 总数 ÷ 整段测试的墙钟时间(不是 1/TPOT)</span></pre>
+
+  <div class="tw">
+    <table class="gloss">
+      <caption>本报告用到的全部指标 · 最后一列是本轮的实测范围</caption>
+      <thead><tr><th>指标</th><th>中文</th><th>量的是什么</th><th>本轮实测</th></tr></thead>
+      <tbody>
+        <tr><td><strong>TTFT</strong><br><span class="n" style="opacity:.7">Time To First Token</span></td><td>首字延迟</td><td>从客户端发出请求,到收到<b>第 1 个</b>输出 token。它包含排队 + prefill + 前端开销三段,<b>不含</b>后续解码。</td><td class="hl">270 → 1,319 ms(均值)</td></tr>
+        <tr><td><strong>ITL</strong><br><span class="n" style="opacity:.7">Inter-Token Latency</span></td><td>token 间隔</td><td>相邻两个输出 token 之间的时间。一条 256 token 的请求有 255 个 ITL 样本 —— 样本量大,所以它的 p99 最能暴露抖动。</td><td class="hl">16.47 → 20.26 ms(p50)</td></tr>
+        <tr><td><strong>ITL p99</strong></td><td>间隔的尾部</td><td>把所有 ITL 样本排序后第 99% 那个值。一次卡顿只影响少数间隔,均值和中位数都看不出来,<b>只有 p99 会跳</b>。</td><td class="hl">20.3 → 214.2 ms</td></tr>
+        <tr><td><strong>输出吞吐</strong><br><span class="n" style="opacity:.7">output token/s</span></td><td>用户拿到的</td><td>单位时间产出的<b>输出</b> token 数。这是用户真正感知的产能。</td><td class="hl">893 → 359 tok/s(<b>下降</b>)</td></tr>
+        <tr><td><strong>总吞吐</strong><br><span class="n" style="opacity:.7">total token/s</span></td><td>GPU 处理的</td><td>输入 + 输出一起算。长输入场景下它会上涨而输出吞吐下跌 —— <b>两者不可互相替代</b>。</td><td class="hl">1,786 → 6,109 tok/s(<b>上升</b>)</td></tr>
+        <tr><td><strong>preemption</strong><br><span class="n" style="opacity:.7">抢占</span></td><td>KV 不够时踢人</td><td>KV 池装不下时,调度器把某条正在跑的请求踢回队列,它已算出的 KV 被丢弃、恢复时要重算 prefill。计数器 <code>vllm:num_preemptions_total</code>,<b>vLLM V1 不打日志行</b>,只能从 /metrics 读。</td><td class="hl">全程 0 次</td></tr>
+        <tr><td><strong>KV 占用</strong><br><span class="n" style="opacity:.7">gpu_cache_usage_perc</span></td><td>KV 池用了多少</td><td>KV Cache 池的使用率。池子大小 = 显存扣掉权重与激活之后的余量,由启动日志给出;每 token 占 56 KiB,所以占用率 ≈ <code>并发 × 上下文 ÷ 池容量</code>。</td><td class="hl">6.8% → 57.8%</td></tr>
+        <tr><td><strong>Running / Waiting</strong></td><td>在跑的 / 在等的</td><td>服务端当前正在解码的请求数,和还在队列里等的请求数。两者之和等于客户端在飞的并发数。<b>Running 才是真实产能</b>。</td><td class="hl">Running 中位数 16(L=4096 为 15)、均值 14.8~15.4;Waiting 仅开场几秒非零</td></tr>
+        <tr><td><strong>tok/iter</strong><br><span class="n" style="opacity:.7">iteration_tokens_total</span></td><td>每步吃几个 token</td><td>一次前向里被一起算掉的 token 数 = 正在解码的请求数 + chunked prefill 切进来的块。<b>本报告最后证明:它才是真正的自变量</b> —— 并发轴和长度轴换算成它之后会重合。</td><td class="hl">30.3 → 265.1</td></tr>
+        <tr><td><strong>MFU / MBU</strong><br><span class="n" style="opacity:.7">算力 / 带宽利用率</span></td><td>离两堵墙还有多远</td><td>实测 FLOP/s ÷ 165.2 TF/s,与实测 byte/s ÷ 1,008 GB/s。<b>单看一个没用,放一起才知道该往哪儿优化</b>。</td><td class="hl">MFU 14.3→53.1%;MBU 82.1→43.6%</td></tr>
+        <tr><td><strong>算术强度</strong><br><span class="n" style="opacity:.7">arithmetic intensity</span></td><td>每搬一字节能算几次</td><td>实测 FLOP/s ÷ 实测 byte/s,单位 FLOP/byte。低于<b>脊点</b>(4090 是 163.9)就是带宽受限,高于就是算力受限。</td><td class="hl">28.5 → 199.5,在 L≈3,157 穿过脊点</td></tr>
+        <tr><td><strong>SLO</strong><br><span class="n" style="opacity:.7">Service Level Objective</span></td><td>服务等级目标</td><td>事先定下的延迟承诺,例如"p99 首字延迟不超过 1.5 秒"。压测的意义就是反查:在这条线以内,并发最多能开到多少。</td><td class="hl">本节反查:p99 &lt; 2 s ⇒ L 的红线在 1024~2048</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <p class="k">三个最容易混的地方</p>
+    <p>
+      <b>1 · TPOT 和 ITL 均值是同一件事的两种算法。</b>
+      TPOT 是"每条请求先算自己的平均,再对请求取中位数";ITL 均值是"把所有间隔倒在一起平均"。
+      负载均匀时两者几乎相等(本轮 C=1 都是 15.83 ms),
+      有长尾时会分开 —— <span class="hl">两者一分开,就说明存在少数被拖长的间隔</span>。
+    </p>
+    <p>
+      <b>2 · 看 p50 得不出任何关于抖动的结论。</b>
+      一次 200 ms 的停顿混在 25 万个间隔里,对中位数毫无影响,对均值影响也很小。
+      本系列反复出现的一条经验:<b>抖动只在 p99 上露头</b>;
+      而抢占这种更稀有的事件(万分之一量级)连 p99 都够不着,只能看专门的计数器。
+    </p>
+    <p>
+      <b>3 · 吞吐不是 1 / TPOT。</b>
+      TPOT 是单条请求的出字速度,吞吐是整台机器的产能 —— 后者约等于前者乘以并行的请求条数。
+      并发提高时 TPOT 会变差而吞吐会变好,<span class="hl">这正是压测要权衡的那个交换</span>。
+    </p>
+  </div>
+</section>
+
+
+<!-- ============ 结论 ============ -->
+<section>
+  <h2><span class="num">结论</span>线性得几乎没有误差</h2>
+  <p class="lede prose">
+    KV 占用随输入长度的增长,五个点全部落在一条直线上,R² = 0.99993。
+    斜率实测 15.99 —— 理论值是 16.00(并发数),<strong>偏差 0.045%</strong>。
+    这条直线的每一个系数都能从模型结构算出来,没有留下任何需要解释的余量。
+  </p>
+
+  <div class="verdict">
+    <p class="k">实测拟合</p>
+    <p class="big">KV<sub>tok</sub> = 15.99 · L + 3,933</p>
+    <p>
+      理论式是 <code>C · (L + 256)</code> = <code>16L + 4096</code>。截距差 163 个 token,
+      来自采样时刻各请求已生成的输出量不完全等于 256。换算成显存:
+      输入每加长 1 个 token,在 C=16 下多吃 <strong>896 KiB</strong> 的 KV 池。
+    </p>
+  </div>
+
+  <div class="stats">
+    <div class="stat ok">
+      <p class="k">线性拟合 R²</p>
+      <p class="v">0.99993</p>
+      <p class="n">5 个长度点,斜率与并发数只差 0.045%</p>
+    </div>
+    <div class="stat ok">
+      <p class="k">每 token 的 KV</p>
+      <p class="v">56<small> KiB</small></p>
+      <p class="n">两条独立路径验证:容量计数器,与 ITL 斜率</p>
+    </div>
+    <div class="stat ok">
+      <p class="k">两条轴落在同一条曲线</p>
+      <p class="v">≤0.7<small> pp</small></p>
+      <p class="n">并发轴与长度轴的 MFU 逐点偏差,真正的自变量是每步 token 数</p>
+    </div>
+    <div class="stat crit">
+      <p class="k">TTFT 里"真算"的比例</p>
+      <p class="v">9<small> ~ 28 %</small></p>
+      <p class="n">L=1024 时是 18%,其余 82% 是排队与抢步</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 线性 ============ -->
+<section>
+  <h2><span class="num">线性</span>斜率就是并发数</h2>
+  <p class="lede prose">
+    下面这张图里有两条线:粗虚线是 <code>16 × (L + 256) ÷ 120,064</code> 算出来的理论值,
+    细实线是服务端 <code>vllm:gpu_cache_usage_perc</code> 的实测峰值。
+    它们在五个点上几乎完全重叠 —— 这正是 PagedAttention 的设计承诺:
+    <strong>KV 占用只由 token 数决定,和批次形状、请求到达顺序都无关。</strong>
+  </p>
+
+  <figure>
+    <figcaption>Figure 1</figcaption>
+    <p class="fig-title">KV 池占用 vs 输入长度(固定并发 16)</p>
+    <div class="chart" id="ch-kv"></div>
+    <div class="legend">
+      <span style="color:var(--warn)"><i class="d" style="background:none"></i>理论峰值 16·(L+256)</span>
+      <span style="color:var(--warn)"><i style="background:currentColor"></i>实测峰值</span>
+      <span style="color:var(--accent)"><i style="background:currentColor"></i>实测稳态中位数</span>
+      <span style="color:var(--crit)"><i style="background:currentColor;height:9px;width:9px;border-radius:50%"></i>KV 池上限 100%</span>
+    </div>
+    <p class="note">
+      横轴按 2 的幂等距排列。L=256 / 1024 / 2048 / 4096 四个点与理论值差 0.00 ~ 0.21 个百分点。
+      唯一明显偏低的是 <strong>L=512:9.81% vs 理论 10.23%</strong> ——
+      注意这一点的 <code>kvMax</code> 恰好等于 <code>kvP90</code>,
+      是 1 Hz 采样没抓到峰顶的典型特征,不是模型偏差。
+    </p>
+  </figure>
+
+  <div class="tw">
+    <table>
+      <thead>
+        <tr>
+          <th>输入长度</th><th>单请求 tok</th><th>×16 =</th>
+          <th>理论峰值</th><th>实测峰值</th><th>偏差</th>
+          <th>实测稳态</th><th>反算单请求</th><th>KV 容量上限</th>
+        </tr>
+      </thead>
+      <tbody id="tb-kv"></tbody>
+      <caption>「反算单请求」= 实测峰值 tok ÷ 16,与「单请求 tok」列对照。「KV 容量上限」= 120,064 ÷ (L+256),即这张卡在该长度下能同时容纳的请求数。</caption>
+    </table>
+  </div>
+
+  <h3>56 KiB/token 是从模型结构里长出来的</h3>
+  <p class="prose">
+    池子的绝对大小来自服务端日志,每 token 的占用则完全由 Qwen2.5-7B 的注意力结构决定 ——
+    28 层、4 个 KV head(GQA,不是 28 个 Q head)、head_dim 128、bfloat16。
+  </p>
+
+  <pre><span class="c"># 单 token 的 KV 字节数</span>
+2 (K,V) × 28 层 × 4 KV head × 128 dim × 2 B = <span class="a">57,344 B = 56.0 KiB</span>
+
+<span class="c"># 服务端日志(第二轮)</span>
+Available KV cache memory: <span class="a">6.41 GiB</span>
+GPU KV cache size:         <span class="a">120,064 tokens</span>
+
+<span class="c"># 对账</span>
+6.41 GiB ÷ 56 KiB = <span class="a">120,025 token</span>   <span class="c">(日志 120,064,差 0.03%,来自 6.41 的四舍五入)</span>
+
+<span class="c"># GQA 省了多少:如果是 MHA(28 个 KV head)</span>
+56 KiB × 7 = <span class="w">392 KiB/token</span>  →  池子只剩 <span class="w">17,152 token</span>  →  C=16 时 L 最多 816
+
+<span class="c"># 这条公式的实用价值:不用跑测试就能算容量红线</span>
+单请求占满 8,192 上下文 = 8192 × 56 KiB = <span class="a">448 MiB</span>
+池子 6.41 GiB ÷ 448 MiB  = <span class="a">14.65 条</span>
+
+<span class="c"># 启动日志自己也算了一遍,是同一个数</span>
+Maximum concurrency for 8,192 tokens per request: <span class="a">14.66x</span>
+                          <span class="c">← 差 0.07%,同样来自 6.41 的四舍五入</span></pre>
+
+  <div class="callout ok">
+    <p class="k">这条线为什么值得亲手量一遍</p>
+    <p>
+      容量规划的全部内容就是这条直线。给定 KV 池 <code>P</code>、平均上下文 <code>L+O</code>,
+      并发上限就是 <code>P ÷ (L+O)</code>,没有第二个变量。
+      本轮 L=4096 时上限是 <strong>27 条</strong> —— 而启动参数写的是 <code>--max-num-seqs 128</code>,
+      名义值比真实值大 4.6 倍。
+    </p>
+    <p>
+      注意这个 27 是<strong>这台机器</strong>的数。第一轮同样的算法给出 20 条,
+      因为那台机器的池子只有 4.64 GiB。<span class="hl">斜率是模型的性质,截距是机器的性质</span> ——
+      前者可以跨机器搬,后者必须现读日志。
+    </p>
+  </div>
+</section>
+
+<!-- ============ 波形 ============ -->
+<section>
+  <h2><span class="num">波形</span>502 秒全程实况</h2>
+  <p class="lede prose">
+    五段测试连在一起看,KV 曲线是五级台阶,每一级都比上一级高得更多 —— 因为横轴的长度是翻倍的。
+    台阶顶部的锯齿是请求批次的换手:所有请求长度相同且 <code>--ignore-eos</code>,
+    它们几乎同时结束,腾出的槽位要等下一批 prefill 完才重新填满。
+  </p>
+
+  <figure>
+    <figcaption>Figure 2</figcaption>
+    <p class="fig-title">运行数 / 等待数 / KV 占用</p>
+    <div class="chart" id="ch-wave"></div>
+    <div class="legend">
+      <span style="color:var(--accent)"><i style="background:currentColor"></i>Running</span>
+      <span style="color:var(--crit)"><i style="background:currentColor"></i>Waiting</span>
+      <span style="color:var(--violet)"><i style="background:currentColor"></i>KV 占用(右轴)</span>
+    </div>
+    <p class="note">
+      锯齿周期等于单请求端到端时延:L=4096 时 11.4 s,与 e2e p50 = 11,368 ms 吻合。
+      稳态谷底与峰顶差约 5 个百分点(约 6,000 token),相当于 1.4 条请求的槽位在换手中途空着。
+    </p>
+  </figure>
+
+  <div class="callout">
+    <p class="k">Waiting 队列的两副面孔</p>
+    <p>
+      L=256 时 Waiting 恒为 0;L=512 与 L=1024 只有开场 1 秒有 9 / 5 条在等;
+      L=4096 开场 6 秒里 Waiting 从 12 一路降到 0 —— 因为 chunked prefill 每步只能塞进有限的 token,
+      16 条 4K 请求要排队进场。<strong>p99 TTFT = 6.03 s 几乎全部来自这 6 秒。</strong>
+    </p>
+    <p>
+      这一轮的关键对照是:L=4096 稳态时 KV 只有 <strong>52%–58%</strong>,
+      离池子满还差一大截 —— <span class="hl">卡住新请求的不是显存,是调度器每步的 token 预算</span>。
+      第一轮同一段测试 KV 已经到 80%,当时无法把这两个原因分开;
+      这一轮池子大了 38%,现象一模一样,结论就干净了。
+      全程 <code>preempt</code> 出现 <strong>0 次</strong>,没有任何请求被踢出重算。
+    </p>
+  </div>
+</section>
+
+<!-- ============ 排队 ============ -->
+<section>
+  <h2><span class="num">排队</span>首字延迟里,只有两成在算</h2>
+  <p class="lede prose">
+    这是本轮最想回答的问题。把 TTFT 拆成三段:排队(<code>request_queue_time</code>)、
+    prefill(<code>request_prefill_time</code>)、以及剩下的前端开销(分词 + HTTP + 首 token 送达)。
+    再把同轮 C=1 的单流测量放进来作参照 —— 那才是"纯计算"的下限。
+  </p>
+
+  <figure>
+    <figcaption>Figure 3</figcaption>
+    <p class="fig-title">TTFT 三段分解,与单流纯计算基线对照</p>
+    <div class="chart" id="ch-decomp"></div>
+    <div class="legend">
+      <span style="color:var(--crit)"><i class="sq" style="background:currentColor"></i>排队</span>
+      <span style="color:var(--warn)"><i class="sq" style="background:currentColor"></i>prefill(含抢步)</span>
+      <span style="color:var(--ink-3)"><i class="sq" style="background:currentColor"></i>前端 + IPC</span>
+      <span style="color:var(--good)"><i class="d" style="background:none"></i>单流纯 prefill 计算(推算)</span>
+    </div>
+    <p class="note">
+      三段之和 = 平均 TTFT。绿色虚线是 C=1 下同长度 prefill 需要的纯计算时间,
+      直接锚定同轮实测的 <b>L=1024 / C=1 → 93.5 ms</b>,按输入长度线性外推:
+      <code>93.5 ÷ 1024 = 0.0913 ms / 输入 token</code>。
+      它标在这里的意义是:线以下才是不可压缩的,线以上全都是并发带来的。
+    </p>
+    <p class="note">
+      这条斜率可以独立验一遍:<code>0.0913 ms/token</code> 反推出的 prefill 算力是
+      <span class="hl">142.9 TF/s</span>,而按秒采样抓到的 prefill 段平台值是
+      <span class="hl">146.3 TF/s</span>(见下文 Figure 5)——
+      <b>两条完全独立的路径差 2.4%</b>。所以这条基线既不是纯推算,也不是单点巧合。
+    </p>
+  </figure>
+
+  <figure>
+    <figcaption>Figure 4</figcaption>
+    <p class="fig-title">TTFT 中"算"与"等"的比例</p>
+    <div class="chart" id="ch-wait"></div>
+    <div class="legend">
+      <span style="color:var(--good)"><i class="sq" style="background:currentColor"></i>纯 prefill 计算</span>
+      <span style="color:var(--crit)"><i class="sq" style="background:currentColor"></i>排队 + 抢步 + 前端</span>
+    </div>
+    <p class="note">
+      柱上标的是"等"的占比。越短的输入,这个比例越高 —— L=256 时 91.3% 的首字延迟跟算 prompt 无关。
+      长输入反而"实在":L=4096 时纯计算占到 28.4%。
+      五个点(91.3 / 87.8 / 81.9 / 77.6 / 71.6)与第一轮(91.0 / 87.9 / 82.0 / 77.7 / 72.2)<b>逐点吻合到 0.6 个百分点以内</b>。
+    </p>
+  </figure>
+
+  <h3>同一段 prefill,并发下的墙钟贵了 3.9 倍</h3>
+  <p class="prose">
+    最干净的一组对照:同样是 1024 个 token 的 prefill,同轮 C=1 时服务端量到 <strong>93.5 ms</strong>,
+    本节 C=16 时量到 <strong>360.5 ms</strong>。同一段计算、同一张卡,<b>墙钟</b>慢了 3.9 倍。
+    多出来的 267 ms 不是排队(排队只有 47 ms),而是 <code>enable_chunked_prefill</code> 下,
+    这段 prefill 被切成块、混进 16 条正在解码的批次里,一块一块挤着算完的。
+    <span class="hl">第一轮这个倍数是 3.9,这一轮还是 3.9</span>。
+  </p>
+
+  <div class="tw">
+    <table>
+      <thead>
+        <tr>
+          <th>L=1024 的 TTFT</th><th>C=1(同轮)</th><th>C=16(本节)</th><th>倍数</th><th>占 C=16 原始比</th>
+        </tr>
+      </thead>
+      <tbody id="tb-q"></tbody>
+      <caption>C=1 数据取自本轮并发扫描的 c001 与同轮服务端直方图。单位 ms。</caption>
+    </table>
+  </div>
+
+  <div class="callout crit">
+    <p class="k">这就是"排队贡献了多少"的答案</p>
+    <p>
+      把并发扫描的单请求 TTFT 和本节叠在一起,<strong>517.0 ms 的平均首字延迟拆成四份</strong>。
+      注意下面这四个百分比是<b>扣掉 C=1 同名基线之后</b>的口径,
+      与上表「占 C=16 原始比」那一列不是一回事:
+    </p>
+    <p>
+      真正的 prefill 计算 <strong>18%</strong>(93.5 ms,C=1 实测,不可压缩)·
+      排队 <strong>9%</strong>(46.8 − 0.0 = 46.8 ms)·
+      prefill 被抢步 <strong>52%</strong>(360.5 − 93.5 = 267.0 ms)·
+      前端开销放大 <strong>20%</strong>(109.7 − 8.8 = 100.9 ms)。
+      余下的 1.7% 是单流本身就有的 8.8 ms 前端开销,四段加基线正好合成 517.0 ms。
+    </p>
+    <p>
+      换个分母结论一样:并发带来的<strong>增量是 414.7 ms</strong>,其中排队占 11.3%、
+      prefill 被抢步占 64.4%、前端放大占 24.3% —— 无论怎么切,
+      <strong>被抢步的 prefill 都是最大的一块</strong>。
+      (第一轮的同一组数是 11.5 / 64.9 / 23.7,三位数字全部复现。)
+    </p>
+    <p>
+      结论是:在 C=16 这种很普通的并发下,TTFT 已经基本是一个<strong>调度指标</strong>,
+      而不是一个算力指标 —— 想压 TTFT,该动的是调度器的单步预算而不是换卡。
+      那个参数具体是什么、本轮它的值是多少,见本节末尾。
+    </p>
+  </div>
+
+  <h3>中位数涨 3.5 倍,尾部涨 15 倍</h3>
+  <p class="prose">
+    上面那张分解图画的是<b>平均值</b>。换成分位数看,长度轴上同样是尾部先塌 ——
+    而且塌的原因和并发轴一模一样:排队。
+  </p>
+
+  <pre><span class="c"># L 从 256 拉到 4096(16 倍)</span>
+TTFT p50     297.5 →  1047.4 ms      <span class="a"> 3.5×</span>
+TTFT p99     390.3 →  6027.1 ms      <span class="w">15.4×</span>   <span class="c">← 尾部涨得远比中位数快</span>
+
+<span class="c"># 拆开看是哪一段在涨</span>
+排队           1.5 →   318.5 ms      <span class="w">212×</span>
+prefill      229.4 →   804.4 ms      <span class="a"> 3.5×</span>   <span class="c">← 和 p50 同速,它不是尾部的原因</span></pre>
+
+  <p class="prose">
+    一条 4096 token 的请求正在做 prefill 时,后面排队的那条要等它把一批 chunk 走完才轮得到 ——
+    <span class="hl">长 prefill 之间会互相阻塞</span>。所以排队时间涨了 212 倍,而 prefill 本身只涨 3.5 倍,
+    和上一段"TTFT 是调度指标"是同一件事的两种量法。
+  </p>
+
+  <div class="callout">
+    <p class="k">这条尾部曲线可以直接当选型工具用</p>
+    <p>
+      如果业务方给的 SLO 是「p99 TTFT &lt; 2 秒」,那么在 C=16 这个运行点上,
+      输入长度的红线落在 <strong>1024 与 2048 之间</strong> ——
+      L=1024 时 p99 = 1.45 s,还有余量;L=2048 时已经 2.97 s,超了。
+      注意这条线是<b>并发与长度的联合约束</b>:降并发能把它往右推,
+      本报告只固定在 C=16 量了一条。
+    </p>
+  </div>
+
+  <h3>那 <code>--max-num-batched-tokens</code> 到底是什么</h3>
+  <p class="prose">
+    它是 vLLM 调度器的<strong>单步 token 预算</strong> —— 每一次 forward(一个 engine step)里,
+    允许放进这一批的 token 总数上限。上面反复出现的"抢步""混批",全都由这一个数控制。
+  </p>
+
+  <pre><span class="c"># 一个 engine step 的 batch 是拼出来的</span>
+  decode token    每条正在生成的请求各贡献 <span class="a">1 个</span>
++ prefill chunk   新请求的 prompt 被切块,塞进来 <span class="a">一块</span>
+  ─────────────────────────────────────────────
+= <span class="a">iteration_tokens</span>   ≤  <span class="w">--max-num-batched-tokens</span>
+
+<span class="c"># 采样脚本里那一列量的正是这个和。本轮 C=16 各长度点的实测:</span>
+  L=256   每步 <span class="a">30.3</span> 个 token   其中 decode 16、prefill ≈ 14
+  L=1024  每步 <span class="a">76.5</span> 个 token   其中 decode 16、prefill ≈ 60
+  L=4096  每步 <span class="a">265.1</span> 个 token  其中 decode 15、prefill ≈ 250
+
+<span class="c"># 注意这是【平均】。真正决定 ITL 尾部的是【单步峰值】,见下。</span></pre>
+
+  <p class="prose">
+    它为什么是 ITL 的旋钮:这个数决定了<strong>一个正在解码的请求,每一步要陪别人算多少 prefill</strong>。
+  </p>
+  <ul class="pts">
+    <li><strong>调大</strong> → prefill 块更大 → 一个 prompt 用更少的 step 就算完 →
+      <span class="hl">TTFT 变好</span>;但每个 step 变长,解码方向被拖住 →
+      <span class="hl">ITL p99 变差</span>。</li>
+    <li><strong>调小</strong> → 反过来:ITL 尖峰变矮,TTFT 变差。</li>
+  </ul>
+  <p class="prose">
+    这正是本节结论指向的那个交换。而显存这条退路已经在上一节排除了
+    (L=4096 稳态 KV 只有 52%–58%),<span class="hl">能动的就只剩这个预算</span>。
+  </p>
+
+  <h3>反推:本轮的预算很可能是 2048</h3>
+  <p class="prose">
+    这个值没有打进服务端日志(日志只给了 <code>max_num_seqs 128</code> 和
+    <code>max_model_len 8192</code>),但可以从 ITL 的尾部反推出来。
+    思路是:<strong>一次 ITL 尖峰,就是那一步顺带算了一大块 prefill</strong>,
+    多出来的时间除以 prefill 的实测算力,就是那一块有多大。
+  </p>
+
+  <pre><span class="c"># 反推公式</span>
+块大小(token) = (ITL p99 − ITL p50) × <span class="a">146.3 TF/s</span> ÷ <span class="a">13.05 GFLOP/token</span>
+                 <span class="c">↑ 尖峰比常态多花的时间        ↑ prefill 段实测   ↑ 2N/token</span></pre>
+
+  <div class="tw">
+    <table>
+      <caption>六个互相独立的场景,反推出来的单步 prefill 块大小</caption>
+      <thead>
+        <tr><th>场景</th><th>ITL p50</th><th>ITL p99</th><th>超出</th><th>≈ 块大小</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>长度轴 L=512(本节)</td><td>16.76</td><td>55.7</td><td>38.9 ms</td><td>437 tok</td></tr>
+        <tr><td>长度轴 L=1024(本节)</td><td>17.23</td><td>185.5</td><td>168.3 ms</td><td class="hl">1,886 tok</td></tr>
+        <tr><td>长度轴 L=2048(本节)</td><td>18.23</td><td>200.3</td><td>182.1 ms</td><td class="hl">2,041 tok</td></tr>
+        <tr><td>长度轴 L=4096(本节)</td><td>20.26</td><td>214.2</td><td>193.9 ms</td><td class="hl">2,174 tok</td></tr>
+        <tr><td>并发轴 C=16</td><td>17.23</td><td>183.7</td><td>166.5 ms</td><td class="hl">1,866 tok</td></tr>
+        <tr><td>并发轴 C=32</td><td>19.82</td><td>197.2</td><td>177.4 ms</td><td class="hl">1,989 tok</td></tr>
+        <tr class="pick"><td>并发轴 C=64</td><td>22.50</td><td>207.6</td><td>185.1 ms</td><td class="hl">2,075 tok</td></tr>
+      </tbody>
+      <caption>并发轴数据取自同轮的并发扫描(L=1024)。</caption>
+    </table>
+  </div>
+
+  <div class="callout ok">
+    <p class="k">六个场景全部落在 2,000 上下</p>
+    <p>
+      长度轴和并发轴是两组完全不同的负载,却给出同一个数 ——
+      <strong>单步 prefill 块被 2048 卡住了</strong>。
+      L=512 那一行只有 437,因为那时 prompt 太短、凑不满一整块。
+    </p>
+    <p>
+      这也顺带解释了后面 Figure 10 里那个现象:<span class="hl">p99 ITL 稳定在 200 ms 左右,
+      不随长度继续涨</span>。块大小被预算钉死了,长输入涨的只是<b>块出现的频率</b>,不是块本身。
+    </p>
+  </div>
+
+  <h3>相关的几个参数,以及一个能证伪的实验</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>参数</th><th>本轮值</th><th>管什么</th></tr></thead>
+      <tbody>
+        <tr><td><code>--max-num-batched-tokens</code></td><td>未显式设置(反推 ≈ 2048)</td>
+            <td>单步 <b>token</b> 上限 —— 决定 prefill 块多大,直接决定 ITL 尾部</td></tr>
+        <tr><td><code>--max-num-seqs</code></td><td>128</td>
+            <td>单步 <b>请求条数</b> 上限。与上一条<b>同时生效,谁先满听谁的</b></td></tr>
+        <tr><td><code>--max-model-len</code></td><td>8,192</td>
+            <td>单请求上下文上限。关掉 chunked prefill 时,token 预算必须 ≥ 它</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <p class="k">一个足够具体、对不上就说明模型错了的预测</p>
+    <p>
+      把预算显式设成 <code>--max-num-batched-tokens 512</code> 重跑 L=4096 / C=16,
+      按上面同一条公式,p99 ITL 应该从 <strong>214 ms</strong> 掉到
+    </p>
+    <pre style="margin:.6rem 0">  20.26 ms  +  512 × 13.05 GFLOP ÷ 146.3 TF/s
+= 20.26 ms  +  <span class="a">45.7 ms</span>
+= <span class="a">约 66 ms</span>          <span class="c">同时 TTFT 会变差,因为 4096 个 token 要切成 8 块而不是 2 块</span></pre>
+    <p>
+      这个预测足够具体:<strong>对上了就说明"ITL 尾部 = 单步 prefill 块"这个模型成立</strong>,
+      对不上就说明还有别的东西在制造那 200 ms。
+      顺带也能验证反推出来的 2048 对不对 —— 如果显式设 2048 之后 p99 不变,就坐实了。
+    </p>
+  </div>
+</section>
+
+<!-- ============ 两台机器 ============ -->
+<section>
+  <h2><span class="num">物理</span>一张卡,两种完全不同的机器</h2>
+  <p class="lede prose">
+    <code>--enable-mfu-metrics</code> 打开后,<code>/metrics</code> 会多出
+    <code>estimated_flops_per_gpu_total</code> 与 <code>estimated_read_bytes_per_gpu_total</code>
+    两个累积计数器,采样脚本每秒抓一次。名字里的 <code>estimated</code> 是实打实的 ——
+    它是 vLLM 按模型结构和当步调度到的 token 数推出来的,不是 GPU 性能计数器,
+    因此不含 kernel launch、padding 这类实际损耗。
+    把这两条按秒画出来,会看到一个很干脆的现象:同一张 4090,
+    在"纯解码"的那一秒和"正在 prefill"的那一秒,算力相差 <strong>一个数量级</strong>。
+  </p>
+
+  <pre><span class="c"># 采样脚本抓到的每秒瞬时 TF/s(L=4096 开场 11 秒)</span>
+t+0   Running=1  Waiting=2   <span class="c">28.3 TF/s</span>   <span class="c">← 刚起步</span>
+t+1   Running=4  Waiting=12  <span class="w">146.4 TF/s</span>  <span class="c">← 纯 prefill,贴着峰值跑</span>
+t+2   Running=6  Waiting=10  <span class="w">144.7 TF/s</span>
+t+3   Running=9  Waiting=7   <span class="w">146.3 TF/s</span>
+t+4   Running=11 Waiting=5   <span class="w">144.7 TF/s</span>
+t+5   Running=14 Waiting=2   <span class="w">146.2 TF/s</span>
+t+6   Running=16 Waiting=0   <span class="w">144.6 TF/s</span>
+t+7   Running=16 Waiting=0   <span class="c">43.9 TF/s</span>   <span class="c">← 最后一块 prefill 收尾</span>
+t+8   Running=16 Waiting=0   <span class="a">12.6 TF/s</span>   <span class="c">← 纯 decode,掉到 1/12</span>
+t+9   Running=16 Waiting=0   <span class="a">12.3 TF/s</span>
+t+10  Running=16 Waiting=0   <span class="a">12.6 TF/s</span></pre>
+
+  <figure>
+    <figcaption>Figure 5</figcaption>
+    <p class="fig-title">全程瞬时算力:prefill 秒 vs decode 秒</p>
+    <div class="chart" id="ch-tf"></div>
+    <div class="legend">
+      <span style="color:var(--warn)"><i style="background:currentColor"></i>实测 TF/s(每秒)</span>
+      <span style="color:var(--crit)"><i class="d" style="background:none"></i>4090 BF16 峰值 165.2 TF/s</span>
+    </div>
+    <p class="note">
+      解码底噪在全程都稳定在 12–14 TF/s(中位 13.8),和输入长度几乎无关;
+      每一根冲到 145–170 TF/s 的尖峰都是一次 prefill。长输入的尖峰更密、更宽,
+      整段测试的平均 MFU 就是这么被抬上去的。全程最高一点 169.2 TF/s = 102.4% MFU。
+    </p>
+  </figure>
+
+  <figure>
+    <figcaption>Figure 6</figcaption>
+    <p class="fig-title">Roofline 换边:算力利用率 vs 带宽利用率</p>
+    <div class="chart" id="ch-roof"></div>
+    <div class="legend">
+      <span style="color:var(--warn)"><i style="background:currentColor"></i>MFU(算力利用率)</span>
+      <span style="color:var(--accent)"><i style="background:currentColor"></i>MBU(带宽利用率)</span>
+    </div>
+    <p class="note">
+      分子是窗口内 <code>estimated_flops_per_gpu_total</code> / <code>estimated_read_bytes_per_gpu_total</code>
+      的首尾差分除以窗口时长,分母是 165.2 TF/s(BF16 稠密峰值)与 1,008 GB/s。
+      L=256 时 MBU 82.1% 已经贴住带宽墙,MFU 只有 14.3%;L=4096 时反过来,MFU 53.1%、MBU 43.6%。
+      两条线在 <strong>L≈3,157</strong> 相交(L=2048 处相差 −15.8 pp、L=4096 处 +9.5 pp,在 log₂ 上插值)。
+    </p>
+    <p class="note">
+      两条线交叉,在代数上等价于<strong>「算术强度穿过脊点」</strong> —— 这不是巧合而是恒等式,
+      推导与逐点验算见下一小节。这条曲线真正在说的是:
+      <strong>把 prompt 拉长,等于把算力密集的 prefill 在时间里的占比拉高</strong>,
+      稀缺资源随之从带宽换成算力。
+    </p>
+  </figure>
+
+  <h3>这两个比值到底是什么</h3>
+  <p class="prose">
+    一张 GPU 干活时有两堵墙:<strong>每秒能算多少次乘加</strong>,和<strong>每秒能从显存搬多少字节</strong>。
+    任何 kernel 都会先撞上其中一堵。MFU 与 MBU 就是分别量"离这两堵墙还有多远"的比值 ——
+    单看一个没什么用,<strong>放一起看才知道该往哪儿优化</strong>:MBU 高就去压显存流量
+    (量化权重、加大 batch、缩 KV),MFU 高就去换更好的 kernel 或更低的精度。
+  </p>
+  <p class="prose">
+    MFU 这个叫法来自 Google 的 PaLM 论文,它区分 <strong>MFU</strong>(只算模型本身必需的 FLOPs)
+    与 <strong>HFU</strong>(含重计算等硬件真正执行的)。本节全部是 MFU 口径。
+  </p>
+
+  <pre><span class="c"># 分子 —— 采样脚本每秒抓的两个单调累积量,分析时做窗口首尾差分 ÷ 窗口时长</span>
+estimated_flops_per_gpu_total       →  CSV 的 <span class="a">flops</span> 列
+estimated_read_bytes_per_gpu_total  →  CSV 的 <span class="a">read_bytes</span> 列
+
+<span class="c"># vLLM 内部怎么估的(拿本轮五个零抢占的点反推,能对上)</span>
+FLOPs/token   ≈ <span class="a">13.05 GFLOP</span>                  <span class="c">2N,N = 7.07e9,即总参数减掉 embedding</span>
+              + <span class="a">0.000401 GFLOP</span> × 上下文长度   <span class="c">注意力项 = 4 × d_model(3584) × 层数(28)</span>
+
+每次迭代读字节 ≈ <span class="a">14.14 GB</span>                    <span class="c">全部权重(不含 embedding),与 batch 无关</span>
+              + <span class="a">16 × L × 56 KiB</span>             <span class="c">批内所有请求的 KV</span>
+
+<span class="c"># 第二条可以当场验证(L=256)</span>
+55.8 迭代/s × (14.14 + 0.35) GB = <span class="a">809 GB/s</span>    实测 <span class="a">827.7 GB/s</span>   <span class="c">差 −2.2%,见下节</span></pre>
+
+  <pre><span class="c"># 分母 —— 两个规格数</span>
+<span class="a">165.2 TF/s</span>   RTX 4090 BF16 张量核心「稠密」峰值
+             <span class="c">2:4 稀疏是 330.3 —— 用它会让 MFU 直接腰斩,写报告必须注明取的是哪一个</span>
+<span class="a">1,008 GB/s</span>   显存带宽 = 384-bit × 21 Gbps GDDR6X
+
+<span class="c"># 代进去</span>
+L=256 :  MFU = 23.55 ÷ 165.2 = <span class="a">14.3%</span>     MBU = 827.7 ÷ 1008 = <span class="a">82.1%</span>
+L=4096:  MFU = 87.64 ÷ 165.2 = <span class="a">53.1%</span>     MBU = 439.2 ÷ 1008 = <span class="a">43.6%</span></pre>
+
+  <h3>反向走的原因:算术强度</h3>
+  <p class="prose">
+    真正在动的量是<strong>算术强度</strong>(arithmetic intensity)—— 每从显存搬一个字节,能顺带算多少次浮点。
+    它低于<strong>脊点</strong>就是带宽受限,高于就是算力受限。
+    4090 的脊点 = 165.2 TF/s ÷ 1,008 GB/s = <strong>163.9 FLOP/byte</strong>。
+  </p>
+
+  <div class="tw">
+    <table>
+      <thead>
+        <tr><th>输入长度</th><th>算术强度</th><th>÷ 脊点</th><th>MFU</th><th>MBU</th></tr>
+      </thead>
+      <tbody>
+          <tr><td>L = 256</td><td class="hl">28.5</td><td>0.17 ×</td><td>14.3%</td><td>82.1%</td></tr>
+          <tr><td>L = 512</td><td class="hl">43.8</td><td>0.27 ×</td><td>20.4%</td><td>76.3%</td></tr>
+          <tr><td>L = 1024</td><td class="hl">67.2</td><td>0.41 ×</td><td>28.3%</td><td>68.9%</td></tr>
+          <tr><td>L = 2048</td><td class="hl">118.2</td><td>0.72 ×</td><td>40.9%</td><td>56.7%</td></tr>
+          <tr class="pick"><td>L = 4096</td><td class="hl">199.5</td><td>1.22 ×</td><td>53.1%</td><td>43.6%</td></tr>
+      </tbody>
+      <caption>算术强度 = Δflops ÷ Δread_bytes,单位 FLOP/byte。「÷ 脊点」这一列同时也就是 <b>MFU ÷ MBU</b>(0.174 / 0.267 / 0.410 / 0.721 / 1.218)—— 原因见下方恒等式。</caption>
+    </table>
+  </div>
+
+  <pre><span class="c"># 这不是巧合,是一个恒等式</span>
+MFU ÷ MBU = (FLOPs ÷ bytes) ÷ (峰值算力 ÷ 峰值带宽) = <span class="a">算术强度 ÷ 脊点</span>
+
+<span class="c"># 所以「两条线交叉」和「算术强度穿过脊点」是同一件事</span>
+
+<span class="c"># 但分相来看,负载从来没有停在脊点上:</span>
+单个 decode 步    209 GFLOP ÷ 14.5 GB  = <span class="a">12 ~ 15</span> FLOP/byte      <span class="c">远低于 163.9,深度带宽受限</span>
+一段 prefill      L × 13.05 GFLOP ÷ 14.14 GB
+                  L=256   → <span class="w">236</span> FLOP/byte
+                  L=4096  → <span class="w">3,780</span> FLOP/byte                <span class="c">远高于 163.9,深度算力受限</span></pre>
+
+  <p class="prose">
+    换句话说:<strong>把 prompt 拉长,没有让任何一个 kernel 变得更"算力密集"</strong> ——
+    decode 步的强度甚至还从 14.8 掉到了 11.9(KV 读得更多)。
+    变的只是算力密集的 prefill 在时间轴上占了更大比例,于是<strong>平均强度</strong>被抬过了脊点。
+  </p>
+
+  <div class="callout">
+    <p class="k">四个别踩的坑</p>
+    <p>
+      <strong>1 · <code>estimated_</code> 不是硬件计数器。</strong>
+      它按模型结构和当步调度到的 token 数推算,不含 kernel launch 开销、CUDA graph padding,
+      也不含 softmax / LayerNorm / RoPE / 采样这些非 GEMM 算子。
+      好处是它跟着调度器走;坏处是它系统性地偏"干净"。
+    </p>
+    <p>
+      <strong>2 · <code>read_bytes</code> 只数读,不数写。</strong>
+      KV 写入、激活写回都没算进去,所以这里的 MBU 是<strong>下界</strong> ——
+      真实的带宽占用比 82.1% 还要高。
+    </p>
+    <p>
+      <strong>3 · 分母是规格书数字。</strong>Boost 频率、不降频、无其它开销。
+      本轮按秒采样里有点算出 169.2 TF/s = <strong>102.4% MFU</strong> ——
+      能超过 100%,就说明这对分子分母的精度大约在 ±5%,<strong>别读第三位有效数字</strong>。
+    </p>
+    <p>
+      <strong>4 · 分相看才有意义。</strong>纯 decode 的 MFU 恒在 8.4% 上下,看它没用,
+      那些秒该看 MBU;纯 prefill 的 MBU 只有百分之十几,该看 MFU(实测 88%–102%)。
+      整段窗口的平均值只适合回答"这段负载的配比是什么",
+      不适合回答"我的 kernel 写得好不好"。
+    </p>
+  </div>
+</section>
+
+<!-- ============ 带宽账 ============ -->
+<section>
+  <h2><span class="num">带宽</span>每一步都要把整个模型重读一遍</h2>
+  <p class="lede prose">
+    显存读字节这条计数器可以完整对上账。每个 decode step 要读两样东西:
+    全部权重(14.14 GB,与 batch 无关),以及批内所有请求的 KV(= 16 × L × 56 KiB,随 L 线性增长)。
+    把这两项按实测迭代率乘出来,和 <code>read_bytes</code> 的实测速率对照:
+  </p>
+
+  <figure>
+    <figcaption>Figure 7</figcaption>
+    <p class="fig-title">显存读带宽拆账:权重重读 vs KV 读取</p>
+    <div class="chart" id="ch-bw"></div>
+    <div class="legend">
+      <span style="color:var(--accent)"><i class="sq" style="background:currentColor"></i>权重重读</span>
+      <span style="color:var(--violet)"><i class="sq" style="background:currentColor"></i>KV 读取</span>
+      <span style="color:var(--ink-3)"><i style="background:currentColor"></i>实测 read_bytes 速率</span>
+      <span style="color:var(--crit)"><i class="d" style="background:none"></i>4090 峰值 1,008 GB/s</span>
+    </div>
+    <p class="note">
+      二项模型在全部五个点上都<strong>略低于</strong>实测:L=256 差 −2.2%,到 L=4096 差 −6.7%。
+      而且差额随 L 单调增大 —— 多出来的正是 prefill 阶段的激活读写,那部分不在这个二项模型里,
+      长输入的 prefill 占比更高,差额自然更大。
+      <span class="hl">残差有方向、有解释,说明这个二项模型抓住了主干</span>。
+    </p>
+  </figure>
+
+  <h3>ITL 的斜率,是 56 KiB/token 的第二次独立验证</h3>
+  <p class="prose">
+    第一次验证靠的是容量(KV 占用计数器)。第二次完全不看计数器,只看时间:
+    单步 decode 的中位耗时随上下文线性增长,而这个斜率应该恰好等于
+    "多读的 KV 字节 ÷ 显存带宽"。
+  </p>
+
+  <pre><span class="c"># 实测线性拟合(5 个点,R² = 0.99989)</span>
+ITL_p50(L) = 16.23 ms + <span class="a">0.00098</span> ms/token · L
+
+<span class="c"># 理论:每步多读的 KV = 16 条 × 1 token × 56 KiB</span>
+16 × 57,344 B ÷ 1,008 GB/s = <span class="a">0.00091 ms/token</span>
+
+<span class="c"># 吻合度</span>
+0.00091 ÷ 0.00098 = <span class="a">93%</span>  <span class="c">← KV 读取跑到了显存带宽峰值的 93%(第一轮 92%)</span></pre>
+
+  <figure>
+    <figcaption>Figure 8</figcaption>
+    <p class="fig-title">单步解码耗时 vs 上下文长度</p>
+    <div class="chart" id="ch-itl"></div>
+    <div class="legend">
+      <span style="color:var(--accent)"><i style="background:currentColor"></i>实测 ITL p50</span>
+      <span style="color:var(--good)"><i class="d" style="background:none"></i>16.23 + 0.00091·L(纯带宽推算)</span>
+    </div>
+    <p class="note">
+      横轴是线性刻度。上下文拉长 16 倍,单步解码只慢了 23%(16.47 → 20.26 ms)——
+      因为大头是那 14.14 GB 权重,它跟上下文长度无关。这是"长上下文并不会让解码变慢多少"的定量版本。
+    </p>
+  </figure>
+
+  <h3>把斜率换成绝对值:每个长度点的解码地板</h3>
+  <p class="prose">
+    上面验的是<b>斜率</b>(每多一个 token 多花多少时间)。同一个模型也能给出<b>绝对值</b>:
+    一步解码至少要把权重完整读一遍、再把批内所有请求的 KV 读一遍,
+    这些字节除以峰值带宽就是这一步的时间下限。
+  </p>
+
+  <pre><span class="c"># 地板 = (权重 + running均值 × 上下文 × 56 KiB) / 1008 GB/s</span>
+<span class="c"># 权重取 14.14 GB —— 总参数减掉 embedding,查表不流过 HBM</span>
+
+    L    上下文   running均   地板 ms   实测 ITL p50   达成率
+  256      384     15.39      14.37       16.47       <span class="a">87.2%</span>
+  512      640     14.60      14.56       16.76       <span class="a">86.9%</span>
+ 1024     1152     15.28      15.03       17.23       <span class="a">87.2%</span>
+ 2048     2176     15.03      15.89       18.23       <span class="a">87.2%</span>
+ 4096     4224     14.85      17.60       20.26       <span class="a">86.9%</span>
+
+<span class="c"># 16 倍长度跨度里,达成率只在 0.4 个百分点内浮动</span></pre>
+
+  <div class="callout ok">
+    <p class="k">容量规划可以完全用算的,压测只用来标定</p>
+    <p>
+      给定上下文长度和并发数,现在能预测两件事:<b>KV 占用</b>(第二节,偏差 0.21 个百分点内)
+      和<b>解码步长</b>(这张表,达成率稳定在 87%)。两者合起来足以回答
+      "这张卡能扛多少并发、p99 会到多少"——<span class="hl">不用租机器穷举每个配置</span>。
+    </p>
+    <p>
+      并发轴上的同一张账在《vllm-01-Qwen2.5-7B并发曲线》里:C 从 1 到 64,达成率从 89.0% 掉到 81.0%。
+      两条轴的达成率都在 80% 到 90% 这个带子里,<b>但长度轴几乎是平的、并发轴掉了 8 个点</b> ——
+      因为加并发要多付调度和 kernel 效率,而拉长度只是让同一批权重多带几个 token。
+    </p>
+  </div>
+</section>
+
+<!-- ============ 代价 ============ -->
+<section>
+  <h2><span class="num">代价</span>吞吐的分叉</h2>
+  <p class="lede prose">
+    长度这个轴上有一个容易踩的坑:总 token 吞吐一路上涨,看起来机器越用越好;
+    但用户真正拿到的输出 token 吞吐一路下跌。两条线朝相反方向走。
+  </p>
+
+  <figure>
+    <figcaption>Figure 9</figcaption>
+    <p class="fig-title">输出吞吐下跌,总吞吐上涨</p>
+    <div class="chart" id="ch-tp"></div>
+    <div class="legend">
+      <span style="color:var(--accent)"><i style="background:currentColor"></i>输出 token/s(用户拿到的)</span>
+      <span style="color:var(--warn)"><i style="background:currentColor"></i>总 token/s(GPU 处理的)</span>
+    </div>
+    <p class="note">
+      L 从 256 涨到 4096:总吞吐 1,786 → 6,109 tok/s(+242%),输出吞吐 893 → 359 tok/s(−60%)。
+      如果你的看板只画了 <code>total_token_throughput</code>,这段退化是完全看不见的。
+    </p>
+  </figure>
+
+  <figure>
+    <figcaption>Figure 10</figcaption>
+    <p class="fig-title">ITL 分位数:尾部在 L=4096 塌掉</p>
+    <div class="chart" id="ch-itltail"></div>
+    <div class="legend">
+      <span style="color:var(--ink-3)"><i style="background:currentColor"></i>p50</span>
+      <span style="color:var(--warn)"><i style="background:currentColor"></i>p90</span>
+      <span style="color:var(--crit)"><i style="background:currentColor"></i>p99</span>
+      <span style="color:var(--accent)"><i class="d" style="background:none"></i>均值(= TPOT)</span>
+    </div>
+    <p class="note">
+      p50 从 16.5 涨到 20.3 ms,温和。但 p99 从 L=256 的 20.3 ms 一路跳到 L=4096 的 214.2 ms ——
+      <strong>百分之一的 token 间隔卡在别人的 prefill 上</strong>。均值 TPOT 40.5 ms 是 p50 的 2.0 倍,
+      说明将近一半的解码时间被别人的 prefill 吃掉了。
+    </p>
+  </figure>
+
+  <h3>但每个输入 token 的成本,是一路下降的</h3>
+  <p class="prose">
+    输出吞吐跌了 60%,不等于"处理输入"这件事变贵了。把 prefill 耗时除以输入长度,
+    得到的单位成本一路走低 —— 方向和输出吞吐正好相反。
+  </p>
+
+  <pre><span class="c"># prefill 墙钟 ÷ 输入长度</span>
+  L=256    229.4 ms ÷  256 = <span class="w">0.896</span> ms / 输入 token
+  L=512    281.7 ms ÷  512 = <span class="w">0.550</span>
+  L=1024   360.5 ms ÷ 1024 = <span class="a">0.352</span>
+  L=2048   547.1 ms ÷ 2048 = <span class="a">0.267</span>
+  L=4096   804.4 ms ÷ 4096 = <span class="a">0.196</span>   <span class="c">← 比 L=256 便宜 4.6 倍</span></pre>
+
+  <p class="prose">
+    原因就是上一节那条 roofline:prefill 是算力密集的,一次前向把 14.14 GB 权重读一遍,
+    能摊给 4096 个 token,而不是只摊给 256 个。
+    <span class="hl">所以把多个短请求拼成一个长请求,往往比分开发更划算</span>。
+  </p>
+
+  <div class="callout crit">
+    <p class="k">但这只降低了单位成本,没降低总成本</p>
+    <p>
+      同一批数据里,TTFT p50 仍然从 <strong>298 ms 涨到 1047 ms</strong> —— 用户还是要多等。
+      "每 token 更便宜"是给运营看的账,"首字更慢"是给用户看的账,两本账方向相反。
+      拼请求之前先确认你优化的是哪一本。
+    </p>
+  </div>
+
+  <div class="callout">
+    <p class="k">Figure 9 那个交点,是划分负载类型的线</p>
+    <p>
+      输出吞吐与总吞吐两条线在 <strong>L≈512</strong> 附近交叉。左边是<b>生成密集</b> ——
+      GPU 大部分时间在出字,输出吞吐说了算;右边是<b>处理密集</b> ——
+      大部分算力花在啃输入上。
+      <span class="hl">RAG、长文摘要、代码库问答落在右半边;对话式、补全类负载落在左半边</span>。
+      两边该盯的指标不同,该调的参数也不同。
+    </p>
+  </div>
+</section>
+
+<!-- ============ 两个轴 ============ -->
+<section>
+  <h2><span class="num">对照</span>同样的 KV 占用,输出吞吐差 3.9 倍</h2>
+  <p class="lede prose">
+    把两条轴放在同一张图上:并发轴(L=1024,C 从 1 到 64)和长度轴(C=16,L 从 256 到 4096)。
+    横轴统一成 KV 池占用 —— 也就是"这次请求吃掉了多少显存预算"。
+  </p>
+
+  <figure>
+    <figcaption>Figure 11</figcaption>
+    <p class="fig-title">花同样的 KV,两条路径拿到的输出吞吐</p>
+    <div class="chart" id="ch-axes"></div>
+    <div class="legend">
+      <span style="color:var(--accent)"><i style="background:currentColor"></i>并发轴(L=1024 固定)</span>
+      <span style="color:var(--warn)"><i style="background:currentColor"></i>长度轴(C=16 固定)</span>
+    </div>
+    <p class="note">
+      两条曲线在 L=1024 / C=16 那一点相交(17.0% KV,681 vs 699 tok/s,两次独立测量吻合到 2.6% 以内)。
+      往右走,并发轴向上、长度轴向下。
+    </p>
+  </figure>
+
+  <div class="tw">
+    <table>
+      <thead>
+        <tr>
+          <th>KV 占用</th><th>并发轴配置</th><th>输出 tok/s</th>
+          <th>长度轴配置</th><th>输出 tok/s</th><th>并发轴 / 长度轴</th>
+        </tr>
+      </thead>
+      <tbody id="tb-axes"></tbody>
+      <caption>KV 占用相近的点两两配对。两条轴均取自本轮(Round 2)。</caption>
+    </table>
+  </div>
+
+  <div class="callout crit">
+    <p class="k">KV 占用是成本指标,不是产出指标</p>
+    <p>
+      C=64/L=1024 和 C=16/L=4096 吃掉的 KV 差不多(67.5% vs 57.8%),p99 TTFT 也差不多(5.92 s vs 6.03 s),
+      但输出吞吐差 <strong>3.9 倍</strong>(1,388 vs 359 tok/s)。
+      (这个 3.9 和第三节 prefill 墙钟那个 3.9 毫无关系,数值撞车纯属巧合。)原因很直白:
+      解码吞吐正比于批内序列条数,而 KV 占用正比于批内 token 总数。
+      <strong>长上下文用同样的显存,换来的是更少的并行解码流。</strong>
+    </p>
+    <p>
+      有意思的是总 token 吞吐反而接近(6,939 vs 6,109 tok/s)—— GPU 干的活儿总量差不多,
+      区别只在于这些活儿有多少变成了用户看得见的输出。
+      <span class="hl">这个 3.9 倍在第一轮也是 3.9 倍</span>,尽管两轮的 KV 池差了 38%。
+    </p>
+  </div>
+
+  <h3>两轮测试在 L=1024 / C=16 上的吻合度</h3>
+  <div class="tw">
+    <table>
+      <thead>
+        <tr><th>指标</th><th>第一轮 c016</th><th>第二轮 c016</th><th>第二轮 len_1024</th><th>极差</th></tr>
+      </thead>
+      <tbody id="tb-repro"></tbody>
+      <caption>c016 为 200 条请求的并发扫描点,len_1024 为 160 条请求的长度扫描点,采样与统计口径一致。<strong>最后一行 38.7% 的极差不是测量分歧</strong> —— 两轮 KV 池分别是 86,896 与 120,064 tok,同样的 20,480 个 token 占比自然不同;分子完全一致(20,485 vs 20,435,差 0.24%)。</caption>
+    </table>
+  </div>
+
+  <h3>换个横轴,两条轴就重合了</h3>
+  <p class="prose">
+    上面那张图说的是"KV 占用预测不了产出"。但这两条轴并非没有共同语言 ——
+    只要把横轴换成<strong>一次迭代里参与计算的 token 总数</strong>
+    (就是 <code>--max-num-batched-tokens</code> 那一节量的 <code>iteration_tokens</code>),
+    它们的利用率曲线会叠在一起。
+  </p>
+
+  <figure>
+    <figcaption>Figure 12</figcaption>
+    <p class="fig-title">两条轴,同一条曲线:MFU / MBU vs 每步 token 数</p>
+    <div class="chart" id="ch-toki"></div>
+    <div class="legend">
+      <span style="color:var(--accent)"><i style="background:currentColor"></i>MBU · 长度轴(C=16 固定)</span>
+      <span style="color:var(--crit)"><i style="background:currentColor"></i>MFU · 长度轴(C=16 固定)</span>
+      <span style="color:var(--ink-3)"><i class="d" style="background:none"></i>并发轴(L=1024 固定,C 从 1 到 64)</span>
+    </div>
+    <p class="note">
+      横轴对数。把并发轴按 tok/iter 在对数轴上插值到长度轴的五个点,逐点相减:
+      MFU 是 +0.3 / +0.1 / +0.0 / +0.5 / −0.7,MBU 是 +3.6 / +2.0 / +0.3 / +0.1 / −2.3 ——
+      <strong>MFU 全程不超过 0.7 个百分点,MBU 不超过 3.6</strong>。
+      两条完全独立的实验,落在同一条曲线上。
+    </p>
+  </figure>
+
+  <div class="callout ok">
+    <p class="k">真正的自变量既不是并发数,也不是序列长度</p>
+    <p>
+      是<strong>每步 token 数</strong>。C=64 × 1,152 和 C=16 × 4,224 的 tok/iter
+      分别是 311.6 和 265.1,落在同一个区间 —— 利用率也就落在同一个位置
+      (MBU 43.2% vs 43.6%)。这解释了一件事:为什么
+      《vllm-01-Qwen2.5-7B并发曲线》Figure 4 那张"两堵墙"和本报告 Figure 6 长得几乎一样。
+      <span class="hl">它们画的本来就是同一条曲线,只是从两条不同的路走上去的</span>。
+    </p>
+    <p>
+      实用含义:想估一个没测过的配置落在哪堵墙上,不用管它是"高并发短上下文"
+      还是"低并发长上下文",<b>先把 tok/iter 算出来</b>,再到这条曲线上查。
+      两条轴唯一分家的地方在产出侧 —— 同样的 tok/iter,并发轴换来更多输出 token,
+      这正是上一段那 3.9 倍。
+    </p>
+  </div>
+</section>
+
+<!-- ============ 数据 ============ -->
+<section>
+  <h2><span class="num">数据</span>完整测量结果</h2>
+  <div class="tw">
+    <table>
+      <thead>
+        <tr>
+          <th>L</th><th>耗时 s</th>
+          <th>KV 峰值</th><th>Wait 峰值</th>
+          <th>TTFT p50</th><th>TTFT p99</th>
+          <th>排队</th><th>prefill</th>
+          <th>TPOT</th><th>ITL p50</th><th>ITL p90</th><th>ITL p99</th>
+          <th>E2EL p50</th>
+          <th>输出 tok/s</th><th>总 tok/s</th><th>tok/iter</th>
+          <th>MFU</th><th>MBU</th><th>功耗 W</th>
+        </tr>
+      </thead>
+      <tbody id="tb-main"></tbody>
+      <caption>延迟单位 ms。排队 / prefill 取自服务端直方图均值。MFU / MBU 的分子为 <code>estimated_flops_per_gpu_total</code> 与 <code>estimated_read_bytes_per_gpu_total</code> 的窗口差分速率,分母分别为 165.2 TF/s 与 1,008 GB/s。<code>tok/iter</code> = <code>iteration_tokens_total</code> ÷ 迭代数,即每次前向实际吃进去的 token 数(解码 + prefill 块);功耗为窗口 p50。</caption>
+    </table>
+  </div>
+
+  <h3>这批数据能不能信:四条自检</h3>
+  <ul class="pts">
+    <li><strong>零失败、零抢占</strong>:800 条请求全部成功,KV 峰值只到 57.8% ——
+      这一轮测的是<span class="hl">纯粹的长度效应</span>,没有混进抢占的影响(那是 Test 4 的事)。</li>
+    <li><strong>每请求输出 token 精确等于 256</strong>,五档全部如此,<code>--ignore-eos</code> 生效。
+      各档工作量在输出侧完全一致,差异只可能来自输入。</li>
+    <li><strong>只变了一个变量</strong>:服务端全程没重启,并发固定 16、输出固定 256、每档 160 条请求,
+      只有 <code>--random-input-len</code> 在变。</li>
+    <li><strong>每档换了 seed</strong>(seed = 输入长度),档间没有 prompt 重复;
+      vLLM 侧 <code>enable_prefix_caching: False</code> 全程关闭 —— 五个点之间不存在缓存命中。</li>
+  </ul>
+
+  <div class="callout crit">
+    <p class="k">一处需要注意的口径:表里的 prefill 是墙钟,不是纯计算</p>
+    <p>
+      <code>prefill</code> 这一列取自服务端 <code>request_prefill_time</code> 直方图,
+      量的是"这条请求的 prefill 从开始到结束经过了多少时间"。
+      开了 chunked prefill 之后,一条请求的 prefill 会被切片、和别人的 decode 交错执行,
+      <span class="hl">所以这个数字里含有"等待被调度"的成分</span> ——
+      本报告第三节那 267 ms 的"抢步"正是从它里面拆出来的。
+      要拿它算纯 prefill 算力,得用 Figure 5 的分相曲线或 FLOPs 计数器交叉验证,别直接除。
+    </p>
+  </div>
+</section>
+
+<!-- ============ 下一步 ============ -->
+<section>
+  <h2><span class="num">下一步</span>这轮暴露出来的四个口子</h2>
+  <ul class="pts">
+    <li><strong>L=512 那一点要重测</strong>(采样漏峰顶,见 Figure 1 注)——
+      拟合斜率里 0.045% 的偏差基本都来自它。把采样提到 5 Hz,或把每个长度点跑得更久些。</li>
+    <li><strong>补一个 L=8192 的点。</strong>本轮 L=4096 时 KV 才 57.8%,
+      而 MFU/MBU 的交叉点算出来在 L≈3,157 —— 交叉点右边只有一个测量点,外推没有底气。
+      L=8192 需要 16×8448 = 135,168 tok,<span class="hl">正好超过池子</span>,
+      顺便还能第一次看到 preemption。</li>
+    <li><strong>把"抢步"这一项单独量出来。</strong>本轮的 267 ms 是靠 C=1 基线相减得到的差值,
+      不是直接测量。调低 <code>--max-num-batched-tokens</code> 重跑,
+      看它是否随块大小线性缩小,才能确认因果。</li>
+    <li><strong>read_bytes 的残差值得追。</strong>二项模型系统性低估 2%–7%,
+      且随 L 单调增大。如果确认是 prefill 激活读写,可以加第三项
+      <code>激活 ≈ α × prefill_tokens</code> 拟合出 α,把这本账彻底做平。</li>
+  </ul>
+</section>
+
+<p class="note" style="margin-top:56px; max-width:none">
+  <b>这是 Round 2 五份压测报告的第 3 份</b>(vLLM 长度扫描)。
+  整轮的横向结论与生产选型建议见 <b>《选型指南-vllm-llama-cpp》</b> ——
+  那份把五组测试的数据合起来,回答"两个引擎各自强在哪、生产上怎么选"。
+  同目录另有:<code>vllm-01-Qwen2.5-7B并发曲线</code> · <code>vllm-02-TTFT解剖</code> · <code>vllm-04-断崖</code> · <code>llama-cpp-压测</code>。
+</p>
+
+<footer>
+  <span>2026-08-25 · Round 2</span>
+  <span>800 requests · 0 failed · 0 preemptions</span>
+  <span>501 samples over 502 s</span>
+  <span>vLLM 0.27.1 · chunked prefill on · prefix caching off · mfu-metrics on</span>
+</footer>
+
+</div>
+
+<script>
+(function(){
+"use strict";
+var DATA = {"points":[{"L":256,"dur":45.87,"n":160,"kvMax":6.82,"kvP50":5.01,"kvMean":4.92,"kvMin":2.63,"expPeak":6.82,"expMean":5.12,"tokMax":8188,"tokExp":8192,"perReq":512,"ceil":234.5,"q":1.5,"pf":229.4,"dec":4317.2,"other":39.0,"ttftMean":269.9,"ttft50":297.5,"ttft90":343.9,"ttft99":390.3,"ttftStd":23.2,"tpot":16.82,"tpot99":18.0,"itl50":16.47,"itl90":18.4,"itl99":20.3,"e2e50":4585,"e2e99":4605,"outTP":893.03,"totTP":1786.1,"reqTP":3.488,"iters":2561,"tokIter":30.3,"iterS":55.8,"stepMs":17.91,"tf":23.55,"mfu":14.3,"gb":827.7,"mbu":82.1,"pwr":354.6,"pwrMax":407.5,"temp":65,"waitMax":0,"rampS":0,"pure":23.4,"waitPct":91.3,"wKV":19.7,"wW":789.5,"wPred":809.2,"kvStep":0.23,"ai":28.5},{"L":512,"dur":50.11,"n":160,"kvMax":9.81,"kvP50":8.11,"kvMean":7.73,"kvMin":3.68,"expPeak":10.23,"expMean":8.53,"tokMax":11778,"tokExp":12288,"perReq":736,"ceil":156.3,"q":14.7,"pf":281.7,"dec":4630.7,"other":87.6,"ttftMean":384.0,"ttft50":435.0,"ttft90":594.1,"ttft99":753.3,"ttftStd":79.6,"tpot":17.96,"tpot99":19.22,"itl50":16.76,"itl90":36.2,"itl99":55.7,"e2e50":5014,"e2e99":5196,"outTP":817.35,"totTP":2452.0,"reqTP":3.193,"iters":2540,"tokIter":47.9,"iterS":50.7,"stepMs":19.73,"tf":33.66,"mfu":20.4,"gb":769.2,"mbu":76.3,"pwr":365.6,"pwrMax":443.0,"temp":66,"waitMax":9,"rampS":1,"pure":46.8,"waitPct":87.8,"wKV":29.8,"wW":716.8,"wPred":746.6,"kvStep":0.47,"ai":43.8},{"L":1024,"dur":58.57,"n":160,"kvMax":17.02,"kvP50":14.85,"kvMean":14.64,"kvMin":10.34,"expPeak":17.06,"expMean":15.35,"tokMax":20435,"tokExp":20480,"perReq":1277,"ceil":93.8,"q":46.8,"pf":360.5,"dec":5364.5,"other":109.7,"ttftMean":517.0,"ttft50":526.9,"ttft90":990.5,"ttft99":1454.1,"ttftStd":231.8,"tpot":20.92,"tpot99":22.38,"itl50":17.23,"itl90":101.4,"itl99":185.5,"e2e50":5848,"e2e99":6650,"outTP":699.38,"totTP":3496.9,"reqTP":2.732,"iters":2569,"tokIter":76.5,"iterS":43.9,"stepMs":22.8,"tf":46.71,"mfu":28.3,"gb":695.0,"mbu":68.9,"pwr":367.7,"pwrMax":458.7,"temp":71,"waitMax":5,"rampS":1,"pure":93.5,"waitPct":81.9,"wKV":46.4,"wW":620.3,"wPred":666.6,"kvStep":0.94,"ai":67.2},{"L":2048,"dur":76.18,"n":160,"kvMax":30.65,"kvP50":28.12,"kvMean":27.16,"kvMin":23.92,"expPeak":30.7,"expMean":29.0,"tokMax":36800,"tokExp":36864,"perReq":2300,"ceil":52.1,"q":122.1,"pf":547.1,"dec":6875.3,"other":163.8,"ttftMean":833.0,"ttft50":786.9,"ttft90":1876.7,"ttft99":2966.5,"ttftStd":544.9,"tpot":26.73,"tpot99":28.6,"itl50":18.23,"itl90":109.3,"itl99":200.3,"e2e50":7605,"e2e99":9758,"outTP":537.68,"totTP":4839.1,"reqTP":2.1,"iters":2582,"tokIter":141.9,"iterS":33.9,"stepMs":29.5,"tf":67.5,"mfu":40.9,"gb":571.3,"mbu":56.7,"pwr":380.7,"pwrMax":468.9,"temp":71,"waitMax":13,"rampS":3,"pure":187.0,"waitPct":77.6,"wKV":67.7,"wW":479.3,"wPred":547.0,"kvStep":1.88,"ai":118.2},{"L":4096,"dur":113.99,"n":160,"kvMax":57.79,"kvP50":52.83,"kvMean":51.61,"kvMin":47.91,"expPeak":58.0,"expMean":56.29,"tokMax":69385,"tokExp":69632,"perReq":4337,"ceil":27.6,"q":318.5,"pf":804.4,"dec":10117.0,"other":195.6,"ttftMean":1318.5,"ttft50":1047.4,"ttft90":3537.2,"ttft99":6027.1,"ttftStd":1244.9,"tpot":40.46,"tpot99":43.29,"itl50":20.26,"itl90":117.2,"itl99":214.2,"e2e50":11368,"e2e99":16330,"outTP":359.32,"totTP":6108.5,"reqTP":1.404,"iters":2627,"tokIter":265.1,"iterS":23.0,"stepMs":43.39,"tf":87.64,"mfu":53.1,"gb":439.2,"mbu":43.6,"pwr":446.8,"pwrMax":474.3,"temp":72,"waitMax":12,"rampS":15,"pure":374.0,"waitPct":71.6,"wKV":83.7,"wW":325.9,"wPred":409.6,"kvStep":3.76,"ai":199.5}],"series":[{"t":0.0,"r":0,"w":0,"k":0.0,"p":32.0,"f":0.0},{"t":1.0,"r":0,"w":0,"k":0.0,"p":31.9,"f":0.0},{"t":2.0,"r":0,"w":0,"k":0.0,"p":32.0,"f":0.0},{"t":3.0,"r":0,"w":0,"k":0.0,"p":32.1,"f":0.0},{"t":4.0,"r":0,"w":0,"k":0.0,"p":32.2,"f":0.0},{"t":5.0,"r":0,"w":0,"k":0.0,"p":32.6,"f":0.0},{"t":6.0,"r":0,"w":0,"k":0.0,"p":32.8,"f":0.0},{"t":7.0,"r":0,"w":0,"k":0.0,"p":32.7,"f":0.0},{"t":8.0,"r":0,"w":0,"k":0.0,"p":32.6,"f":0.0},{"t":9.0,"r":0,"w":0,"k":0.0,"p":32.5,"f":0.0},{"t":10.0,"r":0,"w":0,"k":0.0,"p":32.8,"f":0.0},{"t":11.0,"r":0,"w":0,"k":0.0,"p":32.8,"f":0.0},{"t":12.1,"r":0,"w":0,"k":0.0,"p":32.7,"f":0.0},{"t":13.1,"r":0,"w":0,"k":0.0,"p":32.6,"f":0.0},{"t":14.1,"r":0,"w":0,"k":0.0,"p":32.6,"f":0.0},{"t":15.1,"r":0,"w":0,"k":0.0,"p":32.6,"f":0.0},{"t":16.1,"r":0,"w":0,"k":0.0,"p":32.5,"f":0.0},{"t":17.1,"r":0,"w":0,"k":0.0,"p":32.6,"f":0.0},{"t":18.1,"r":0,"w":0,"k":0.0,"p":32.8,"f":0.0},{"t":19.1,"r":0,"w":0,"k":0.0,"p":32.9,"f":0.0},{"t":20.1,"r":0,"w":0,"k":0.0,"p":32.8,"f":0.0},{"t":21.1,"r":0,"w":0,"k":0.0,"p":32.6,"f":0.0},{"t":22.1,"r":0,"w":0,"k":0.0,"p":32.8,"f":0.0},{"t":23.1,"r":0,"w":0,"k":0.0,"p":32.7,"f":0.0},{"t":24.1,"r":0,"w":0,"k":0.0,"p":32.9,"f":0.0},{"t":25.1,"r":0,"w":0,"k":0.0,"p":33.1,"f":0.0},{"t":26.1,"r":0,"w":0,"k":0.0,"p":33.0,"f":0.0},{"t":27.1,"r":0,"w":0,"k":0.0,"p":33.0,"f":0.0},{"t":28.1,"r":0,"w":0,"k":0.0,"p":33.0,"f":0.0},{"t":29.1,"r":0,"w":0,"k":0.0,"p":33.0,"f":0.0},{"t":30.1,"r":0,"w":0,"k":0.0,"p":32.8,"f":0.0},{"t":31.1,"r":0,"w":0,"k":0.0,"p":32.6,"f":0.0},{"t":32.1,"r":0,"w":0,"k":0.0,"p":32.5,"f":0.0},{"t":33.1,"r":0,"w":0,"k":0.0,"p":32.7,"f":0.0},{"t":34.2,"r":0,"w":0,"k":0.0,"p":32.6,"f":0.0},{"t":35.2,"r":0,"w":0,"k":0.0,"p":32.6,"f":0.0},{"t":36.2,"r":0,"w":0,"k":0.0,"p":32.9,"f":0.0},{"t":37.2,"r":0,"w":0,"k":0.0,"p":33.0,"f":0.0},{"t":38.2,"r":0,"w":0,"k":0.0,"p":32.8,"f":0.0},{"t":39.2,"r":0,"w":0,"k":0.0,"p":32.9,"f":0.0},{"t":40.2,"r":16,"w":0,"k":3.84,"p":107.3,"f":57.4},{"t":41.2,"r":16,"w":0,"k":4.48,"p":348.7,"f":13.9},{"t":42.2,"r":16,"w":0,"k":5.33,"p":331.5,"f":13.9},{"t":43.2,"r":16,"w":0,"k":6.18,"p":332.3,"f":13.9},{"t":44.2,"r":8,"w":0,"k":1.72,"p":332.7,"f":16.0},{"t":45.2,"r":16,"w":0,"k":4.05,"p":383.6,"f":60.2},{"t":46.2,"r":16,"w":0,"k":4.9,"p":333.8,"f":13.9},{"t":47.2,"r":16,"w":0,"k":5.76,"p":335.8,"f":13.9},{"t":48.2,"r":16,"w":0,"k":6.61,"p":337.1,"f":13.9},{"t":49.2,"r":16,"w":0,"k":3.63,"p":352.5,"f":62.1},{"t":50.2,"r":16,"w":0,"k":4.48,"p":388.6,"f":14.1},{"t":51.2,"r":16,"w":0,"k":5.33,"p":337.5,"f":13.9},{"t":52.2,"r":16,"w":0,"k":6.08,"p":338.2,"f":13.7},{"t":53.2,"r":16,"w":0,"k":6.82,"p":339.4,"f":13.9},{"t":54.2,"r":16,"w":0,"k":4.05,"p":389.8,"f":62.4},{"t":55.2,"r":16,"w":0,"k":4.9,"p":339.3,"f":13.9},{"t":56.2,"r":16,"w":0,"k":5.56,"p":340.0,"f":13.9},{"t":57.3,"r":16,"w":0,"k":6.4,"p":341.2,"f":13.7},{"t":58.3,"r":16,"w":0,"k":3.63,"p":342.0,"f":62.3},{"t":59.3,"r":16,"w":0,"k":4.28,"p":388.5,"f":13.8},{"t":60.3,"r":16,"w":0,"k":5.12,"p":344.8,"f":13.9},{"t":61.3,"r":16,"w":0,"k":5.97,"p":346.8,"f":13.9},{"t":62.3,"r":16,"w":0,"k":6.82,"p":348.9,"f":13.9},{"t":63.3,"r":16,"w":0,"k":3.84,"p":387.5,"f":62.3},{"t":64.3,"r":16,"w":0,"k":4.69,"p":367.3,"f":13.9},{"t":65.3,"r":16,"w":0,"k":5.54,"p":350.7,"f":13.9},{"t":66.3,"r":16,"w":0,"k":6.4,"p":352.3,"f":13.9},{"t":67.3,"r":12,"w":0,"k":2.63,"p":353.1,"f":26.8},{"t":68.3,"r":16,"w":0,"k":4.26,"p":368.4,"f":49.4},{"t":69.3,"r":16,"w":0,"k":5.12,"p":354.1,"f":13.9},{"t":70.3,"r":16,"w":0,"k":5.92,"p":355.1,"f":13.7},{"t":71.3,"r":16,"w":0,"k":6.61,"p":355.7,"f":13.9},{"t":72.3,"r":16,"w":0,"k":3.84,"p":402.9,"f":62.3},{"t":73.3,"r":16,"w":0,"k":4.69,"p":356.4,"f":13.9},{"t":74.3,"r":16,"w":0,"k":5.34,"p":357.8,"f":13.9},{"t":75.3,"r":16,"w":0,"k":6.18,"p":358.9,"f":13.9},{"t":76.3,"r":12,"w":0,"k":2.63,"p":367.8,"f":28.6},{"t":77.3,"r":16,"w":0,"k":4.07,"p":393.6,"f":47.3},{"t":78.4,"r":16,"w":0,"k":4.9,"p":361.2,"f":14.1},{"t":79.4,"r":16,"w":0,"k":5.76,"p":362.9,"f":13.7},{"t":80.4,"r":16,"w":0,"k":6.61,"p":363.8,"f":13.9},{"t":81.4,"r":16,"w":0,"k":3.63,"p":407.5,"f":62.3},{"t":82.4,"r":16,"w":0,"k":4.48,"p":364.7,"f":13.8},{"t":83.4,"r":16,"w":0,"k":5.33,"p":364.9,"f":13.9},{"t":84.4,"r":16,"w":0,"k":6.18,"p":365.7,"f":13.9},{"t":85.4,"r":4,"w":0,"k":1.71,"p":365.9,"f":13.6},{"t":86.4,"r":0,"w":0,"k":0.0,"p":139.0,"f":0.1},{"t":87.4,"r":0,"w":0,"k":0.0,"p":109.2,"f":0.0},{"t":88.4,"r":0,"w":0,"k":0.0,"p":101.2,"f":0.0},{"t":89.4,"r":0,"w":0,"k":0.0,"p":93.1,"f":0.0},{"t":90.4,"r":0,"w":0,"k":0.0,"p":92.5,"f":0.0},{"t":91.4,"r":0,"w":0,"k":0.0,"p":91.5,"f":0.0},{"t":92.4,"r":0,"w":0,"k":0.0,"p":90.4,"f":0.0},{"t":93.4,"r":0,"w":0,"k":0.0,"p":89.1,"f":0.0},{"t":94.4,"r":0,"w":0,"k":0.0,"p":88.0,"f":0.0},{"t":95.4,"r":0,"w":0,"k":0.0,"p":87.2,"f":0.0},{"t":96.4,"r":0,"w":0,"k":0.0,"p":86.4,"f":0.0},{"t":97.4,"r":0,"w":0,"k":0.0,"p":85.5,"f":0.0},{"t":98.4,"r":0,"w":0,"k":0.0,"p":84.8,"f":0.0},{"t":99.4,"r":0,"w":0,"k":0.0,"p":84.1,"f":0.0},{"t":100.5,"r":0,"w":0,"k":0.0,"p":83.4,"f":0.0},{"t":101.5,"r":5,"w":9,"k":2.15,"p":104.1,"f":6.8},{"t":102.5,"r":16,"w":0,"k":7.25,"p":437.7,"f":107.4},{"t":103.5,"r":16,"w":0,"k":8.1,"p":350.6,"f":13.7},{"t":104.5,"r":16,"w":0,"k":8.96,"p":351.1,"f":13.8},{"t":105.5,"r":16,"w":0,"k":9.61,"p":352.2,"f":13.5},{"t":106.5,"r":8,"w":0,"k":4.28,"p":365.0,"f":18.1},{"t":107.5,"r":16,"w":0,"k":7.25,"p":437.6,"f":107.9},{"t":108.5,"r":16,"w":0,"k":8.1,"p":354.1,"f":13.7},{"t":109.5,"r":16,"w":0,"k":8.96,"p":355.5,"f":13.8},{"t":110.5,"r":16,"w":0,"k":9.74,"p":356.4,"f":13.8},{"t":111.5,"r":8,"w":0,"k":3.68,"p":369.0,"f":37.7},{"t":112.5,"r":16,"w":0,"k":7.3,"p":437.3,"f":88.0},{"t":113.5,"r":16,"w":0,"k":8.1,"p":357.3,"f":13.7},{"t":114.5,"r":16,"w":0,"k":8.96,"p":357.9,"f":13.7},{"t":115.5,"r":16,"w":0,"k":9.81,"p":358.6,"f":13.8},{"t":116.5,"r":9,"w":0,"k":4.32,"p":370.5,"f":37.3},{"t":117.5,"r":16,"w":0,"k":7.34,"p":437.2,"f":88.2},{"t":118.5,"r":16,"w":0,"k":8.1,"p":359.1,"f":13.7},{"t":119.5,"r":16,"w":0,"k":8.96,"p":359.9,"f":13.8},{"t":120.5,"r":16,"w":0,"k":9.81,"p":360.9,"f":13.8},{"t":121.6,"r":10,"w":0,"k":4.96,"p":374.9,"f":37.1},{"t":122.6,"r":16,"w":0,"k":7.38,"p":440.8,"f":88.4},{"t":123.6,"r":16,"w":0,"k":8.1,"p":363.7,"f":13.7},{"t":124.6,"r":16,"w":0,"k":8.96,"p":364.8,"f":13.8},{"t":125.6,"r":16,"w":0,"k":9.81,"p":365.7,"f":13.8},{"t":126.6,"r":10,"w":0,"k":4.96,"p":375.0,"f":36.8},{"t":127.6,"r":16,"w":0,"k":7.42,"p":437.8,"f":88.6},{"t":128.6,"r":16,"w":0,"k":8.12,"p":364.9,"f":13.7},{"t":129.6,"r":16,"w":0,"k":8.96,"p":365.1,"f":13.8},{"t":130.6,"r":16,"w":0,"k":9.81,"p":365.6,"f":13.8},{"t":131.6,"r":10,"w":0,"k":4.96,"p":365.4,"f":36.6},{"t":132.6,"r":16,"w":0,"k":7.42,"p":437.6,"f":88.7},{"t":133.6,"r":16,"w":0,"k":8.12,"p":365.6,"f":13.7},{"t":134.6,"r":16,"w":0,"k":8.96,"p":365.6,"f":13.8},{"t":135.6,"r":16,"w":0,"k":9.81,"p":366.2,"f":13.8},{"t":136.6,"r":10,"w":0,"k":4.96,"p":372.7,"f":36.6},{"t":137.6,"r":16,"w":0,"k":7.46,"p":439.2,"f":88.9},{"t":138.6,"r":16,"w":0,"k":8.16,"p":365.4,"f":13.7},{"t":139.6,"r":16,"w":0,"k":8.96,"p":365.4,"f":13.8},{"t":140.7,"r":16,"w":0,"k":9.81,"p":365.6,"f":13.8},{"t":141.7,"r":10,"w":0,"k":4.96,"p":369.9,"f":36.4},{"t":142.7,"r":16,"w":0,"k":7.46,"p":439.5,"f":88.9},{"t":143.7,"r":16,"w":0,"k":8.16,"p":365.4,"f":13.7},{"t":144.7,"r":16,"w":0,"k":8.96,"p":365.0,"f":13.8},{"t":145.7,"r":16,"w":0,"k":9.81,"p":366.0,"f":13.8},{"t":146.7,"r":10,"w":0,"k":4.96,"p":367.7,"f":36.4},{"t":147.7,"r":16,"w":0,"k":7.46,"p":443.0,"f":89.1},{"t":148.7,"r":16,"w":0,"k":8.2,"p":365.7,"f":13.7},{"t":149.7,"r":16,"w":0,"k":8.96,"p":365.6,"f":13.8},{"t":150.7,"r":16,"w":0,"k":9.81,"p":366.2,"f":13.8},{"t":151.7,"r":0,"w":0,"k":0.0,"p":366.4,"f":9.2},{"t":152.7,"r":0,"w":0,"k":0.0,"p":147.8,"f":0.0},{"t":153.7,"r":0,"w":0,"k":0.0,"p":111.1,"f":0.0},{"t":154.7,"r":0,"w":0,"k":0.0,"p":103.3,"f":0.0},{"t":155.7,"r":0,"w":0,"k":0.0,"p":95.1,"f":0.0},{"t":156.7,"r":0,"w":0,"k":0.0,"p":93.9,"f":0.0},{"t":157.7,"r":0,"w":0,"k":0.0,"p":93.1,"f":0.0},{"t":158.7,"r":0,"w":0,"k":0.0,"p":92.5,"f":0.0},{"t":159.7,"r":0,"w":0,"k":0.0,"p":91.6,"f":0.0},{"t":160.7,"r":0,"w":0,"k":0.0,"p":90.8,"f":0.0},{"t":161.8,"r":0,"w":0,"k":0.0,"p":89.8,"f":0.0},{"t":162.8,"r":0,"w":0,"k":0.0,"p":88.7,"f":0.0},{"t":163.8,"r":0,"w":0,"k":0.0,"p":87.8,"f":0.0},{"t":164.8,"r":0,"w":0,"k":0.0,"p":86.9,"f":0.0},{"t":165.8,"r":0,"w":0,"k":0.0,"p":86.0,"f":0.0},{"t":166.8,"r":0,"w":0,"k":0.0,"p":85.2,"f":0.0},{"t":167.8,"r":0,"w":0,"k":0.0,"p":84.3,"f":0.0},{"t":168.8,"r":11,"w":5,"k":9.48,"p":304.1,"f":123.6},{"t":169.8,"r":16,"w":0,"k":14.21,"p":447.7,"f":103.6},{"t":170.8,"r":16,"w":0,"k":14.94,"p":357.7,"f":13.7},{"t":171.8,"r":16,"w":0,"k":15.78,"p":356.0,"f":13.5},{"t":172.8,"r":16,"w":0,"k":16.53,"p":355.9,"f":13.5},{"t":173.8,"r":12,"w":0,"k":11.97,"p":387.7,"f":38.2},{"t":174.8,"r":14,"w":0,"k":12.05,"p":458.7,"f":137.2},{"t":175.8,"r":16,"w":0,"k":14.31,"p":389.3,"f":65.3},{"t":176.8,"r":16,"w":0,"k":15.14,"p":358.3,"f":13.7},{"t":177.8,"r":16,"w":0,"k":15.93,"p":358.9,"f":13.5},{"t":178.8,"r":16,"w":0,"k":16.65,"p":359.8,"f":13.5},{"t":179.8,"r":12,"w":0,"k":11.77,"p":416.1,"f":49.3},{"t":180.8,"r":16,"w":0,"k":13.83,"p":454.2,"f":164.6},{"t":181.8,"r":16,"w":0,"k":14.5,"p":380.0,"f":26.8},{"t":182.9,"r":16,"w":0,"k":15.33,"p":361.8,"f":13.7},{"t":183.9,"r":16,"w":0,"k":16.03,"p":362.3,"f":13.5},{"t":184.9,"r":16,"w":0,"k":16.85,"p":362.8,"f":13.5},{"t":185.9,"r":12,"w":0,"k":11.14,"p":430.8,"f":87.8},{"t":186.9,"r":16,"w":0,"k":13.86,"p":442.5,"f":139.0},{"t":187.9,"r":16,"w":0,"k":14.67,"p":369.4,"f":13.5},{"t":188.9,"r":16,"w":0,"k":15.41,"p":366.4,"f":13.7},{"t":189.9,"r":16,"w":0,"k":16.21,"p":366.9,"f":13.5},{"t":190.9,"r":16,"w":0,"k":16.99,"p":367.1,"f":13.5},{"t":191.9,"r":12,"w":0,"k":10.94,"p":442.5,"f":99.3},{"t":192.9,"r":16,"w":0,"k":14.05,"p":429.1,"f":127.8},{"t":193.9,"r":16,"w":0,"k":14.77,"p":367.1,"f":13.5},{"t":194.9,"r":16,"w":0,"k":15.57,"p":367.0,"f":13.7},{"t":195.9,"r":16,"w":0,"k":16.37,"p":366.8,"f":13.5},{"t":196.9,"r":14,"w":0,"k":14.71,"p":366.8,"f":13.3},{"t":197.9,"r":12,"w":0,"k":10.34,"p":453.3,"f":138.3},{"t":198.9,"r":16,"w":0,"k":14.13,"p":420.2,"f":88.9},{"t":199.9,"r":16,"w":0,"k":14.93,"p":366.5,"f":13.7},{"t":200.9,"r":16,"w":0,"k":15.71,"p":366.4,"f":13.5},{"t":201.9,"r":16,"w":0,"k":16.46,"p":366.2,"f":13.5},{"t":202.9,"r":14,"w":0,"k":14.51,"p":376.6,"f":24.8},{"t":203.9,"r":13,"w":0,"k":11.21,"p":457.5,"f":138.1},{"t":205.0,"r":16,"w":0,"k":14.29,"p":412.0,"f":77.5},{"t":206.0,"r":16,"w":0,"k":15.09,"p":366.6,"f":13.7},{"t":207.0,"r":16,"w":0,"k":15.83,"p":367.0,"f":13.5},{"t":208.0,"r":16,"w":0,"k":16.63,"p":367.3,"f":13.5},{"t":209.0,"r":14,"w":0,"k":14.11,"p":392.1,"f":50.1},{"t":210.0,"r":14,"w":0,"k":12.08,"p":450.7,"f":124.4},{"t":211.0,"r":16,"w":0,"k":14.41,"p":406.9,"f":65.9},{"t":212.0,"r":16,"w":0,"k":15.19,"p":367.9,"f":13.7},{"t":213.0,"r":16,"w":0,"k":15.99,"p":367.9,"f":13.5},{"t":214.0,"r":16,"w":0,"k":16.74,"p":367.7,"f":13.5},{"t":215.0,"r":14,"w":0,"k":13.71,"p":407.6,"f":75.6},{"t":216.0,"r":16,"w":0,"k":13.83,"p":451.7,"f":138.0},{"t":217.0,"r":16,"w":0,"k":14.54,"p":396.9,"f":26.9},{"t":218.0,"r":16,"w":0,"k":15.35,"p":367.4,"f":13.7},{"t":219.0,"r":16,"w":0,"k":16.1,"p":367.7,"f":13.5},{"t":220.0,"r":16,"w":0,"k":16.87,"p":367.5,"f":13.5},{"t":221.0,"r":14,"w":0,"k":13.51,"p":427.5,"f":87.2},{"t":222.0,"r":16,"w":0,"k":13.9,"p":451.4,"f":139.8},{"t":223.0,"r":16,"w":0,"k":14.7,"p":384.0,"f":13.5},{"t":224.0,"r":16,"w":0,"k":15.46,"p":367.2,"f":13.7},{"t":225.0,"r":16,"w":0,"k":16.23,"p":367.2,"f":13.5},{"t":226.0,"r":16,"w":0,"k":17.02,"p":366.7,"f":13.5},{"t":227.1,"r":0,"w":0,"k":0.0,"p":252.7,"f":2.6},{"t":228.1,"r":0,"w":0,"k":0.0,"p":138.8,"f":0.0},{"t":229.1,"r":0,"w":0,"k":0.0,"p":112.5,"f":0.0},{"t":230.1,"r":0,"w":0,"k":0.0,"p":104.7,"f":0.0},{"t":231.1,"r":0,"w":0,"k":0.0,"p":96.7,"f":0.0},{"t":232.1,"r":0,"w":0,"k":0.0,"p":95.8,"f":0.0},{"t":233.1,"r":0,"w":0,"k":0.0,"p":94.8,"f":0.0},{"t":234.1,"r":0,"w":0,"k":0.0,"p":93.9,"f":0.0},{"t":235.1,"r":0,"w":0,"k":0.0,"p":92.6,"f":0.0},{"t":236.1,"r":0,"w":0,"k":0.0,"p":91.3,"f":0.0},{"t":237.1,"r":0,"w":0,"k":0.0,"p":90.3,"f":0.0},{"t":238.1,"r":0,"w":0,"k":0.0,"p":89.5,"f":0.0},{"t":239.1,"r":0,"w":0,"k":0.0,"p":88.5,"f":0.0},{"t":240.1,"r":0,"w":0,"k":0.0,"p":87.4,"f":0.0},{"t":241.1,"r":0,"w":0,"k":0.0,"p":86.6,"f":0.0},{"t":242.2,"r":0,"w":0,"k":0.0,"p":85.8,"f":0.0},{"t":243.2,"r":0,"w":0,"k":0.0,"p":84.9,"f":0.0},{"t":244.2,"r":3,"w":13,"k":5.13,"p":115.1,"f":56.5},{"t":245.2,"r":8,"w":8,"k":13.71,"p":468.9,"f":141.2},{"t":246.2,"r":13,"w":3,"k":22.27,"p":447.9,"f":141.3},{"t":247.2,"r":16,"w":0,"k":27.78,"p":442.4,"f":119.4},{"t":248.2,"r":16,"w":0,"k":28.52,"p":360.8,"f":13.4},{"t":249.2,"r":16,"w":0,"k":29.25,"p":359.3,"f":13.1},{"t":250.2,"r":16,"w":0,"k":29.99,"p":360.9,"f":13.2},{"t":251.2,"r":15,"w":0,"k":28.58,"p":361.7,"f":13.2},{"t":252.2,"r":14,"w":0,"k":25.6,"p":435.9,"f":141.6},{"t":253.2,"r":14,"w":0,"k":24.55,"p":452.4,"f":141.1},{"t":254.2,"r":16,"w":0,"k":27.34,"p":451.3,"f":141.0},{"t":255.2,"r":16,"w":0,"k":28.11,"p":413.2,"f":41.7},{"t":256.2,"r":16,"w":0,"k":28.86,"p":366.1,"f":13.4},{"t":257.2,"r":16,"w":0,"k":29.59,"p":366.1,"f":13.2},{"t":258.2,"r":16,"w":0,"k":30.32,"p":366.5,"f":13.2},{"t":259.2,"r":14,"w":0,"k":26.23,"p":372.5,"f":64.1},{"t":260.2,"r":14,"w":0,"k":25.18,"p":454.8,"f":141.4},{"t":261.2,"r":14,"w":0,"k":24.12,"p":447.4,"f":141.1},{"t":262.2,"r":16,"w":0,"k":27.7,"p":447.7,"f":118.8},{"t":263.2,"r":16,"w":0,"k":28.43,"p":381.4,"f":13.1},{"t":264.3,"r":16,"w":0,"k":29.16,"p":366.8,"f":13.1},{"t":265.3,"r":16,"w":0,"k":29.89,"p":366.8,"f":13.2},{"t":266.3,"r":16,"w":0,"k":30.63,"p":367.3,"f":13.1},{"t":267.3,"r":14,"w":0,"k":25.8,"p":415.1,"f":115.1},{"t":268.3,"r":14,"w":0,"k":24.76,"p":451.5,"f":141.2},{"t":269.3,"r":15,"w":0,"k":25.63,"p":451.3,"f":141.0},{"t":270.3,"r":16,"w":0,"k":28.02,"p":426.5,"f":68.2},{"t":271.3,"r":16,"w":0,"k":28.75,"p":367.6,"f":13.1},{"t":272.3,"r":16,"w":0,"k":29.48,"p":367.1,"f":13.2},{"t":273.3,"r":16,"w":0,"k":30.21,"p":367.5,"f":13.2},{"t":274.3,"r":14,"w":0,"k":26.46,"p":367.1,"f":37.8},{"t":275.3,"r":14,"w":0,"k":25.39,"p":450.1,"f":141.4},{"t":276.3,"r":14,"w":0,"k":24.34,"p":446.5,"f":141.1},{"t":277.3,"r":16,"w":0,"k":27.59,"p":438.8,"f":145.2},{"t":278.3,"r":16,"w":0,"k":28.34,"p":366.8,"f":13.4},{"t":279.3,"r":16,"w":0,"k":29.07,"p":367.1,"f":13.1},{"t":280.3,"r":16,"w":0,"k":29.8,"p":367.7,"f":13.2},{"t":281.3,"r":16,"w":0,"k":30.53,"p":367.8,"f":13.2},{"t":282.3,"r":14,"w":0,"k":26.02,"p":444.3,"f":88.5},{"t":283.3,"r":14,"w":0,"k":24.96,"p":449.0,"f":140.8},{"t":284.4,"r":14,"w":0,"k":23.92,"p":448.3,"f":141.0},{"t":285.4,"r":16,"w":0,"k":27.91,"p":403.5,"f":94.4},{"t":286.4,"r":16,"w":0,"k":28.66,"p":368.9,"f":13.4},{"t":287.4,"r":16,"w":0,"k":29.39,"p":369.3,"f":13.1},{"t":288.4,"r":16,"w":0,"k":30.12,"p":368.9,"f":13.2},{"t":289.4,"r":15,"w":0,"k":28.58,"p":384.2,"f":10.7},{"t":290.4,"r":14,"w":0,"k":25.6,"p":455.3,"f":141.5},{"t":291.4,"r":14,"w":0,"k":24.34,"p":447.5,"f":169.2},{"t":292.4,"r":16,"w":0,"k":27.5,"p":448.5,"f":140.6},{"t":293.4,"r":16,"w":0,"k":28.24,"p":380.1,"f":15.8},{"t":294.4,"r":16,"w":0,"k":28.98,"p":369.4,"f":13.1},{"t":295.4,"r":16,"w":0,"k":29.71,"p":369.5,"f":13.1},{"t":296.4,"r":16,"w":0,"k":30.44,"p":369.7,"f":13.2},{"t":297.4,"r":14,"w":0,"k":26.02,"p":422.7,"f":90.3},{"t":298.4,"r":14,"w":0,"k":24.96,"p":451.6,"f":141.2},{"t":299.4,"r":14,"w":0,"k":23.92,"p":451.4,"f":140.9},{"t":300.4,"r":16,"w":0,"k":27.82,"p":425.1,"f":92.8},{"t":301.4,"r":16,"w":0,"k":28.55,"p":369.4,"f":13.1},{"t":302.5,"r":16,"w":0,"k":29.28,"p":368.5,"f":13.1},{"t":303.5,"r":16,"w":0,"k":30.01,"p":368.9,"f":13.2},{"t":304.5,"r":15,"w":0,"k":28.58,"p":368.5,"f":12.7},{"t":305.5,"r":14,"w":0,"k":25.6,"p":445.4,"f":141.5},{"t":306.5,"r":14,"w":0,"k":24.55,"p":447.4,"f":141.0},{"t":307.5,"r":16,"w":0,"k":27.34,"p":447.9,"f":140.9},{"t":308.5,"r":16,"w":0,"k":28.14,"p":392.8,"f":42.1},{"t":309.5,"r":16,"w":0,"k":28.87,"p":369.3,"f":13.1},{"t":310.5,"r":16,"w":0,"k":29.6,"p":369.7,"f":13.2},{"t":311.5,"r":16,"w":0,"k":30.33,"p":369.4,"f":13.2},{"t":312.5,"r":14,"w":0,"k":26.22,"p":396.4,"f":63.6},{"t":313.5,"r":14,"w":0,"k":25.16,"p":449.8,"f":140.6},{"t":314.5,"r":14,"w":0,"k":24.12,"p":450.0,"f":141.0},{"t":315.5,"r":16,"w":0,"k":27.72,"p":440.0,"f":119.3},{"t":316.5,"r":16,"w":0,"k":28.46,"p":368.8,"f":13.1},{"t":317.5,"r":16,"w":0,"k":29.19,"p":369.1,"f":13.1},{"t":318.5,"r":16,"w":0,"k":29.92,"p":369.6,"f":13.1},{"t":319.5,"r":16,"w":0,"k":30.65,"p":369.5,"f":13.2},{"t":320.6,"r":0,"w":0,"k":0.0,"p":268.2,"f":2.8},{"t":321.6,"r":0,"w":0,"k":0.0,"p":153.3,"f":0.0},{"t":322.6,"r":0,"w":0,"k":0.0,"p":112.2,"f":0.0},{"t":323.6,"r":0,"w":0,"k":0.0,"p":105.3,"f":0.0},{"t":324.6,"r":0,"w":0,"k":0.0,"p":98.1,"f":0.0},{"t":325.6,"r":0,"w":0,"k":0.0,"p":96.9,"f":0.0},{"t":326.6,"r":0,"w":0,"k":0.0,"p":96.2,"f":0.0},{"t":327.6,"r":0,"w":0,"k":0.0,"p":95.6,"f":0.0},{"t":328.6,"r":0,"w":0,"k":0.0,"p":94.4,"f":0.0},{"t":329.6,"r":0,"w":0,"k":0.0,"p":93.2,"f":0.0},{"t":330.6,"r":0,"w":0,"k":0.0,"p":92.3,"f":0.0},{"t":331.6,"r":0,"w":0,"k":0.0,"p":91.3,"f":0.0},{"t":332.6,"r":0,"w":0,"k":0.0,"p":90.2,"f":0.0},{"t":333.6,"r":0,"w":0,"k":0.0,"p":88.6,"f":0.0},{"t":334.7,"r":0,"w":0,"k":0.0,"p":87.1,"f":0.0},{"t":335.7,"r":0,"w":0,"k":0.0,"p":86.5,"f":0.0},{"t":336.7,"r":0,"w":0,"k":0.0,"p":85.9,"f":0.0},{"t":337.7,"r":0,"w":0,"k":0.0,"p":83.8,"f":0.0},{"t":338.7,"r":1,"w":2,"k":3.41,"p":57.0,"f":28.3},{"t":339.7,"r":4,"w":12,"k":11.97,"p":474.3,"f":146.4},{"t":340.7,"r":6,"w":10,"k":20.53,"p":449.0,"f":144.7},{"t":341.7,"r":9,"w":7,"k":29.06,"p":449.9,"f":146.3},{"t":342.7,"r":11,"w":5,"k":37.61,"p":449.9,"f":144.7},{"t":343.7,"r":14,"w":2,"k":46.15,"p":450.1,"f":146.2},{"t":344.7,"r":16,"w":0,"k":54.7,"p":449.9,"f":144.6},{"t":345.7,"r":16,"w":0,"k":55.47,"p":405.5,"f":43.9},{"t":346.7,"r":16,"w":0,"k":56.14,"p":366.8,"f":12.6},{"t":347.7,"r":16,"w":0,"k":56.78,"p":368.1,"f":12.3},{"t":348.7,"r":16,"w":0,"k":57.44,"p":368.2,"f":12.6},{"t":349.7,"r":15,"w":0,"k":54.06,"p":367.9,"f":37.1},{"t":350.7,"r":15,"w":0,"k":51.74,"p":458.0,"f":146.9},{"t":351.7,"r":15,"w":0,"k":51.33,"p":447.6,"f":116.2},{"t":352.7,"r":15,"w":0,"k":52.62,"p":447.2,"f":144.6},{"t":353.7,"r":15,"w":0,"k":50.25,"p":447.6,"f":145.9},{"t":354.8,"r":15,"w":0,"k":51.55,"p":448.1,"f":144.3},{"t":355.8,"r":16,"w":0,"k":52.83,"p":448.0,"f":145.6},{"t":356.8,"r":16,"w":0,"k":55.26,"p":434.5,"f":71.0},{"t":357.8,"r":16,"w":0,"k":55.92,"p":370.0,"f":12.6},{"t":358.8,"r":16,"w":0,"k":56.59,"p":369.6,"f":12.4},{"t":359.8,"r":16,"w":0,"k":57.26,"p":369.6,"f":12.6},{"t":360.8,"r":15,"w":0,"k":54.27,"p":369.0,"f":12.4},{"t":361.8,"r":15,"w":0,"k":51.95,"p":432.1,"f":117.4},{"t":362.8,"r":15,"w":0,"k":53.26,"p":450.9,"f":144.6},{"t":363.8,"r":15,"w":0,"k":50.9,"p":450.3,"f":146.2},{"t":364.8,"r":15,"w":0,"k":52.18,"p":449.2,"f":144.3},{"t":365.8,"r":15,"w":0,"k":51.77,"p":448.4,"f":115.8},{"t":366.8,"r":15,"w":0,"k":49.42,"p":449.2,"f":145.6},{"t":367.8,"r":16,"w":0,"k":55.07,"p":425.5,"f":125.2},{"t":368.8,"r":16,"w":0,"k":55.74,"p":370.1,"f":12.6},{"t":369.8,"r":16,"w":0,"k":56.38,"p":370.2,"f":12.3},{"t":370.8,"r":16,"w":0,"k":57.06,"p":370.2,"f":12.6},{"t":371.8,"r":16,"w":0,"k":57.71,"p":370.0,"f":12.4},{"t":372.8,"r":15,"w":0,"k":53.89,"p":443.5,"f":91.1},{"t":373.9,"r":15,"w":0,"k":51.54,"p":448.7,"f":146.3},{"t":374.9,"r":15,"w":0,"k":51.11,"p":447.6,"f":116.3},{"t":375.9,"r":15,"w":0,"k":52.39,"p":447.8,"f":144.6},{"t":376.9,"r":15,"w":0,"k":50.05,"p":448.3,"f":145.9},{"t":377.9,"r":15,"w":0,"k":51.34,"p":448.4,"f":144.4},{"t":378.9,"r":16,"w":0,"k":54.55,"p":447.9,"f":116.0},{"t":379.9,"r":16,"w":0,"k":55.52,"p":381.6,"f":47.4},{"t":380.9,"r":16,"w":0,"k":56.19,"p":370.7,"f":12.6},{"t":381.9,"r":16,"w":0,"k":56.84,"p":370.5,"f":12.4},{"t":382.9,"r":16,"w":0,"k":57.5,"p":370.2,"f":12.6},{"t":383.9,"r":15,"w":0,"k":54.06,"p":409.3,"f":36.1},{"t":384.9,"r":15,"w":0,"k":51.74,"p":450.5,"f":147.0},{"t":385.9,"r":15,"w":0,"k":53.05,"p":449.6,"f":144.5},{"t":386.9,"r":15,"w":0,"k":50.69,"p":448.7,"f":146.0},{"t":387.9,"r":15,"w":0,"k":50.25,"p":449.3,"f":116.2},{"t":388.9,"r":15,"w":0,"k":51.55,"p":448.9,"f":144.4},{"t":389.9,"r":16,"w":0,"k":52.83,"p":448.7,"f":145.7},{"t":390.9,"r":16,"w":0,"k":55.31,"p":408.8,"f":71.7},{"t":391.9,"r":16,"w":0,"k":55.98,"p":370.7,"f":12.6},{"t":393.0,"r":16,"w":0,"k":56.64,"p":370.7,"f":12.6},{"t":394.0,"r":16,"w":0,"k":57.28,"p":371.1,"f":12.4},{"t":395.0,"r":15,"w":0,"k":52.37,"p":370.8,"f":12.1},{"t":396.0,"r":15,"w":0,"k":53.65,"p":458.6,"f":144.8},{"t":397.0,"r":15,"w":0,"k":53.23,"p":446.6,"f":116.4},{"t":398.0,"r":15,"w":0,"k":50.89,"p":446.8,"f":145.9},{"t":399.0,"r":15,"w":0,"k":52.17,"p":448.8,"f":144.4},{"t":400.0,"r":15,"w":0,"k":49.81,"p":447.6,"f":145.8},{"t":401.0,"r":15,"w":0,"k":51.11,"p":447.9,"f":144.3},{"t":402.0,"r":16,"w":0,"k":55.1,"p":434.5,"f":98.0},{"t":403.0,"r":16,"w":0,"k":55.76,"p":372.1,"f":12.6},{"t":404.0,"r":16,"w":0,"k":56.43,"p":371.8,"f":12.3},{"t":405.0,"r":16,"w":0,"k":57.1,"p":372.0,"f":12.6},{"t":406.0,"r":16,"w":0,"k":57.74,"p":371.7,"f":12.4},{"t":407.0,"r":15,"w":0,"k":53.86,"p":427.5,"f":90.0},{"t":408.0,"r":15,"w":0,"k":51.51,"p":451.1,"f":146.3},{"t":409.0,"r":15,"w":0,"k":52.82,"p":450.1,"f":144.6},{"t":410.0,"r":15,"w":0,"k":52.37,"p":447.5,"f":116.2},{"t":411.0,"r":15,"w":0,"k":50.02,"p":448.2,"f":145.9},{"t":412.1,"r":15,"w":0,"k":51.33,"p":448.8,"f":144.4},{"t":413.1,"r":16,"w":0,"k":54.88,"p":448.8,"f":145.5},{"t":414.1,"r":16,"w":0,"k":55.55,"p":391.6,"f":18.9},{"t":415.1,"r":16,"w":0,"k":56.22,"p":372.3,"f":12.6},{"t":416.1,"r":16,"w":0,"k":56.88,"p":372.3,"f":12.6},{"t":417.1,"r":16,"w":0,"k":57.55,"p":372.2,"f":12.4},{"t":418.1,"r":14,"w":0,"k":50.45,"p":392.2,"f":35.8},{"t":419.1,"r":15,"w":0,"k":51.74,"p":454.0,"f":146.4},{"t":420.1,"r":14,"w":1,"k":49.41,"p":448.7,"f":144.7},{"t":421.1,"r":15,"w":0,"k":50.67,"p":448.4,"f":146.0},{"t":422.1,"r":14,"w":1,"k":48.34,"p":448.1,"f":144.4},{"t":423.1,"r":14,"w":1,"k":47.91,"p":448.4,"f":116.1},{"t":424.1,"r":16,"w":0,"k":52.82,"p":448.5,"f":145.8},{"t":425.1,"r":16,"w":0,"k":55.34,"p":418.6,"f":72.6},{"t":426.1,"r":16,"w":0,"k":56.0,"p":371.9,"f":12.6},{"t":427.1,"r":16,"w":0,"k":56.67,"p":372.1,"f":12.6},{"t":428.1,"r":16,"w":0,"k":57.34,"p":372.7,"f":12.4},{"t":429.1,"r":15,"w":0,"k":52.38,"p":371.8,"f":11.6},{"t":430.1,"r":14,"w":1,"k":50.03,"p":450.2,"f":144.4},{"t":431.2,"r":15,"w":0,"k":51.31,"p":446.7,"f":146.2},{"t":432.2,"r":15,"w":0,"k":50.89,"p":447.0,"f":116.3},{"t":433.2,"r":14,"w":1,"k":48.54,"p":447.5,"f":144.5},{"t":434.2,"r":15,"w":0,"k":49.82,"p":448.4,"f":145.5},{"t":435.2,"r":15,"w":1,"k":51.13,"p":447.9,"f":144.4},{"t":436.2,"r":16,"w":0,"k":55.15,"p":443.6,"f":98.5},{"t":437.2,"r":16,"w":0,"k":55.79,"p":375.1,"f":12.3},{"t":438.2,"r":16,"w":0,"k":56.46,"p":372.4,"f":12.6},{"t":439.2,"r":16,"w":0,"k":57.12,"p":372.3,"f":12.6},{"t":440.2,"r":16,"w":0,"k":57.79,"p":371.9,"f":12.4},{"t":441.2,"r":14,"w":1,"k":50.23,"p":412.2,"f":89.5},{"t":442.2,"r":15,"w":0,"k":51.53,"p":451.3,"f":146.3},{"t":443.2,"r":14,"w":1,"k":49.19,"p":450.8,"f":144.6},{"t":444.2,"r":15,"w":0,"k":50.45,"p":450.1,"f":146.0},{"t":445.2,"r":15,"w":0,"k":50.03,"p":449.9,"f":116.1},{"t":446.2,"r":14,"w":1,"k":47.71,"p":448.6,"f":144.4},{"t":447.2,"r":16,"w":0,"k":54.91,"p":449.2,"f":152.3},{"t":448.2,"r":16,"w":0,"k":55.58,"p":401.1,"f":12.6},{"t":449.2,"r":16,"w":0,"k":56.24,"p":372.4,"f":12.6},{"t":450.3,"r":16,"w":0,"k":56.91,"p":372.7,"f":12.4},{"t":451.3,"r":16,"w":0,"k":57.58,"p":372.6,"f":12.6},{"t":452.3,"r":2,"w":0,"k":7.25,"p":372.2,"f":10.0},{"t":453.3,"r":0,"w":0,"k":0.0,"p":240.4,"f":0.1},{"t":454.3,"r":0,"w":0,"k":0.0,"p":150.1,"f":0.0},{"t":455.3,"r":0,"w":0,"k":0.0,"p":114.5,"f":0.0},{"t":456.3,"r":0,"w":0,"k":0.0,"p":106.5,"f":0.0},{"t":457.3,"r":0,"w":0,"k":0.0,"p":98.7,"f":0.0},{"t":458.3,"r":0,"w":0,"k":0.0,"p":98.5,"f":0.0},{"t":459.3,"r":0,"w":0,"k":0.0,"p":97.3,"f":0.0},{"t":460.3,"r":0,"w":0,"k":0.0,"p":97.3,"f":0.0},{"t":461.3,"r":0,"w":0,"k":0.0,"p":96.5,"f":0.0},{"t":462.3,"r":0,"w":0,"k":0.0,"p":95.6,"f":0.0},{"t":463.3,"r":0,"w":0,"k":0.0,"p":94.8,"f":0.0},{"t":464.3,"r":0,"w":0,"k":0.0,"p":93.0,"f":0.0},{"t":465.3,"r":0,"w":0,"k":0.0,"p":92.2,"f":0.0},{"t":466.3,"r":0,"w":0,"k":0.0,"p":91.2,"f":0.0},{"t":467.3,"r":0,"w":0,"k":0.0,"p":90.1,"f":0.0},{"t":468.3,"r":0,"w":0,"k":0.0,"p":89.1,"f":0.0},{"t":469.4,"r":0,"w":0,"k":0.0,"p":78.5,"f":0.0},{"t":470.4,"r":0,"w":0,"k":0.0,"p":58.0,"f":0.0},{"t":471.4,"r":0,"w":0,"k":0.0,"p":45.6,"f":0.0},{"t":472.4,"r":0,"w":0,"k":0.0,"p":43.4,"f":0.0},{"t":473.4,"r":0,"w":0,"k":0.0,"p":42.7,"f":0.0},{"t":474.4,"r":0,"w":0,"k":0.0,"p":41.9,"f":0.0},{"t":475.4,"r":0,"w":0,"k":0.0,"p":41.1,"f":0.0},{"t":476.4,"r":0,"w":0,"k":0.0,"p":40.3,"f":0.0},{"t":477.4,"r":0,"w":0,"k":0.0,"p":39.4,"f":0.0},{"t":478.4,"r":0,"w":0,"k":0.0,"p":38.8,"f":0.0},{"t":479.4,"r":0,"w":0,"k":0.0,"p":38.4,"f":0.0},{"t":480.4,"r":0,"w":0,"k":0.0,"p":38.0,"f":0.0},{"t":481.4,"r":0,"w":0,"k":0.0,"p":37.6,"f":0.0},{"t":482.4,"r":0,"w":0,"k":0.0,"p":37.3,"f":0.0},{"t":483.4,"r":0,"w":0,"k":0.0,"p":37.2,"f":0.0},{"t":484.4,"r":0,"w":0,"k":0.0,"p":37.0,"f":0.0},{"t":485.4,"r":0,"w":0,"k":0.0,"p":36.6,"f":0.0},{"t":486.4,"r":0,"w":0,"k":0.0,"p":36.2,"f":0.0},{"t":487.4,"r":0,"w":0,"k":0.0,"p":35.8,"f":0.0},{"t":488.4,"r":0,"w":0,"k":0.0,"p":35.6,"f":0.0},{"t":489.5,"r":0,"w":0,"k":0.0,"p":35.2,"f":0.0},{"t":490.5,"r":0,"w":0,"k":0.0,"p":34.9,"f":0.0},{"t":491.5,"r":0,"w":0,"k":0.0,"p":34.8,"f":0.0},{"t":492.5,"r":0,"w":0,"k":0.0,"p":34.7,"f":0.0},{"t":493.5,"r":0,"w":0,"k":0.0,"p":34.5,"f":0.0},{"t":494.5,"r":0,"w":0,"k":0.0,"p":34.3,"f":0.0},{"t":495.5,"r":0,"w":0,"k":0.0,"p":34.2,"f":0.0},{"t":496.5,"r":0,"w":0,"k":0.0,"p":34.0,"f":0.0},{"t":497.5,"r":0,"w":0,"k":0.0,"p":34.2,"f":0.0},{"t":498.5,"r":0,"w":0,"k":0.0,"p":34.4,"f":0.0},{"t":499.5,"r":0,"w":0,"k":0.0,"p":34.2,"f":0.0},{"t":500.5,"r":0,"w":0,"k":0.0,"p":34.2,"f":0.0},{"t":501.5,"r":0,"w":0,"k":0.0,"p":34.0,"f":0.0},{"t":502.5,"r":0,"w":0,"k":0.0,"p":33.8,"f":0.0}],"windows":[{"L":256,"t0":40.2,"t1":85.4},{"L":512,"t0":101.5,"t1":150.7},{"L":1024,"t0":168.8,"t1":226.0},{"L":2048,"t0":244.2,"t1":319.5},{"L":4096,"t0":338.7,"t1":452.3}],"span":502.5,"KV":120064,"fit":{"slope":15.9928,"inter":3933.4,"r2":0.99993},"cross":[{"tag":"C=1","axis":"conc","it":4.9,"mfu":2.5,"mbu":88.0,"c":1,"L":1024,"kv":1.07,"outTP":61.9,"totTP":309.3,"ttft50":102.3,"ttft99":109.0,"itl50":15.83,"itl99":16.3,"tpot":15.83,"e2e50":4138},{"tag":"C=2","axis":"conc","it":9.7,"mfu":4.8,"mbu":85.0,"c":2,"L":1024,"kv":2.13,"outTP":118.7,"totTP":593.4,"ttft50":154.2,"ttft99":203.0,"itl50":16.15,"itl99":16.9,"tpot":16.31,"e2e50":4313},{"tag":"C=4","axis":"conc","it":19.3,"mfu":9.1,"mbu":81.7,"c":4,"L":1024,"kv":4.26,"outTP":225.1,"totTP":1125.4,"ttft50":288.4,"ttft99":388.4,"itl50":16.32,"itl99":17.6,"tpot":16.7,"e2e50":4549},{"tag":"C=8","axis":"conc","it":38.4,"mfu":16.5,"mbu":76.9,"c":8,"L":1024,"kv":8.53,"outTP":411.4,"totTP":2057.1,"ttft50":305.9,"ttft99":733.6,"itl50":16.63,"itl99":102.1,"tpot":18.32,"e2e50":4978},{"tag":"C=16","axis":"conc","it":75.2,"mfu":27.9,"mbu":69.0,"c":16,"L":1024,"kv":17.03,"outTP":681.5,"totTP":3407.5,"ttft50":474.4,"ttft99":1407.3,"itl50":17.23,"itl99":183.7,"tpot":21.01,"e2e50":5850},{"tag":"C=32","axis":"conc","it":159.0,"mfu":42.6,"mbu":54.4,"c":32,"L":1024,"kv":33.95,"outTP":1026.7,"totTP":5133.4,"ttft50":588.3,"ttft99":2854.0,"itl50":19.82,"itl99":197.2,"tpot":28.6,"e2e50":7962},{"tag":"C=64","axis":"conc","it":311.6,"mfu":57.3,"mbu":43.2,"c":64,"L":1024,"kv":67.51,"outTP":1387.8,"totTP":6938.8,"ttft50":786.7,"ttft99":5923.7,"itl50":22.5,"itl99":207.6,"tpot":43.41,"e2e50":11779},{"tag":"L=256","axis":"len","c":16,"L":256,"kv":6.82,"outTP":893.03,"totTP":1786.1,"ttft50":297.5,"ttft99":390.3,"itl50":16.47,"itl99":20.3,"tpot":16.82,"e2e50":4585},{"tag":"L=512","axis":"len","c":16,"L":512,"kv":9.81,"outTP":817.35,"totTP":2452.0,"ttft50":435.0,"ttft99":753.3,"itl50":16.76,"itl99":55.7,"tpot":17.96,"e2e50":5014},{"tag":"L=1024","axis":"len","c":16,"L":1024,"kv":17.02,"outTP":699.38,"totTP":3496.9,"ttft50":526.9,"ttft99":1454.1,"itl50":17.23,"itl99":185.5,"tpot":20.92,"e2e50":5848},{"tag":"L=2048","axis":"len","c":16,"L":2048,"kv":30.65,"outTP":537.68,"totTP":4839.1,"ttft50":786.9,"ttft99":2966.5,"itl50":18.23,"itl99":200.3,"tpot":26.73,"e2e50":7605},{"tag":"L=4096","axis":"len","c":16,"L":4096,"kv":57.79,"outTP":359.32,"totTP":6108.5,"ttft50":1047.4,"ttft99":6027.1,"itl50":20.26,"itl99":214.2,"tpot":40.46,"e2e50":11368}],"const":{"W_GB":14.14,"KVGiB":6.412,"PURE":0.09131,"peakTF":165.2,"peakBW":1008.0,"gflopTok":13.05,"prefillTF":146.3,"kvPerTok":57344,"anchorMs":93.5,"impliedTF":142.9}};
+var P = DATA.points, S = DATA.series, WIN = DATA.windows, K = DATA.const, X = DATA.cross;
+
+var NS = "http://www.w3.org/2000/svg";
+function el(n, a){ var e = document.createElementNS(NS, n); if(a) for(var k in a) e.setAttribute(k, a[k]); return e; }
+function txt(x, y, s, a){ var t = el("text", a||{}); t.setAttribute("x",x); t.setAttribute("y",y); t.textContent = s; return t; }
+function lin(d0,d1,r0,r1){ return function(v){ return r0 + (v-d0)/(d1-d0)*(r1-r0); }; }
+function lg(d0,d1,r0,r1){ var a=Math.log(d0), b=Math.log(d1);
+  return function(v){ v = Math.max(v, d0); return r0 + (Math.log(v)-a)/(b-a)*(r1-r0); }; }
+function cv(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+
+var CW = 860;
+function frame(id, h){
+  var host = document.getElementById(id); if(!host) return null;
+  host.innerHTML = "";
+  var svg = el("svg", {viewBox:"0 0 "+CW+" "+h, role:"img"});
+  host.appendChild(svg); return svg;
+}
+function pathOf(pts){
+  return pts.map(function(p,i){ return (i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1); }).join("");
+}
+function line(pts, color, w, dash){
+  return el("path", {d:pathOf(pts), fill:"none", stroke:color, "stroke-width":w||2.2,
+    "stroke-dasharray":dash||"none", "stroke-linejoin":"round", "stroke-linecap":"round"});
+}
+function tip(node, s){ var t = el("title",{}); t.textContent = s; node.appendChild(t); return node; }
+function mono(x,y,s,color,size,anchor,weight){
+  return txt(x,y,s,{"text-anchor":anchor||"middle", fill:color, "font-size":size||11,
+    "font-weight":weight||600, "font-family":"var(--font-mono)", "font-variant-numeric":"tabular-nums"});
+}
+function gridY(svg, ticks, y, l, r, fmt){
+  ticks.forEach(function(v){
+    var yy = y(v);
+    svg.appendChild(el("line",{x1:l,y1:yy,x2:r,y2:yy,stroke:cv("--grid-2"),"stroke-width":1}));
+    svg.appendChild(mono(l-9, yy+4, fmt?fmt(v):v, cv("--ink-3"), 11, "end", 400));
+  });
+}
+function axisLabel(svg, s, l, r, h){ svg.appendChild(mono((l+r)/2, h-6, s, cv("--ink-3"), 11, "middle", 600)); }
+function yLabel(svg, s, t, b){
+  var e = mono(0,0,s,cv("--ink-3"),11,"middle",600);
+  e.setAttribute("transform","translate(13,"+((t+b)/2)+") rotate(-90)");
+  svg.appendChild(e);
+}
+function baseline(svg,l,r,b){ svg.appendChild(el("line",{x1:l,y1:b,x2:r,y2:b,stroke:cv("--rule"),"stroke-width":1.5})); }
+function dot(svg,x,y,c,r){
+  svg.appendChild(el("circle",{cx:x,cy:y,r:r||4,fill:c,stroke:cv("--surface"),"stroke-width":1.6}));
+}
+var LS = [256,512,1024,2048,4096];
+function xL(l,r){ return lg(256,4096,l,r); }
+function ticksL(svg,x,b){
+  LS.forEach(function(v){
+    svg.appendChild(el("line",{x1:x(v),y1:0,x2:x(v),y2:0,stroke:"none"}));
+    svg.appendChild(mono(x(v), b+19, v, cv("--ink-3"), 11, "middle", 400));
+  });
+}
+
+/* ---------- Fig 1 · KV 线性 ---------- */
+function figKV(){
+  var H = 380, svg = frame("ch-kv", H); if(!svg) return;
+  var l = 62, r = CW-26, t = 26, b = H-52;
+  var x = xL(l,r), y = lin(0,100,b,t);
+  LS.forEach(function(v){
+    svg.appendChild(el("line",{x1:x(v),y1:t,x2:x(v),y2:b,stroke:cv("--grid-2"),"stroke-width":1}));
+    svg.appendChild(mono(x(v), b+19, v, cv("--ink-3"), 11, "middle", 400));
+  });
+  gridY(svg, [0,25,50,75,100], y, l, r, function(v){ return v+"%"; });
+  svg.appendChild(el("line",{x1:l,y1:y(100),x2:r,y2:y(100),stroke:cv("--crit"),"stroke-width":1.6,"stroke-dasharray":"3 4",opacity:.7}));
+  svg.appendChild(mono(r-4, y(100)-8, "KV 池上限", cv("--crit"), 10.5, "end", 600));
+
+  var eP = P.map(function(d){ return [x(d.L), y(d.expPeak)]; });
+  var aP = P.map(function(d){ return [x(d.L), y(d.kvMax)]; });
+  var aM = P.map(function(d){ return [x(d.L), y(d.kvP50)]; });
+  svg.appendChild(line(eP, cv("--warn"), 5, "8 5"));
+  svg.appendChild(line(aP, cv("--warn"), 1.8));
+  svg.appendChild(line(aM, cv("--accent"), 1.8));
+  P.forEach(function(d,i){
+    var c1 = el("circle",{cx:aP[i][0],cy:aP[i][1],r:4.2,fill:cv("--warn"),stroke:cv("--surface"),"stroke-width":1.6});
+    svg.appendChild(tip(c1, "L="+d.L+" 峰值 · 实测 "+d.kvMax+"% vs 理论 "+d.expPeak+"% ("+(d.kvMax-d.expPeak).toFixed(2)+" pp)"));
+    var c2 = el("circle",{cx:aM[i][0],cy:aM[i][1],r:4.2,fill:cv("--accent"),stroke:cv("--surface"),"stroke-width":1.6});
+    svg.appendChild(tip(c2, "L="+d.L+" 稳态中位数 "+d.kvP50+"%"));
+    svg.appendChild(mono(aP[i][0], aP[i][1]-13, d.kvMax+"%", cv("--warn"), 11.5, i===0?"start":"middle", 700));
+  });
+  baseline(svg,l,r,b);
+  svg.appendChild(mono(l+10, t+14, "粗虚线 = 理论 16·(L+256)/86,864   细实线 = 实测", cv("--ink-3"), 11, "start", 600));
+  yLabel(svg, "KV POOL USAGE", t, b);
+  axisLabel(svg, "INPUT LENGTH (tokens, log2)", l, r, H);
+}
+
+/* ---------- Fig 2 · 波形 ---------- */
+function figWave(){
+  var H = 400, svg = frame("ch-wave", H); if(!svg) return;
+  var l = 54, r = CW-46, t = 30, b = H-52;
+  var x = lin(0, DATA.span, l, r);
+  var yL = lin(0, 20, b, t), yR = lin(0, 100, b, t);
+  WIN.forEach(function(w,i){
+    if (i % 2 === 0) svg.appendChild(el("rect",{x:x(w.t0),y:t,width:x(w.t1)-x(w.t0),height:b-t,fill:cv("--ink"),opacity:.035}));
+    svg.appendChild(mono((x(w.t0)+x(w.t1))/2, t-9, "L="+w.L, cv("--ink-3"), 10.5, "middle", 700));
+  });
+  gridY(svg, [0,5,10,15,20], yL, l, r);
+  [0,25,50,75,100].forEach(function(v){
+    svg.appendChild(mono(r+8, yR(v)+4, v+"%", cv("--violet"), 10.5, "start", 600));
+  });
+  svg.appendChild(line(S.map(function(s){ return [x(s.t), yR(s.k)]; }), cv("--violet"), 1.5));
+  svg.appendChild(line(S.map(function(s){ return [x(s.t), yL(s.r)]; }), cv("--accent"), 1.5));
+  svg.appendChild(line(S.map(function(s){ return [x(s.t), yL(s.w)]; }), cv("--crit"), 1.5));
+  baseline(svg,l,r,b);
+  [0,60,120,180,240,300,360].forEach(function(v){
+    svg.appendChild(mono(x(v), b+19, v+"s", cv("--ink-3"), 11, "middle", 400));
+  });
+  yLabel(svg, "REQUESTS", t, b);
+  axisLabel(svg, "ELAPSED", l, r, H);
+}
+
+/* ---------- Fig 3 · TTFT 三段 ---------- */
+function figDecomp(){
+  var H = 380, svg = frame("ch-decomp", H); if(!svg) return;
+  var l = 62, r = CW-24, t = 30, b = H-52;
+  var y = lin(0, 1450, b, t);
+  gridY(svg, [0,250,500,750,1000,1250], y, l, r, function(v){ return v+"ms"; });
+  var bw = (r-l)/P.length;
+  var C = {q:cv("--crit"), p:cv("--warn"), o:cv("--ink-3")};
+  P.forEach(function(d,i){
+    var x0 = l + i*bw + bw*0.24, w = bw*0.52;
+    var segs = [[d.q,C.q,"排队"],[d.pf,C.p,"prefill"],[d.other,C.o,"前端+IPC"]];
+    var acc = 0;
+    segs.forEach(function(s){
+      var v = Math.max(s[0],0); if (v<=0) return;
+      var y1 = y(acc+v), y0 = y(acc);
+      svg.appendChild(tip(el("rect",{x:x0,y:y1,width:w,height:Math.max(y0-y1,0.6),fill:s[1],opacity:.86,rx:1.5}),
+        "L="+d.L+" · "+s[2]+" "+s[0].toFixed(1)+" ms"));
+      if (y0-y1 > 15) svg.appendChild(mono(x0+w/2, (y0+y1)/2+4, s[0].toFixed(0), "#fff", 10.5, "middle", 700));
+      acc += v;
+    });
+    svg.appendChild(mono(x0+w/2, y(acc)-9, acc.toFixed(0)+" ms", cv("--ink"), 11.5, "middle", 700));
+    svg.appendChild(mono(x0+w/2, b+19, "L="+d.L, cv("--ink-3"), 11, "middle", 600));
+    // 纯计算基线
+    var yb = y(d.pure);
+    svg.appendChild(tip(el("line",{x1:x0-bw*0.10,y1:yb,x2:x0+w+bw*0.10,y2:yb,stroke:cv("--good"),
+      "stroke-width":2.6,"stroke-dasharray":"6 4"}), "L="+d.L+" · 单流纯 prefill 计算 ≈ "+d.pure+" ms"));
+    svg.appendChild(mono(x0+w+bw*0.13, yb+4, d.pure.toFixed(1), cv("--good"), 10.5, "start", 700));
+  });
+  baseline(svg,l,r,b);
+  yLabel(svg, "TTFT (mean)", t, b);
+  axisLabel(svg, "INPUT LENGTH", l, r, H);
+}
+
+/* ---------- Fig 4 · 算 vs 等 ---------- */
+function figWait(){
+  var H = 320, svg = frame("ch-wait", H); if(!svg) return;
+  var l = 62, r = CW-24, t = 26, b = H-52;
+  var y = lin(0, 100, b, t);
+  gridY(svg, [0,25,50,75,100], y, l, r, function(v){ return v+"%"; });
+  var bw = (r-l)/P.length;
+  P.forEach(function(d,i){
+    var x0 = l + i*bw + bw*0.24, w = bw*0.52;
+    var comp = 100 - d.waitPct;
+    var yc = y(comp);
+    svg.appendChild(tip(el("rect",{x:x0,y:yc,width:w,height:b-yc,fill:cv("--good"),opacity:.85,rx:1.5}),
+      "L="+d.L+" · 纯计算 "+d.pure+" ms("+comp.toFixed(1)+"%)"));
+    svg.appendChild(tip(el("rect",{x:x0,y:y(100),width:w,height:yc-y(100),fill:cv("--crit"),opacity:.85,rx:1.5}),
+      "L="+d.L+" · 等待 "+(d.ttftMean-d.pure).toFixed(0)+" ms("+d.waitPct+"%)"));
+    svg.appendChild(mono(x0+w/2, y(100)+18, d.waitPct+"%", "#fff", 12, "middle", 700));
+    if (b-yc > 15) svg.appendChild(mono(x0+w/2, (b+yc)/2+4, comp.toFixed(0)+"%", "#fff", 11, "middle", 700));
+    svg.appendChild(mono(x0+w/2, b+19, "L="+d.L, cv("--ink-3"), 11, "middle", 600));
+    svg.appendChild(mono(x0+w/2, t-8, d.ttftMean.toFixed(0)+" ms", cv("--ink-3"), 10.5, "middle", 600));
+  });
+  baseline(svg,l,r,b);
+  yLabel(svg, "SHARE OF TTFT", t, b);
+  axisLabel(svg, "INPUT LENGTH", l, r, H);
+}
+
+/* ---------- Fig 5 · 瞬时 TF/s ---------- */
+function figTF(){
+  var H = 340, svg = frame("ch-tf", H); if(!svg) return;
+  var l = 54, r = CW-26, t = 26, b = H-52;
+  var x = lin(0, DATA.span, l, r), y = lin(0, 180, b, t);
+  WIN.forEach(function(w,i){
+    if (i % 2 === 0) svg.appendChild(el("rect",{x:x(w.t0),y:t,width:x(w.t1)-x(w.t0),height:b-t,fill:cv("--ink"),opacity:.035}));
+    svg.appendChild(mono((x(w.t0)+x(w.t1))/2, t+11, "L="+w.L, cv("--ink-3"), 10.5, "middle", 700));
+  });
+  gridY(svg, [0,50,100,150], y, l, r);
+  svg.appendChild(el("line",{x1:l,y1:y(K.peakTF),x2:r,y2:y(K.peakTF),stroke:cv("--crit"),"stroke-width":1.6,"stroke-dasharray":"5 4",opacity:.75}));
+  svg.appendChild(mono(r-4, y(K.peakTF)-7, "165.2 TF/s", cv("--crit"), 10.5, "end", 600));
+  svg.appendChild(line(S.map(function(s){ return [x(s.t), y(Math.min(s.f,180))]; }), cv("--warn"), 1.2));
+  baseline(svg,l,r,b);
+  [0,60,120,180,240,300,360].forEach(function(v){
+    svg.appendChild(mono(x(v), b+19, v+"s", cv("--ink-3"), 11, "middle", 400));
+  });
+  yLabel(svg, "TFLOP/s", t, b);
+  axisLabel(svg, "ELAPSED", l, r, H);
+}
+
+/* ---------- Fig 6 · Roofline ---------- */
+function figRoof(){
+  var H = 340, svg = frame("ch-roof", H); if(!svg) return;
+  var l = 62, r = CW-26, t = 26, b = H-52;
+  var x = xL(l,r), y = lin(0, 100, b, t);
+  LS.forEach(function(v){
+    svg.appendChild(el("line",{x1:x(v),y1:t,x2:x(v),y2:b,stroke:cv("--grid-2"),"stroke-width":1}));
+    svg.appendChild(mono(x(v), b+19, v, cv("--ink-3"), 11, "middle", 400));
+  });
+  gridY(svg, [0,25,50,75,100], y, l, r, function(v){ return v+"%"; });
+  var a = P.map(function(d){ return [x(d.L), y(d.mfu)]; });
+  var c = P.map(function(d){ return [x(d.L), y(d.mbu)]; });
+  svg.appendChild(line(a, cv("--warn"), 2.4));
+  svg.appendChild(line(c, cv("--accent"), 2.4));
+  P.forEach(function(d,i){
+    svg.appendChild(tip(el("circle",{cx:a[i][0],cy:a[i][1],r:4.2,fill:cv("--warn"),stroke:cv("--surface"),"stroke-width":1.6}),
+      "L="+d.L+" · MFU "+d.mfu+"% ("+d.tf+" TF/s)"));
+    svg.appendChild(tip(el("circle",{cx:c[i][0],cy:c[i][1],r:4.2,fill:cv("--accent"),stroke:cv("--surface"),"stroke-width":1.6}),
+      "L="+d.L+" · MBU "+d.mbu+"% ("+d.gb+" GB/s)"));
+    svg.appendChild(mono(a[i][0], a[i][1]-12, d.mfu+"%", cv("--warn"), 11, "middle", 700));
+    svg.appendChild(mono(c[i][0], c[i][1]+18, d.mbu+"%", cv("--accent"), 11, "middle", 700));
+  });
+  // 交叉点标记
+  var xc = x(3157);
+  svg.appendChild(el("line",{x1:xc,y1:t,x2:xc,y2:b,stroke:cv("--ink-3"),"stroke-width":1.2,"stroke-dasharray":"3 4",opacity:.6}));
+  svg.appendChild(mono(xc+6, t+14, "≈ L 3,157 换边", cv("--ink-3"), 10.5, "start", 600));
+  baseline(svg,l,r,b);
+  yLabel(svg, "UTILIZATION", t, b);
+  axisLabel(svg, "INPUT LENGTH (tokens, log2)", l, r, H);
+}
+
+/* ---------- Fig 7 · 带宽拆账 ---------- */
+function figBW(){
+  var H = 360, svg = frame("ch-bw", H); if(!svg) return;
+  var l = 66, r = CW-24, t = 26, b = H-52;
+  var y = lin(0, 1050, b, t);
+  gridY(svg, [0,250,500,750,1000], y, l, r);
+  svg.appendChild(el("line",{x1:l,y1:y(K.peakBW),x2:r,y2:y(K.peakBW),stroke:cv("--crit"),"stroke-width":1.6,"stroke-dasharray":"5 4",opacity:.75}));
+  svg.appendChild(mono(r-4, y(K.peakBW)-7, "1,008 GB/s", cv("--crit"), 10.5, "end", 600));
+  var bw = (r-l)/P.length;
+  var cx = [];
+  P.forEach(function(d,i){
+    var x0 = l + i*bw + bw*0.24, w = bw*0.52;
+    cx.push(x0+w/2);
+    var acc = 0;
+    [[d.wW,cv("--accent"),"权重重读"],[d.wKV,cv("--violet"),"KV 读取"]].forEach(function(s){
+      var y1 = y(acc+s[0]), y0 = y(acc);
+      svg.appendChild(tip(el("rect",{x:x0,y:y1,width:w,height:Math.max(y0-y1,0.6),fill:s[1],opacity:.85,rx:1.5}),
+        "L="+d.L+" · "+s[2]+" "+s[0]+" GB/s"));
+      if (y0-y1 > 15) svg.appendChild(mono(x0+w/2, (y0+y1)/2+4, s[0].toFixed(0), "#fff", 10.5, "middle", 700));
+      acc += s[0];
+    });
+    svg.appendChild(mono(x0+w/2, b+19, "L="+d.L, cv("--ink-3"), 11, "middle", 600));
+  });
+  svg.appendChild(line(P.map(function(d,i){ return [cx[i], y(d.gb)]; }), cv("--ink-3"), 2.2, "5 4"));
+  P.forEach(function(d,i){
+    svg.appendChild(tip(el("circle",{cx:cx[i],cy:y(d.gb),r:4,fill:cv("--ink-3"),stroke:cv("--surface"),"stroke-width":1.6}),
+      "L="+d.L+" · 实测 "+d.gb+" GB/s vs 预测 "+d.wPred+" GB/s"));
+    svg.appendChild(mono(cx[i], y(d.gb)-11, d.gb.toFixed(0), cv("--ink"), 11, "middle", 700));
+  });
+  baseline(svg,l,r,b);
+  yLabel(svg, "GB/s", t, b);
+  axisLabel(svg, "INPUT LENGTH", l, r, H);
+}
+
+/* ---------- Fig 8 · ITL 线性 ---------- */
+function figITL(){
+  var H = 340, svg = frame("ch-itl", H); if(!svg) return;
+  var l = 62, r = CW-26, t = 26, b = H-52;
+  var x = lin(0, 4400, l, r), y = lin(15, 21.5, b, t);
+  gridY(svg, [15,16,17,18,19,20,21], y, l, r, function(v){ return v+"ms"; });
+  LS.forEach(function(v){
+    svg.appendChild(el("line",{x1:x(v),y1:t,x2:x(v),y2:b,stroke:cv("--grid-2"),"stroke-width":1}));
+    svg.appendChild(mono(x(v), b+19, v, cv("--ink-3"), 11, "middle", 400));
+  });
+  var pred = [[x(0), y(16.36)], [x(4400), y(16.36+0.00091*4400)]];
+  svg.appendChild(line(pred, cv("--good"), 2.4, "7 5"));
+  var a = P.map(function(d){ return [x(d.L), y(d.itl50)]; });
+  svg.appendChild(line(a, cv("--accent"), 2.2));
+  P.forEach(function(d,i){
+    svg.appendChild(tip(el("circle",{cx:a[i][0],cy:a[i][1],r:4.2,fill:cv("--accent"),stroke:cv("--surface"),"stroke-width":1.6}),
+      "L="+d.L+" · ITL p50 "+d.itl50+" ms · 每步读 KV "+d.kvStep+" GB"));
+    svg.appendChild(mono(a[i][0], a[i][1]-12, d.itl50.toFixed(2), cv("--accent"), 11, "middle", 700));
+  });
+  baseline(svg,l,r,b);
+  yLabel(svg, "ITL p50", t, b);
+  axisLabel(svg, "INPUT LENGTH (tokens, linear)", l, r, H);
+}
+
+/* ---------- Fig 9 · 吞吐分叉 ---------- */
+function figTP(){
+  var H = 340, svg = frame("ch-tp", H); if(!svg) return;
+  var l = 62, r = CW-26, t = 26, b = H-52;
+  var x = xL(l,r), y = lin(0, 6500, b, t);
+  LS.forEach(function(v){
+    svg.appendChild(el("line",{x1:x(v),y1:t,x2:x(v),y2:b,stroke:cv("--grid-2"),"stroke-width":1}));
+    svg.appendChild(mono(x(v), b+19, v, cv("--ink-3"), 11, "middle", 400));
+  });
+  gridY(svg, [0,1500,3000,4500,6000], y, l, r, function(v){ return v.toLocaleString("en-US"); });
+  var o = P.map(function(d){ return [x(d.L), y(d.outTP)]; });
+  var tt = P.map(function(d){ return [x(d.L), y(d.totTP)]; });
+  svg.appendChild(line(tt, cv("--warn"), 2.4));
+  svg.appendChild(line(o, cv("--accent"), 2.4));
+  P.forEach(function(d,i){
+    svg.appendChild(tip(el("circle",{cx:tt[i][0],cy:tt[i][1],r:4.2,fill:cv("--warn"),stroke:cv("--surface"),"stroke-width":1.6}),
+      "L="+d.L+" · 总 "+d.totTP+" tok/s"));
+    svg.appendChild(tip(el("circle",{cx:o[i][0],cy:o[i][1],r:4.2,fill:cv("--accent"),stroke:cv("--surface"),"stroke-width":1.6}),
+      "L="+d.L+" · 输出 "+d.outTP+" tok/s"));
+    svg.appendChild(mono(tt[i][0], tt[i][1]-12, d.totTP.toFixed(0), cv("--warn"), 11, "middle", 700));
+    svg.appendChild(mono(o[i][0], o[i][1]+19, d.outTP.toFixed(0), cv("--accent"), 11, "middle", 700));
+  });
+  baseline(svg,l,r,b);
+  yLabel(svg, "TOKENS / s", t, b);
+  axisLabel(svg, "INPUT LENGTH (tokens, log2)", l, r, H);
+}
+
+/* ---------- Fig 10 · ITL 尾部 ---------- */
+function figTail(){
+  var H = 360, svg = frame("ch-itltail", H); if(!svg) return;
+  var l = 62, r = CW-26, t = 26, b = H-52;
+  var x = xL(l,r), y = lg(14, 260, b, t);
+  LS.forEach(function(v){
+    svg.appendChild(el("line",{x1:x(v),y1:t,x2:x(v),y2:b,stroke:cv("--grid-2"),"stroke-width":1}));
+    svg.appendChild(mono(x(v), b+19, v, cv("--ink-3"), 11, "middle", 400));
+  });
+  [15,20,30,50,100,200].forEach(function(v){
+    var yy = y(v);
+    svg.appendChild(el("line",{x1:l,y1:yy,x2:r,y2:yy,stroke:cv("--grid-2"),"stroke-width":1}));
+    svg.appendChild(mono(l-9, yy+4, v+"ms", cv("--ink-3"), 11, "end", 400));
+  });
+  var band = P.map(function(d){ return [x(d.L), y(d.itl99)]; })
+    .concat(P.slice().reverse().map(function(d){ return [x(d.L), y(d.itl50)]; }));
+  svg.appendChild(el("path",{d:pathOf(band)+"Z", fill:cv("--crit"), opacity:.08}));
+  var series = [["itl50",cv("--ink-3")],["itl90",cv("--warn")],["itl99",cv("--crit")]];
+  series.forEach(function(s){
+    var pts = P.map(function(d){ return [x(d.L), y(d[s[0]])]; });
+    svg.appendChild(line(pts, s[1], 2.2));
+    P.forEach(function(d,i){
+      svg.appendChild(tip(el("circle",{cx:pts[i][0],cy:pts[i][1],r:3.8,fill:s[1],stroke:cv("--surface"),"stroke-width":1.5}),
+        "L="+d.L+" · "+s[0]+" "+d[s[0]]+" ms"));
+    });
+  });
+  svg.appendChild(line(P.map(function(d){ return [x(d.L), y(d.tpot)]; }), cv("--accent"), 2, "6 4"));
+  P.forEach(function(d,i){
+    svg.appendChild(mono(x(d.L), y(d.itl99)-11, d.itl99.toFixed(0), cv("--crit"), 11, "middle", 700));
+  });
+  baseline(svg,l,r,b);
+  yLabel(svg, "ITL (log)", t, b);
+  axisLabel(svg, "INPUT LENGTH (tokens, log2)", l, r, H);
+}
+
+/* ---------- Fig 11 · 两个轴 ---------- */
+function figAxes(){
+  var H = 380, svg = frame("ch-axes", H); if(!svg) return;
+  var l = 66, r = CW-26, t = 26, b = H-52;
+  var x = lin(0, 100, l, r), y = lin(0, 1500, b, t);
+  [0,25,50,75,100].forEach(function(v){
+    svg.appendChild(el("line",{x1:x(v),y1:t,x2:x(v),y2:b,stroke:cv("--grid-2"),"stroke-width":1}));
+    svg.appendChild(mono(x(v), b+19, v+"%", cv("--ink-3"), 11, "middle", 400));
+  });
+  gridY(svg, [0,500,1000,1500], y, l, r, function(v){ return v.toLocaleString("en-US"); });
+  var cc = X.filter(function(d){ return d.axis==="conc"; });
+  var ll = X.filter(function(d){ return d.axis==="len"; });
+  function draw(arr, color, lab){
+    var pts = arr.map(function(d){ return [x(d.kv), y(d.outTP)]; });
+    svg.appendChild(line(pts, color, 2.4));
+    arr.forEach(function(d,i){
+      svg.appendChild(tip(el("circle",{cx:pts[i][0],cy:pts[i][1],r:4.2,fill:color,stroke:cv("--surface"),"stroke-width":1.6}),
+        d.tag+" · KV "+d.kv+"% · 输出 "+d.outTP+" tok/s · 总 "+d.totTP+" tok/s"));
+      svg.appendChild(mono(pts[i][0], pts[i][1]+(lab==="len"?19:-12), d.tag, color, 10.5, "middle", 700));
+    });
+  }
+  draw(cc, cv("--accent"), "conc");
+  draw(ll, cv("--warn"), "len");
+  // 相交标注
+  var xi = x(17.02);
+  svg.appendChild(el("line",{x1:xi,y1:y(600),x2:xi,y2:y(830),stroke:cv("--good"),"stroke-width":1.4,"stroke-dasharray":"3 3"}));
+  svg.appendChild(mono(xi, y(880), "三轮共同点", cv("--good"), 10.5, "middle", 700));
+  baseline(svg,l,r,b);
+  yLabel(svg, "OUTPUT TOKENS / s", t, b);
+  axisLabel(svg, "KV POOL USAGE", l, r, H);
+}
+
+/* ---------- 表格 ---------- */
+function cell(v, cls){ return "<td"+(cls?' class="'+cls+'"':"")+">"+v+"</td>"; }
+function tbKV(){
+  var tb = document.getElementById("tb-kv"); if(!tb) return;
+  tb.innerHTML = P.map(function(d){
+    var dev = (d.kvMax-d.expPeak).toFixed(2);
+    return "<tr"+(d.L===4096?' class="pick"':"")+">"
+      + cell("L = "+d.L)
+      + cell((d.L+256).toLocaleString("en-US"))
+      + cell(d.tokExp.toLocaleString("en-US"))
+      + cell(d.expPeak+"%")
+      + cell(d.kvMax+"%","hl")
+      + cell((dev>=0?"+":"")+dev+" pp", Math.abs(dev)<0.5?"gd":"mid")
+      + cell(d.kvP50+"%")
+      + cell(d.perReq.toLocaleString("en-US")+" tok")
+      + cell(d.ceil+" 条", d.ceil<25?"bad":"");
+  }).join("");
+}
+function tbQ(){
+  var tb = document.getElementById("tb-q"); if(!tb) return;
+  var c1 = {q:0.0, p:93.5, other:8.8, tot:102.3};
+  var d = P.filter(function(p){ return p.L===1024; })[0];
+  var rows = [
+    ["排队 queue_time", c1.q, d.q],
+    ["prefill(含抢步)", c1.p, d.pf],
+    ["前端 + IPC", c1.other, d.other],
+    ["合计 TTFT", c1.tot, d.ttftMean]
+  ];
+  tb.innerHTML = rows.map(function(r,i){
+    var mult = r[1] > 0 ? (r[2]/r[1]).toFixed(1)+"×" : "—";
+    var share = (r[2]/d.ttftMean*100).toFixed(0)+"%";
+    return "<tr"+(i===3?' class="pick"':"")+">"
+      + cell(r[0]) + cell(r[1].toFixed(1)) + cell(r[2].toFixed(1),"hl")
+      + cell(mult, r[1]>0 && r[2]/r[1]>3 ? "bad":"") + cell(i===3?"100%":share);
+  }).join("");
+}
+function tbAxes(){
+  var tb = document.getElementById("tb-axes"); if(!tb) return;
+  var pairs = [["C=16","L=1024"],["C=32","L=2048"],["C=64","L=4096"]];
+  var byTag = {}; X.forEach(function(d){ byTag[d.tag]=d; });
+  tb.innerHTML = pairs.map(function(pr){
+    var a = byTag[pr[0]], b = byTag[pr[1]];
+    var ratio = (a.outTP/b.outTP).toFixed(2);
+    return "<tr"+(pr[0]==="C=64"?' class="pick"':"")+">"
+      + cell(a.kv+"% / "+b.kv+"%")
+      + cell(pr[0]+" · L=1024") + cell(a.outTP.toFixed(0),"hl")
+      + cell(pr[1]+" · C=16") + cell(b.outTP.toFixed(0),"hl")
+      + cell(ratio+"×", ratio>2?"bad":(ratio>1.2?"mid":"gd"));
+  }).join("");
+}
+function tbRepro(){
+  var tb = document.getElementById("tb-repro"); if(!tb) return;
+  var d3 = P.filter(function(p){ return p.L===1024; })[0];
+  var rows = [
+    ["输出 tok/s", 682.6, 681.5, d3.outTP, 1],
+    ["TTFT p50 ms", 462.9, 474.4, d3.ttft50, 1],
+    ["TTFT p99 ms", 1390.0, 1407.3, d3.ttft99, 1],
+    ["TPOT ms", 21.03, 21.01, d3.tpot, 2],
+    ["ITL p50 ms", 17.36, 17.23, d3.itl50, 2],
+    ["ITL p99 ms", 179.2, 183.7, d3.itl99, 1],
+    ["KV 峰值 %", 23.6, 17.03, d3.kvMax, 2]
+  ];
+  tb.innerHTML = rows.map(function(r){
+    var vs = [r[1],r[2],r[3]];
+    var spread = (Math.max.apply(null,vs)/Math.min.apply(null,vs)-1)*100;
+    return "<tr>" + cell(r[0])
+      + cell(r[1].toFixed(r[4])) + cell(r[2].toFixed(r[4])) + cell(r[3].toFixed(r[4]),"hl")
+      + cell(spread.toFixed(1)+"%", spread<3?"gd":(spread<8?"mid":"bad"));
+  }).join("");
+}
+function tbMain(){
+  var tb = document.getElementById("tb-main"); if(!tb) return;
+  tb.innerHTML = P.map(function(d){
+    return "<tr"+(d.L===4096?' class="pick"':"")+">"
+      + cell(d.L) + cell(d.dur.toFixed(1))
+      + cell(d.kvMax+"%", d.kvMax>70?"bad":(d.kvMax>40?"mid":""))
+      + cell(d.waitMax, d.waitMax>8?"mid":"")
+      + cell(d.ttft50.toFixed(0)) + cell(d.ttft99.toFixed(0), d.ttft99>2500?"bad":"")
+      + cell(d.q.toFixed(0)) + cell(d.pf.toFixed(0))
+      + cell(d.tpot.toFixed(1)) + cell(d.itl50.toFixed(1))
+      + cell(d.itl90.toFixed(0), d.itl90>100?"bad":"")
+      + cell(d.itl99.toFixed(0), d.itl99>100?"bad":"")
+      + cell(d.e2e50.toLocaleString("en-US"))
+      + cell(d.outTP.toFixed(0),"hl") + cell(d.totTP.toFixed(0)) + cell(d.tokIter)
+      + cell(d.mfu+"%") + cell(d.mbu+"%") + cell(d.pwr.toFixed(0));
+  }).join("");
+}
+function tbSched(){
+  var tb = document.getElementById("tb-sched"); if(!tb) return;
+  tb.innerHTML = P.map(function(d){
+    var decShare = (16/d.tokIter*100);
+    return "<tr"+(d.L===4096?' class="pick"':"")+">"
+      + cell(d.L) + cell(d.iters.toLocaleString("en-US")) + cell(d.iterS.toFixed(1))
+      + cell(d.stepMs.toFixed(2)) + cell(d.tokIter.toFixed(1)) + cell("16")
+      + cell(decShare.toFixed(1)+"%", decShare<10?"bad":(decShare<30?"mid":"gd"))
+      + cell(d.kvStep.toFixed(2)+" GB")
+      + cell(d.reqTP.toFixed(2));
+  }).join("");
+}
+
+/* ---------- Fig 12 · 两条轴用 tok/iter 对齐 ---------- */
+function figToki(){
+  var H = 380, svg = frame("ch-toki", H); if(!svg) return;
+  var l = 66, r = CW-92, t = 28, b = H-58;
+  var x = lg(4, 340, l, r), y = lin(0, 100, b, t);
+  gridY(svg, [0,20,40,60,80,100], y, l, r, function(v){ return v+"%"; });
+  [4,10,30,100,300].forEach(function(v){
+    svg.appendChild(el("line",{x1:x(v),y1:t,x2:x(v),y2:b,stroke:cv("--grid-2"),"stroke-width":1}));
+    svg.appendChild(mono(x(v), b+19, v, cv("--ink-3"), 11, "middle", 600));
+  });
+  baseline(svg,l,r,b);
+
+  var cc = X.filter(function(d){ return d.axis==="conc"; });
+  // 并发轴:虚线打底
+  svg.appendChild(line(cc.map(function(d){ return [x(d.it), y(d.mbu)]; }), cv("--ink-3"), 1.8, "5 4"));
+  svg.appendChild(line(cc.map(function(d){ return [x(d.it), y(d.mfu)]; }), cv("--ink-3"), 1.8, "5 4"));
+  cc.forEach(function(d){
+    svg.appendChild(tip(el("circle",{cx:x(d.it),cy:y(d.mbu),r:3.2,fill:cv("--ink-3")}),
+      d.tag+" 并发轴 · tok/iter "+d.it+" · MBU "+d.mbu+"%"));
+    svg.appendChild(tip(el("circle",{cx:x(d.it),cy:y(d.mfu),r:3.2,fill:cv("--ink-3")}),
+      d.tag+" 并发轴 · tok/iter "+d.it+" · MFU "+d.mfu+"%"));
+  });
+
+  // 长度轴:实线在上
+  svg.appendChild(line(P.map(function(p){ return [x(p.tokIter), y(p.mbu)]; }), cv("--accent"), 2.8));
+  svg.appendChild(line(P.map(function(p){ return [x(p.tokIter), y(p.mfu)]; }), cv("--crit"), 2.8));
+  P.forEach(function(p){
+    dot(svg, x(p.tokIter), y(p.mbu), cv("--accent"), 4.4);
+    dot(svg, x(p.tokIter), y(p.mfu), cv("--crit"), 4.4);
+    svg.appendChild(tip(el("circle",{cx:x(p.tokIter),cy:y(p.mbu),r:9,fill:"transparent"}),
+      "L="+p.L+" 长度轴 · tok/iter "+p.tokIter+" · MBU "+p.mbu+"%"));
+    svg.appendChild(tip(el("circle",{cx:x(p.tokIter),cy:y(p.mfu),r:9,fill:"transparent"}),
+      "L="+p.L+" 长度轴 · tok/iter "+p.tokIter+" · MFU "+p.mfu+"%"));
+  });
+
+  svg.appendChild(mono(r+8, y(43.6)+4,  "MBU",   cv("--accent"), 11, "start", 700));
+  svg.appendChild(mono(r+8, y(53.1)+4,  "MFU",   cv("--crit"),   11, "start", 700));
+  svg.appendChild(mono(x(5.4), y(88.0)-13, "并发轴", cv("--ink-3"), 10, "start", 600));
+  yLabel(svg, "UTILIZATION", t, b);
+  axisLabel(svg, "TOKENS PER ITERATION (log)", l, r, H);
+}
+
+function drawAll(){
+  figKV(); figWave(); figDecomp(); figWait(); figTF(); figRoof();
+  figBW(); figITL(); figTP(); figTail(); figAxes(); figToki();
+  tbKV(); tbQ(); tbAxes(); tbRepro(); tbMain(); tbSched();
+}
+drawAll();
+if (window.matchMedia){
+  var mq = window.matchMedia("(prefers-color-scheme: dark)");
+  if (mq.addEventListener) mq.addEventListener("change", drawAll);
+}
+new MutationObserver(drawAll).observe(document.documentElement, {attributes:true, attributeFilter:["data-theme"]});
+})();
+</script>

@@ -1,0 +1,1005 @@
+<meta charset="utf-8">
+<title>TTFT 解剖</title>
+<style>
+  :root{
+    --ground:#F5F7F6; --surface:#FFFFFF; --surface-2:#EDF1F0;
+    --ink:#131C1B; --ink-2:#455553; --ink-3:#6E807D;
+    --rule:#D6DFDD; --rule-soft:#E6EBEA;
+    --accent:#0D7A80; --accent-2:#0A5C61; --accent-soft:rgba(13,122,128,.10);
+    --good:#2E7D4F; --warn:#B05A12; --crit:#A32F35; --violet:#5B4A8A;
+    --good-soft:rgba(46,125,79,.12); --warn-soft:rgba(176,90,18,.12); --crit-soft:rgba(163,47,53,.10);
+    --grid-2:rgba(19,28,27,.055);
+    --shadow:0 1px 2px rgba(19,28,27,.05), 0 8px 24px -16px rgba(19,28,27,.22);
+    --font-mono:ui-monospace,"Cascadia Mono","SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --font-body:"Segoe UI",system-ui,-apple-system,"Helvetica Neue","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D1312; --surface:#141C1B; --surface-2:#1B2524;
+      --ink:#E2EAE8; --ink-2:#A3B4B0; --ink-3:#7E8F8B;
+      --rule:#26332F; --rule-soft:#1E2A28;
+      --accent:#45B6BC; --accent-2:#69CBD0; --accent-soft:rgba(69,182,188,.13);
+      --good:#58B87C; --warn:#DF9247; --crit:#E06A70; --violet:#9B87D4;
+      --good-soft:rgba(88,184,124,.13); --warn-soft:rgba(223,146,71,.13); --crit-soft:rgba(224,106,112,.12);
+      --grid-2:rgba(226,234,232,.055);
+      --shadow:0 1px 2px rgba(0,0,0,.32), 0 10px 28px -18px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0D1312; --surface:#141C1B; --surface-2:#1B2524;
+    --ink:#E2EAE8; --ink-2:#A3B4B0; --ink-3:#7E8F8B;
+    --rule:#26332F; --rule-soft:#1E2A28;
+    --accent:#45B6BC; --accent-2:#69CBD0; --accent-soft:rgba(69,182,188,.13);
+    --good:#58B87C; --warn:#DF9247; --crit:#E06A70; --violet:#9B87D4;
+    --good-soft:rgba(88,184,124,.13); --warn-soft:rgba(223,146,71,.13); --crit-soft:rgba(224,106,112,.12);
+    --grid-2:rgba(226,234,232,.055);
+    --shadow:0 1px 2px rgba(0,0,0,.32), 0 10px 28px -18px rgba(0,0,0,.7);
+  }
+
+  *{box-sizing:border-box}
+  body{background:var(--ground); color:var(--ink); font-family:var(--font-body);
+    font-size:16px; line-height:1.65; margin:0; padding:0 20px 96px; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:940px; margin:0 auto}
+  .prose{max-width:66ch}
+
+  header{padding:56px 0 32px; border-bottom:1px solid var(--rule)}
+  .eyebrow{font-family:var(--font-mono); font-size:11px; font-weight:600; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--accent); display:flex; align-items:center; gap:10px; margin:0 0 18px}
+  .eyebrow::after{content:""; flex:1; height:1px; background:var(--rule)}
+  h1{font-size:clamp(30px,4.6vw,44px); line-height:1.16; font-weight:700;
+    letter-spacing:-.018em; margin:0 0 14px; text-wrap:balance}
+  .standfirst{font-size:17px; color:var(--ink-2); margin:0; max-width:62ch}
+
+  .spec{display:grid; grid-template-columns:repeat(auto-fit,minmax(146px,1fr)); gap:1px;
+    background:var(--rule); border:1px solid var(--rule); margin:30px 0 0; border-radius:3px; overflow:hidden}
+  .spec div{background:var(--surface); padding:11px 14px}
+  .spec dt{font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--ink-3); margin:0 0 3px}
+  .spec dd{font-family:var(--font-mono); font-size:13px; margin:0; color:var(--ink);
+    font-variant-numeric:tabular-nums; word-break:break-word}
+
+  section{padding:52px 0 0}
+  h2{font-size:24px; font-weight:700; letter-spacing:-.012em; margin:0 0 8px; text-wrap:balance}
+  h2 .num{font-family:var(--font-mono); font-size:12px; font-weight:600; color:var(--accent);
+    letter-spacing:.1em; display:block; margin-bottom:7px}
+  h3{font-size:17px; font-weight:650; margin:30px 0 8px; letter-spacing:-.005em}
+  p{margin:0 0 14px}
+  .lede{color:var(--ink-2); font-size:16px; margin-bottom:26px}
+  strong{font-weight:650}
+  code{font-family:var(--font-mono); font-size:.88em; background:var(--surface-2); padding:1px 5px;
+    border-radius:3px; border:1px solid var(--rule-soft); font-variant-numeric:tabular-nums}
+
+  .verdict{background:var(--surface); border:1px solid var(--rule); border-radius:4px;
+    padding:24px 26px; box-shadow:var(--shadow); margin:0 0 28px; border-left:3px solid var(--accent)}
+  .verdict .k{font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--ink-3); margin:0 0 10px}
+  .verdict .big{font-family:var(--font-mono); font-size:clamp(22px,3.4vw,30px); font-weight:700;
+    color:var(--accent); letter-spacing:-.01em; margin:0 0 8px; font-variant-numeric:tabular-nums}
+  .verdict p{margin:0; color:var(--ink-2); font-size:15px}
+
+  .stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin:0 0 8px}
+  .stat{background:var(--surface); border:1px solid var(--rule); border-radius:4px; padding:16px 18px}
+  .stat .k{font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--ink-3); margin:0 0 8px}
+  .stat .v{font-family:var(--font-mono); font-size:23px; font-weight:700; letter-spacing:-.015em;
+    margin:0 0 4px; font-variant-numeric:tabular-nums; line-height:1.15}
+  .stat .v small{font-size:13px; font-weight:500; color:var(--ink-3); letter-spacing:0}
+  .stat .n{font-size:13px; color:var(--ink-3); margin:0; line-height:1.45}
+  .stat.ok .v{color:var(--good)} .stat.warn .v{color:var(--warn)} .stat.crit .v{color:var(--crit)}
+
+  figure{margin:26px 0 0; background:var(--surface); border:1px solid var(--rule); border-radius:4px;
+    padding:22px 22px 16px; box-shadow:var(--shadow)}
+  figcaption{font-family:var(--font-mono); font-size:11px; font-weight:600; letter-spacing:.13em;
+    text-transform:uppercase; color:var(--ink-3); margin:0 0 4px}
+  .fig-title{font-size:16px; font-weight:650; margin:0 0 16px; letter-spacing:-.005em}
+  .chart{width:100%; overflow-x:auto}
+  .chart svg{display:block; width:100%; height:auto; min-width:520px}
+  .legend{display:flex; flex-wrap:wrap; gap:8px 22px; margin:14px 0 0; padding-top:13px;
+    border-top:1px solid var(--rule-soft); font-family:var(--font-mono); font-size:11.5px; color:var(--ink-2)}
+  .legend span{display:flex; align-items:center; gap:7px}
+  .legend i{width:15px; height:2.5px; border-radius:2px; flex:none}
+  .legend i.sq{width:11px; height:11px; border-radius:2px}
+  .legend i.d{height:0; border-top:2.5px dashed currentColor; border-radius:0}
+  .note{font-size:13.5px; color:var(--ink-3); margin:13px 0 0; line-height:1.6; max-width:70ch}
+
+  .tw{overflow-x:auto; margin:22px 0 0; border:1px solid var(--rule); border-radius:4px; background:var(--surface)}
+  table{border-collapse:collapse; width:100%; font-family:var(--font-mono); font-size:12.5px; min-width:700px}
+  th,td{padding:8px 12px; text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap}
+  th{font-size:10px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3);
+    background:var(--surface-2); border-bottom:1px solid var(--rule); position:sticky; top:0}
+  th:first-child,td:first-child{text-align:left}
+  tbody tr{border-bottom:1px solid var(--rule-soft)}
+  tbody tr:last-child{border-bottom:0}
+  tbody tr:hover{background:var(--surface-2)}
+  td.hl{color:var(--accent); font-weight:650}
+  td.bad{color:var(--crit); font-weight:650}
+  td.mid{color:var(--warn); font-weight:600}
+  td.ok{color:var(--good); font-weight:600}
+  tr.pick{background:var(--accent-soft)}
+  tr.pick td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+  caption{caption-side:bottom; text-align:left; padding:11px 12px; font-family:var(--font-body);
+    font-size:13px; color:var(--ink-3); border-top:1px solid var(--rule-soft)}
+
+  ul.pts{list-style:none; padding:0; margin:16px 0 0; display:flex; flex-direction:column; gap:13px}
+  ul.pts li{padding-left:19px; position:relative; color:var(--ink-2); font-size:15px; max-width:68ch}
+  ul.pts li::before{content:""; position:absolute; left:0; top:.62em; width:7px; height:2px;
+    background:var(--accent); border-radius:1px}
+  ul.pts li strong{color:var(--ink)}
+
+  .callout{border:1px solid var(--rule); border-left:3px solid var(--warn); background:var(--warn-soft);
+    border-radius:4px; padding:16px 20px; margin:22px 0 0}
+  .callout.crit{border-left-color:var(--crit); background:var(--crit-soft)}
+  .callout.ok{border-left-color:var(--good); background:var(--good-soft)}
+  .callout .k{font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.13em;
+    text-transform:uppercase; margin:0 0 7px; color:var(--warn)}
+  .callout.crit .k{color:var(--crit)} .callout.ok .k{color:var(--good)}
+  .callout p{margin:0; font-size:14.5px; color:var(--ink-2)}
+  .callout p+p{margin-top:9px}
+
+  pre{background:var(--surface-2); border:1px solid var(--rule); border-radius:4px; padding:15px 17px;
+    overflow-x:auto; margin:16px 0 0; font-family:var(--font-mono); font-size:12.5px; line-height:1.7; color:var(--ink)}
+  pre .c{color:var(--ink-3)} pre .a{color:var(--accent); font-weight:600}
+
+  footer{margin-top:64px; padding-top:22px; border-top:1px solid var(--rule);
+    font-family:var(--font-mono); font-size:11.5px; color:var(--ink-3); display:flex; flex-wrap:wrap; gap:6px 20px}
+  @media (max-width:640px){ header{padding-top:38px} figure{padding:17px 14px 13px} .verdict{padding:19px} }
+  table.gloss { min-width: 620px; }
+  table.gloss th, table.gloss td {
+    text-align: left; white-space: normal; vertical-align: top; padding: 10px 14px 10px 0;
+  }
+  table.gloss td:nth-child(1) { white-space: nowrap; padding-left: 12px; }
+  table.gloss td:nth-child(2) { white-space: nowrap; color: var(--ink-2); }
+  table.gloss td:nth-child(3) {
+    min-width: 20rem; line-height: 1.6; font-family: var(--font-body); font-size: 13px;
+  }
+  table.gloss td:nth-child(4) {
+    min-width: 12rem; color: var(--accent); font-weight: 650; line-height: 1.55;
+  }
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">Concurrency Sweep · Round 2 · RTX 4090</p>
+  <h1>TTFT 解剖</h1>
+  <p class="standfirst">
+    同样的 1024 / 256 负载,同样扫到 64 并发,采样器全程跟跑了 973 秒。
+    第一轮只能说"TTFT 涨到了 5.8 秒",这一轮能说清楚它涨在哪一段 ——
+    而且这次 KV 池宽松了 38%,正好用来分辨"排队"到底是被显存逼的还是被调度逼的。
+  </p>
+  <dl class="spec">
+    <div><dt>GPU</dt><dd>RTX 4090 · 24 GB</dd></div>
+    <div><dt>vLLM</dt><dd>0.27.1 · V1</dd></div>
+    <div><dt>KV 池</dt><dd>6.41 GiB · 120,064 tok</dd></div>
+    <div><dt>In / Out</dt><dd>1024 / 256 tok</dd></div>
+    <div><dt>采样</dt><dd>969 点 · 973 s</dd></div>
+    <div><dt>窗口内迭代</dt><dd>34,779</dd></div>
+    <div><dt>失败请求</dt><dd>0 / 1332</dd></div>
+    <div><dt>抢占次数</dt><dd>0</dd></div>
+    <div><dt>驱动</dt><dd>580.159.03 · CUDA 13.0</dd></div>
+  </dl>
+</header>
+
+<!-- ============ 术语 ============ -->
+<section>
+  <h2><span class="num">术语</span>先把这些指标定义清楚</h2>
+  <p class="lede prose">
+    下面这些缩写在正文里会反复出现,它们<b>不是同义词</b> ——
+    每一个量的是流水线上不同的一段,彼此之间还有确定的换算关系。
+    本轮负载:<code>1024 输入 / 256 输出 · 并发 1 → 64</code>。本报告把 TTFT 再往下拆成 <b>排队 + prefill + 前端</b> 三段,所以下表里 TTFT 那一行还会继续细分。
+  </p>
+
+  <pre>  t=0   客户端发出请求
+        │
+        │  [1] 排队 queue_time —— 在 waiting 队列里等调度器放行
+        │  [2] prefill —— 把 1024 个输入 token 一次算完,写进 KV Cache
+        │  [3] 前端 + IPC —— 分词、HTTP、API server 与引擎之间的通信
+        │
+  <span class="a">━━━━━ [1]+[2]+[3]       = TTFT 首字延迟 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+        │
+        │      第 1 个输出 token 送达
+        │
+        │  [4] ITL × 255 —— 相邻两个输出 token 之间的间隔
+        │     这 255 个间隔的平均值 = TPOT
+        │
+  <span class="a">━━━━━ [1]+[2]+[3]+[4]   = E2EL 端到端时延 ━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+
+  <span class="c"># 恒等式:E2EL = TTFT + 255 × TPOT</span>
+  <span class="c"># 吞吐 = 所有请求的输出 token 总数 ÷ 整段测试的墙钟时间(不是 1/TPOT)</span></pre>
+
+  <div class="tw">
+    <table class="gloss">
+      <caption>本报告用到的全部指标 · 最后一列是本轮的实测范围</caption>
+      <thead><tr><th>指标</th><th>中文</th><th>量的是什么</th><th>本轮实测</th></tr></thead>
+      <tbody>
+        <tr><td><strong>TTFT</strong><br><span class="n" style="opacity:.7">Time To First Token</span></td><td>首字延迟</td><td>从客户端发出请求,到收到<b>第 1 个</b>输出 token。它包含排队 + prefill + 前端开销三段,<b>不含</b>后续解码。</td><td class="hl">102 → 1,000 ms(均值)</td></tr>
+        <tr><td><strong>排队</strong><br><span class="n" style="opacity:.7">request_queue_time</span></td><td>TTFT 第 1 段</td><td>请求进到 waiting 队列、等调度器放行的时间。服务端 histogram,按每档测量窗口差分得到均值。<b>本报告的主角</b>。</td><td class="hl">0 → 380 ms</td></tr>
+        <tr><td><strong>prefill</strong><br><span class="n" style="opacity:.7">request_prefill_time</span></td><td>TTFT 第 2 段</td><td>把 1024 个输入 token 算完、写进 KV Cache 的时间。这是"真算"的那一段,同样来自服务端 histogram。</td><td class="hl">94 → 479 ms</td></tr>
+        <tr><td><strong>前端</strong><br><span class="n" style="opacity:.7">残差,非直接测量</span></td><td>TTFT 第 3 段</td><td>分词、HTTP、API server 与引擎之间的 IPC。<b>由客户端 TTFT 减去上面两段得出</b>,因此也吸收了窗口对齐误差 —— 看趋势可以,不要逐毫秒引用。</td><td class="hl">9 → 141 ms</td></tr>
+        <tr><td><strong>tok/iter</strong><br><span class="n" style="opacity:.7">iteration_tokens_total</span></td><td>每次迭代吃几个 token</td><td>一次前向里被一起算掉的 token 数 = 正在解码的请求数 + chunked prefill 切进来的块。<b>它解释了 ITL 的尖峰从哪来</b>。</td><td class="hl">4.9 → 317.4</td></tr>
+        <tr><td><strong>ITL</strong><br><span class="n" style="opacity:.7">Inter-Token Latency</span></td><td>token 间隔</td><td>相邻两个输出 token 之间的时间。一条 256 token 的请求有 255 个 ITL 样本 —— 样本量大,所以它的 p99 最能暴露抖动。</td><td class="hl">15.83 → 22.50 ms(p50)</td></tr>
+        <tr><td><strong>ITL p99</strong></td><td>间隔的尾部</td><td>把所有 ITL 样本排序后第 99% 那个值。一次卡顿只影响少数间隔,均值和中位数都看不出来,<b>只有 p99 会跳</b>。</td><td class="hl">16.3 → 207.6 ms</td></tr>
+        <tr><td><strong>输出吞吐</strong><br><span class="n" style="opacity:.7">output token/s</span></td><td>用户拿到的</td><td>单位时间产出的<b>输出</b> token 数。这是用户真正感知的产能。</td><td class="hl">61.9 → 1,387.8 tok/s</td></tr>
+        <tr><td><strong>preemption</strong><br><span class="n" style="opacity:.7">抢占</span></td><td>KV 不够时踢人</td><td>KV 池装不下时,调度器把某条正在跑的请求踢回队列,它已算出的 KV 被丢弃、恢复时要重算 prefill。计数器 <code>vllm:num_preemptions_total</code>,<b>vLLM V1 不打日志行</b>,只能从 /metrics 读。</td><td class="hl">全程 0 次</td></tr>
+        <tr><td><strong>KV 占用</strong><br><span class="n" style="opacity:.7">gpu_cache_usage_perc</span></td><td>KV 池用了多少</td><td>KV Cache 池的使用率。池子大小 = 显存扣掉权重与激活之后的余量,由启动日志给出;每 token 占 56 KiB,所以占用率 ≈ <code>并发 × 上下文 ÷ 池容量</code>。</td><td class="hl">1.1% → 67.5%</td></tr>
+        <tr><td><strong>Running / Waiting</strong></td><td>在跑的 / 在等的</td><td>服务端当前正在解码的请求数,和还在队列里等的请求数。两者之和等于客户端在飞的并发数。<b>Running 才是真实产能</b>。</td><td class="hl">Running 1→61;Waiting 峰值 55(5 秒内排空)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <p class="k">三个最容易混的地方</p>
+    <p>
+      <b>1 · TPOT 和 ITL 均值是同一件事的两种算法。</b>
+      TPOT 是"每条请求先算自己的平均,再对请求取中位数";ITL 均值是"把所有间隔倒在一起平均"。
+      负载均匀时两者几乎相等(本轮 C=1 都是 15.83 ms),
+      有长尾时会分开 —— <span class="hl">两者一分开,就说明存在少数被拖长的间隔</span>。
+    </p>
+    <p>
+      <b>2 · 看 p50 得不出任何关于抖动的结论。</b>
+      一次 200 ms 的停顿混在 25 万个间隔里,对中位数毫无影响,对均值影响也很小。
+      本系列反复出现的一条经验:<b>抖动只在 p99 上露头</b>;
+      而抢占这种更稀有的事件(万分之一量级)连 p99 都够不着,只能看专门的计数器。
+    </p>
+    <p>
+      <b>3 · 吞吐不是 1 / TPOT。</b>
+      TPOT 是单条请求的出字速度,吞吐是整台机器的产能 —— 后者约等于前者乘以并行的请求条数。
+      并发提高时 TPOT 会变差而吞吐会变好,<span class="hl">这正是压测要权衡的那个交换</span>。
+    </p>
+  </div>
+</section>
+
+
+<!-- ============ 结论 ============ -->
+<section>
+  <h2><span class="num">结论</span>TTFT 的增长几乎全部来自排队</h2>
+  <p class="lede prose">
+    把 TTFT 拆成"排队"和"真算"两段之后,结论很干脆:从 C=1 到 C=64,
+    prefill 只涨了 5.1 倍,而排队从 0 涨到 380 毫秒 ——
+    它占 TTFT 的比重同步从 0% 升到 38%。
+    并发越高,用户等的越不是计算,而是别人。
+  </p>
+
+  <div class="verdict">
+    <p class="k">核心分解结果 · C=64</p>
+    <p class="big">排队 380 ms &nbsp;+&nbsp; prefill 479 ms &nbsp;+&nbsp; 前端 141 ms</p>
+    <p>
+      三段加起来 1,000 ms,正是客户端观测到的平均 TTFT。
+      其中<strong>排队从 C=1 的 0 ms 一路涨到 380 ms</strong>,是唯一一个近乎从零起步的分量。
+    </p>
+  </div>
+
+  <div class="stats">
+    <div class="stat ok">
+      <p class="k">C=64 前端开销(残差)</p>
+      <p class="v">141<small> ms</small></p>
+      <p class="n">C=1 时只有 9 ms,随并发一起长</p>
+    </div>
+    <div class="stat crit">
+      <p class="k">C=64 排队占 TTFT</p>
+      <p class="v">38.0<small> %</small></p>
+      <p class="n">C=1 时这一项是 0</p>
+    </div>
+    <div class="stat warn">
+      <p class="k">C=64 持续功耗</p>
+      <p class="v">447<small> W</small></p>
+      <p class="n">已经压在 4090 的 450 W 功耗墙上</p>
+    </div>
+    <div class="stat">
+      <p class="k">每次迭代 token 数</p>
+      <p class="v">317<small> tok</small></p>
+      <p class="n">C=64 时,decode 61 + prefill 256</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TTFT 分解 ============ -->
+<section>
+  <h2><span class="num">分解</span>TTFT 拆成三段</h2>
+  <p class="lede prose">
+    服务端的 <code>request_queue_time</code> 和 <code>request_prefill_time</code> 两个 histogram,
+    差分后得到每个并发点的平均排队时间与平均 prefill 时间。
+    两者之和与客户端观测的 TTFT 之间还差一截,那是 vLLM 前端(API server)的处理与 IPC 开销。
+  </p>
+
+  <figure>
+    <figcaption>Figure 1</figcaption>
+    <p class="fig-title">TTFT 三段分解(平均值,堆叠)</p>
+    <div class="chart" id="ch-decomp"></div>
+    <div class="legend">
+      <span style="color:var(--crit)"><i class="sq" style="background:currentColor"></i>排队 queue</span>
+      <span style="color:var(--warn)"><i class="sq" style="background:currentColor"></i>prefill 真算</span>
+      <span style="color:var(--ink-3)"><i class="sq" style="background:currentColor"></i>前端 + IPC</span>
+    </div>
+    <p class="note">
+      柱顶数字为该并发点的平均 TTFT。每一档的 histogram 差分<b>只统计该档测量窗口内完成的请求</b>
+      (就是 Figure 4 里那条灰色分区),档位切换时的收尾请求不计入下一档 ——
+      否则上一档那些零排队的收尾请求会把本档的平均排队稀释掉。
+      前端那一段是<b>残差</b>:客户端 TTFT 减去服务端两段,因此也吸收了窗口对齐的误差,
+      <b>不宜逐毫秒解读</b> —— 但它随并发从 9 ms 增长到 141 ms 这个趋势是真实的。
+    </p>
+  </figure>
+
+  <h3>两个分量的增长速度完全不同</h3>
+  <figure>
+    <figcaption>Figure 2</figcaption>
+    <p class="fig-title">排队 vs prefill:谁在推高 TTFT</p>
+    <div class="chart" id="ch-qp"></div>
+    <div class="legend">
+      <span style="color:var(--crit)"><i style="background:currentColor"></i>排队 queue</span>
+      <span style="color:var(--warn)"><i style="background:currentColor"></i>prefill</span>
+      <span style="color:var(--accent)"><i class="d" style="background:none"></i>客户端 TTFT(均值)</span>
+    </div>
+    <p class="note">
+      纵轴对数。<strong>两条线在本轮测到的范围内始终没有交叉</strong> ——
+      排队一直在 prefill 下方。值得看的是<b>斜率</b>而不是高低:
+      prefill 从 94 ms 涨到 <span class="hl">479 ms</span>,只有 5.1 倍;
+      排队则从 C=1/C=2 的 0(低于计数器精度)一路涨到 <span class="hl">380 ms</span> ——
+      它是唯一一个近乎从零起步的分量,所以谈它的"倍数"没有意义,要看绝对增量。
+    </p>
+    <p class="note">
+      两者的差距因此一路收窄:排队占 prefill 的比例从 C=4 的 0.6% 涨到
+      C=16 的 10.6%、C=32 的 30.4%,到 <strong>C=64 已经追到 79%</strong>。
+      照这个势头再往上,排队迟早会反超 prefill —— 但本轮最高只压到 64,
+      具体在哪一档反超是外推,不是实测,这里不给数。
+    </p>
+  </figure>
+
+  <div class="callout crit">
+    <p class="k">这一轮把"排队是不是 KV 逼出来的"这个问题关掉了</p>
+    <p>
+      第一轮 C=64 时 KV 占用 93.3%、<code>running</code> 中位数只有 62,
+      当时的解释是"KV 池确实开始限制并发了"。
+    </p>
+    <p>
+      这一轮 KV 池大了 38%,C=64 的占用只有 <strong>67.5%</strong>,离满还差三分之一 ——
+      可是 <code>running</code> 中位数<strong>还是 61</strong>,排队<strong>还是涨到 380 ms</strong>。
+      <span class="hl">同一个现象在池子宽松得多的机器上原样重现,说明它不是显存造成的</span>,
+      而是请求完成与下一条 prefill 完成之间的自然空隙,加上 chunked prefill 的调度节奏。
+    </p>
+  </div>
+</section>
+
+<!-- ============ 混批 ============ -->
+<section>
+  <h2><span class="num">混批</span>每次迭代里,四份 prefill 陪着一份 decode</h2>
+  <p class="lede prose">
+    <code>iteration_tokens_total</code> 记录每次 engine 迭代处理了多少 token。
+    如果只有 decode,这个数应该等于正在跑的请求数。实测每 1 个 decode token
+    就配着约 <strong>4 个 prefill token</strong> —— 多出来的部分,
+    就是被 chunked prefill 切碎后塞进同一批的 prefill 块。
+  </p>
+
+  <figure>
+    <figcaption>Figure 3</figcaption>
+    <p class="fig-title">每次迭代的 token 构成</p>
+    <div class="chart" id="ch-iter"></div>
+    <div class="legend">
+      <span style="color:var(--accent)"><i class="sq" style="background:currentColor"></i>decode(≈ 并发数)</span>
+      <span style="color:var(--warn)"><i class="sq" style="background:currentColor"></i>混入的 prefill 块</span>
+    </div>
+    <p class="note">
+      decode 部分按窗口内 running 的中位数估计。<b>decode : prefill 几乎不随并发变化,
+      恒定在 1 : 4 上下</b> —— 这正是输入输出比(1024 : 256)的直接反映。
+    </p>
+  </figure>
+
+  <p class="prose">
+    这是 ITL p99 尖峰最直接的物理解释:<strong>一个正在解码的请求,每一步都要等同批次里的
+    prefill 块算完</strong>。C=64 时每次迭代要处理 317 个 token —— decode 61 个、
+    prefill 256 个,于是解码方向的每一步都被拖长,尾部就出现了 200 ms 量级的停顿。
+    七个档位共 34,779 次迭代,这个 1 : 4 从头到尾没变过。
+  </p>
+</section>
+
+<!-- ============ 波形 ============ -->
+<section>
+  <h2><span class="num">波形</span>973 秒全程实况</h2>
+  <p class="lede prose">
+    七个并发点在时间轴上依次排开,
+    可以直接看到队列什么时候堆起来、KV 什么时候冲顶 —— 以及这一轮它其实<strong>没有</strong>冲顶。
+  </p>
+
+  <figure>
+    <figcaption>Figure 4</figcaption>
+    <p class="fig-title">运行数 / 等待数 / KV 占用</p>
+    <div class="chart" id="ch-wave"></div>
+    <div class="legend">
+      <span style="color:var(--accent)"><i style="background:currentColor"></i>running</span>
+      <span style="color:var(--crit)"><i style="background:currentColor"></i>waiting</span>
+      <span style="color:var(--violet)"><i style="background:currentColor"></i>KV 占用 %</span>
+    </div>
+    <p class="note">
+      灰色分区为各并发点的测量窗口。waiting 在 C≤8 时全程为 0;
+      C=16 起在每个档位的<strong>起步瞬间</strong>出现一根尖峰(C=64 时 55 条),
+      但都在 5 秒内排空,稳态下 90% 的采样点仍是 0。KV 曲线一路阶梯上行,最高只到 67.5%。
+    </p>
+  </figure>
+
+  <figure>
+    <figcaption>Figure 5</figcaption>
+    <p class="fig-title">功耗与温度</p>
+    <div class="chart" id="ch-power"></div>
+    <div class="legend">
+      <span style="color:var(--warn)"><i style="background:currentColor"></i>功耗 W</span>
+      <span style="color:var(--crit)"><i class="d" style="background:none"></i>450 W 功耗墙</span>
+      <span style="color:var(--accent)"><i style="background:currentColor"></i>温度 °C</span>
+    </div>
+    <p class="note">
+      C=64 期间功耗中位数 447 W、峰值 474 W,已经压在 4090 的默认 450 W 限制上。
+      温度最高 73 °C,不构成瓶颈。
+    </p>
+  </figure>
+
+  <div class="callout">
+    <p class="k">功耗墙可能是效率衰减的一部分原因</p>
+    <p>
+      C=64 时 GPU 持续运行在 447 W,而 C=1 只有 368 W。撞上功耗限制后 GPU 会降频,
+      这会直接压低实际可用带宽和算力 —— <strong>而 vLLM 的任何指标都看不到这件事</strong>。
+      把 C=64 的效率只有 35.1% 全部归因于 prefill 抢算力是不够的,至少还要算上功耗墙这一份。
+    </p>
+  </div>
+</section>
+
+<!-- ============ KV 对账 ============ -->
+<section>
+  <h2><span class="num">对账</span>PagedAttention 的账,算得平不平</h2>
+  <p class="lede prose">
+    KV 占用不该是个测出来才知道的黑箱 ——
+    它应该能从并发数、序列长度、每 token 的 KV 体积三个数直接算出来。
+    拿稳态实测值去对,误差有多大就说明这本账理解得有多准。
+  </p>
+
+  <h3>先把口径分清楚</h3>
+  <p class="prose">
+    直觉公式是 <code>并发 × (in_len + out_len) × 56 KiB ÷ 池大小</code>。
+    但 <code>in + out = 1280</code> 是<strong>请求结束那一刻</strong>的占用,
+    稳态下大量请求正生成到一半,平均只占 <code>in + out/2 = 1152</code>。
+    <strong>峰值要对峰值,均值要对均值</strong>,混用会系统性高估 11%。
+  </p>
+
+  <pre><span class="c"># 池容量(服务端日志,第二轮)</span>
+GPU KV cache size = <span class="a">120,064 tokens</span>  = 7,504 blocks × 16
+
+<span class="c"># 单请求占用(block_size = 16,两个数都整除,无对齐损耗)</span>
+峰值 = ceil(1280/16) = 80 blocks = <span class="a">1,280 tokens</span>
+均值 = ceil(1152/16) = 72 blocks = <span class="a">1,152 tokens</span>
+
+<span class="c"># 预期占用率</span>
+峰值% = C × 1280 ÷ 120,064        均值% = C × 1152 ÷ 120,064</pre>
+
+  <figure>
+    <figcaption>Figure 6</figcaption>
+    <p class="fig-title">KV 占用:稳态实测 vs 理论预期</p>
+    <div class="chart" id="ch-kv"></div>
+    <div class="legend">
+      <span style="color:var(--warn)"><i style="background:currentColor"></i>实测峰值</span>
+      <span style="color:var(--warn)"><i class="d" style="background:none"></i>预期峰值</span>
+      <span style="color:var(--accent)"><i style="background:currentColor"></i>实测 p50(稳态)</span>
+      <span style="color:var(--accent)"><i class="d" style="background:none"></i>预期均值</span>
+    </div>
+    <p class="note">
+      实线为实测,虚线为理论值,两两几乎完全重合。稳态段取每个并发点窗口的中间 60%,
+      去掉了档位切换时的爬升与回落。
+    </p>
+  </figure>
+
+  <div class="tw">
+    <table>
+      <thead>
+        <tr><th>并发</th><th>running p50</th>
+          <th>实测 p50</th><th>预期均值</th><th>误差</th>
+          <th>实测峰值</th><th>预期峰值</th><th>误差</th></tr>
+      </thead>
+      <tbody id="tb-kv"></tbody>
+      <caption>单位为占池百分比,误差单位为百分点(pp)。</caption>
+    </table>
+  </div>
+
+  <div class="callout ok">
+    <p class="k">账算平了,而且比第一轮更平</p>
+    <p>
+      <strong>峰值口径误差 0.00 ~ −0.72 个百分点</strong>,七个点全部落在 1 pp 以内,
+      前四个点更是精确到小数点后两位都不差。
+      均值口径在低并发下同样贴合,只有 C=64 出现 −2.69 pp 的偏差。
+    </p>
+    <p>
+      而这个偏差<strong>不是模型错了,是"名义并发 ≠ 实际并发"</strong>。
+      C=64 时 <code>running</code> 中位数只有 61。用 61 代入公式:预期 58.52%,实测 58.72% ——
+      <strong>误差 +0.20 个百分点</strong>。
+    </p>
+    <p>
+      这 3 条的差额是<strong>请求换手的自然空隙</strong>,不是显存约束 ——
+      理由见前面「分解」一节。
+    </p>
+  </div>
+
+  <p class="prose">
+    剩下 C=8~32 那 −0.18 ~ −1.49 pp 的小幅负偏差,来自请求生命周期错开:
+    理论均值假设输出进度均匀分布在 0~256 之间,但请求完成到新请求 prefill 完成之间
+    有短暂空隙,实际占用略低于理想值。这个方向和量级都合理。
+  </p>
+
+  <div class="callout">
+    <p class="k">一个这轮没暴露的坑</p>
+    <p>
+      本例的 1280 和 1152 都能被 <code>block_size=16</code> 整除,对齐损耗恰好为零 ——
+      这是运气。做容量规划时要按 block 向上取整,不能按 token 数直接算。
+      非整除情形的算例见《vllm-03-KV的线性》。
+    </p>
+  </div>
+</section>
+
+<!-- ============ 复现性 ============ -->
+<section>
+  <h2><span class="num">复现</span>两轮独立测试的吻合度</h2>
+  <p class="lede prose">
+    两轮相隔十天,<strong>换了一台实例、换了驱动版本</strong>,配置相同。
+    这比第一轮内部的两次重跑更能检验方法的可靠性。
+  </p>
+
+  <figure>
+    <figcaption>Figure 7</figcaption>
+    <p class="fig-title">吞吐复现性:第一轮 vs 第二轮</p>
+    <div class="chart" id="ch-repro"></div>
+    <p class="note">
+      7 个点的吞吐差异全部落在 −1.20% ~ +0.61% 之间,p99 TTFT 差异在 −2.1% ~ +2.6% 之间。
+      有意思的是差异有方向:<strong>低并发第二轮略快,高并发第二轮略慢</strong> ——
+      前者像是驱动/时钟差异,后者对应第二轮更早撞上功耗墙(447 W vs 440 W)。
+      但整体幅度都在 1% 量级,不影响任何结论。
+    </p>
+  </figure>
+
+  <h3>为什么会有第二轮:一个被证伪的假设</h3>
+  <p class="prose">
+    重跑一轮的<b>唯一动机</b>,是给客户端补上 <code>--temperature 0</code>,
+    让两个引擎的采样路径同构。动手前的判断是:第一轮的 vLLM 走了模型
+    <code>generation_config.json</code> 的默认值
+    (temp 0.7 / top_k 20 / <strong>repetition_penalty 1.05</strong>),
+    而 <code>repetition_penalty</code> 每出一个 token 都要扫一遍已生成的历史,
+    是 vLLM 单方面付的成本 —— 所以第一轮的 vLLM 数据<b>应该偏悲观</b>,
+    对 llama.cpp 不公平。
+  </p>
+
+  <div class="tw">
+    <table class="gloss">
+      <caption>两轮之间实际变了什么。除采样参数外,机器与驱动也换了 —— 这两个变量没能分开。</caption>
+      <thead><tr><th>项目</th><th>第一轮</th><th>第二轮</th><th>预期影响</th></tr></thead>
+      <tbody>
+        <tr><td><strong>temperature</strong></td><td>0.7(配置文件默认)</td><td>0(显式指定)</td><td>贪心解码,少一次概率变换</td></tr>
+        <tr><td><strong>top_k</strong></td><td>20</td><td>关</td><td>少一次 top-k 排序</td></tr>
+        <tr><td><strong>repetition_penalty</strong></td><td>1.05</td><td>关</td><td class="hl">每步少扫一遍历史 —— 假设中的主要成本</td></tr>
+        <tr><td><strong>采样 WARNING</strong></td><td>每档都打</td><td>消失</td><td>确认参数真的生效了</td></tr>
+        <tr><td><strong>驱动 / CUDA</strong></td><td>590.48.01 / 13.1</td><td>580.159.03 / 13.0</td><td>非受控变量,连带换了实例</td></tr>
+        <tr><td><strong>实测吞吐差</strong></td><td colspan="2" style="text-align:center">−1.20% ~ +0.61%(七个并发点)</td><td class="hl">在噪声里</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout crit">
+    <p class="k">这个判断是错的,必须写进结论</p>
+    <p>
+      七个档位的差异全部落在 <strong>±1.2%</strong> 以内,而且方向还不一致
+      (低并发第二轮略升、高并发第二轮略降,原因见上图 note)。这是噪声,不是信号。
+      <strong><code>repetition_penalty 1.05</code> 对 vLLM 的吞吐没有可测量的影响。</strong>
+    </p>
+    <p>
+      那这一轮白跑了吗?没有 —— 它把"采样参数不同构"这个变量
+      <strong>从怀疑名单里划掉了</strong>。在此之前,llama.cpp 与 vLLM 之间的任何差距
+      都可以被质疑"是不是采样设置不一样导致的";现在这条退路没了,
+      剩下的差异只能归因于引擎本身。<strong>排除一个假设也是结果。</strong>
+      它还有一个副作用:把两轮焊成了一组可以互相印证的数据 ——
+      <span class="hl">下面这段之所以敢说"复现到 1%",前提正是这两轮除机器外确实同构</span>。
+    </p>
+  </div>
+
+  <div class="callout ok">
+    <p class="k">跨机器复现到 1%,但有一个数不能跨机器搬</p>
+    <p>
+      吞吐、延迟、ITL 裂口位置、混批比例、KV 对账误差 —— 全部复现。
+      唯一差了 38% 的是 <strong>KV 池大小</strong>:4.64 GiB / 86,896 tok 变成 6.41 GiB / 120,064 tok。
+      同一条启动命令,只因为驱动从 590.48.01 换成 580.159.03,
+      vLLM profiling 探到的已占用显存少了 1 GiB ——
+      <span class="hl">凡是从 KV 池推出来的数(并发上限、抢占阈值),必须每台机器现读日志</span>。
+    </p>
+  </div>
+</section>
+
+<!-- ============ 数据 ============ -->
+<section>
+  <h2><span class="num">数据</span>完整测量结果</h2>
+  <div class="tw">
+    <table>
+      <thead>
+        <tr>
+          <th>并发</th><th>输出 tok/s</th><th>queue</th><th>prefill</th><th>前端*</th>
+          <th>TTFT 均值</th><th>TTFT p99</th><th>ITL p50</th><th>ITL p99</th>
+          <th>running</th><th>wait 峰值</th><th>KV%</th><th>功耗 W</th>
+        </tr>
+      </thead>
+      <tbody id="tb"></tbody>
+      <caption>延迟单位 ms。queue / prefill 来自服务端 histogram 按各档测量窗口差分;<b>*前端是残差</b>(TTFT 均值 − queue − prefill),吸收了窗口对齐误差,看趋势不看绝对值。</caption>
+    </table>
+  </div>
+</section>
+
+<!-- ============ 对照 ============ -->
+<section>
+  <h2><span class="num">对照</span>第一轮的结论,哪些站住了</h2>
+
+  <h3>被证实的</h3>
+  <ul class="pts">
+    <li><strong>ITL 尾部在 C=8 裂开</strong> —— 两轮完全一致(p99 从 17.6 跳到 102.1 ms),
+      而且现在有了机制层面的证据:每次迭代混入了 4 倍于 decode 的 prefill token。</li>
+    <li><strong>抢占不是原因</strong> —— 采样器全程 969 个点,<code>num_preemptions_total</code>
+      始终为 0。</li>
+    <li><strong>PagedAttention 的账完全算得平</strong> —— 七个并发点的峰值占用
+      与理论预期误差全部在 0.72 pp 以内。这意味着 KV 容量可以<strong>事先算准</strong>,
+      不需要试出来。</li>
+    <li><strong>混批比例恒定在 1:4</strong>,与第一轮完全一致,不随并发也不随机器变化。</li>
+    <li><strong>vLLM 前端开销随并发增长</strong> —— 从 9 ms 到 141 ms,两轮同一量级。
+      注意这一段是残差而非直接测量,<b>趋势成立,绝对值不宜逐毫秒引用</b>。</li>
+  </ul>
+
+  <h3>被修正的</h3>
+  <ul class="pts">
+    <li><strong>"C=64 时 KV 池限制了并发"这个解释不成立。</strong>
+      第一轮据 running 中位数 62 &lt; 64 归因于池子不够;这一轮池子宽松得多,running 还是 61。
+      差额来自请求换手的空隙,跟 KV 无关。</li>
+    <li><strong>"真实并发上限 67"是这台机器的数,不是这个模型的数。</strong>
+      同样的算法在第二轮给出 93.8。上限跟着 KV 池走,而 KV 池跟着 profiling 走。</li>
+  </ul>
+
+  <h3>新发现</h3>
+  <ul class="pts">
+    <li><strong>MFU / MBU 计数器这次有数了。</strong>加上 <code>--enable-mfu-metrics</code> 之后,
+      <code>estimated_flops_per_gpu_total</code> 与 <code>estimated_read_bytes_per_gpu_total</code>
+      全程有效,C=1 实测 4.16 TFLOP/s、887 GB/s —— 第一轮这两个 counter 全程为 0。</li>
+  </ul>
+</section>
+
+<!-- ============ 下一步 ============ -->
+<section>
+  <h2><span class="num">下一步</span>三件值得做的事</h2>
+  <ul class="pts">
+    <li><strong>补测 C=96。</strong>这一轮 C=64 只吃掉 67.5% 的池子,
+      C=96 需要 122,880 tokens、刚好压满 120,064 —— 那才是第一次能看到 preemption 的地方,
+      也是唯一能把"排队"和"抢占"这两件事分开看的位置。</li>
+    <li><strong>调低 <code>--max-num-batched-tokens</code> 再跑一轮</strong>,
+      验证"prefill 块变小 → ITL 尖峰变矮、TTFT 变差"这个对换关系。
+      现在有了 <code>iteration_tokens</code> 指标,可以直接量化块大小的变化。
+      <span class="hl">既然已经排除了 KV,这是唯一剩下的旋钮</span>。</li>
+    <li><strong>把 KV 池钉死再跨轮比。</strong>加 <code>--kv-cache-memory</code>
+      把两轮固定到同一个字节数,"并发上限""抢占阈值"类结论才能做真正的单变量对照。</li>
+  </ul>
+</section>
+
+<p class="note" style="margin-top:56px; max-width:none">
+  <b>这是 Round 2 五份压测报告的第 2 份</b>(vLLM 首字延迟分解)。
+  整轮的横向结论与生产选型建议见 <b>《选型指南-vllm-llama-cpp》</b> ——
+  那份把五组测试的数据合起来,回答"两个引擎各自强在哪、生产上怎么选"。
+  同目录另有:<code>vllm-01-Qwen2.5-7B并发曲线</code> · <code>vllm-03-KV的线性</code> · <code>vllm-04-断崖</code> · <code>llama-cpp-压测</code>。
+</p>
+
+<footer>
+  <span>2026-08-25 · Round 2</span>
+  <span>1,332 requests · 0 failed · 0 preemptions</span>
+  <span>969 samples over 973 s · 34,779 iterations</span>
+  <span>vLLM 0.27.1 · chunked prefill on · prefix caching off</span>
+</footer>
+
+</div>
+
+<script>
+(function(){
+"use strict";
+var DATA = {"points":[{"c":1,"n":40,"dur":165.54,"tp":61.857,"tp1":61.484,"ttft50":102.3,"ttft99":109.0,"ttftMean":102.3,"tpot50":15.83,"itl50":15.83,"itl90":15.91,"itl99":16.3,"e2e50":4138,"e2e99":4145,"q":0.0,"p":93.5,"dec":4036.8,"other":8.8,"runP50":1.0,"runMax":1.0,"waitMax":0.0,"waitPct":0.0,"kvMax":1.07,"pwrP50":367.6,"pwrMax":377.1,"tempMax":68,"iterTok":4.9,"iters":10201},{"c":2,"n":60,"dur":129.42,"tp":118.681,"tp1":118.104,"ttft50":154.2,"ttft99":203.0,"ttftMean":154.0,"tpot50":16.31,"itl50":16.15,"itl90":16.24,"itl99":16.9,"e2e50":4313,"e2e99":4320,"q":0.0,"p":136.4,"dec":4160.5,"other":17.6,"runP50":2.0,"runMax":2.0,"waitMax":0.0,"waitPct":0.0,"kvMax":2.13,"pwrP50":334.3,"pwrMax":362.8,"tempMax":68,"iterTok":9.7,"iters":7673},{"c":4,"n":80,"dur":90.99,"tp":225.083,"tp1":224.221,"ttft50":288.4,"ttft99":388.4,"ttftMean":242.9,"tpot50":16.7,"itl50":16.32,"itl90":16.44,"itl99":17.6,"e2e50":4549,"e2e99":4577,"q":1.1,"p":185.6,"dec":4306.7,"other":56.2,"runP50":4.0,"runMax":4.0,"waitMax":0.0,"waitPct":0.0,"kvMax":4.26,"pwrP50":340.2,"pwrMax":397.9,"tempMax":69,"iterTok":19.3,"iters":5088},{"c":8,"n":120,"dur":74.67,"tp":411.41,"tp1":410.633,"ttft50":305.9,"ttft99":733.6,"ttftMean":319.2,"tpot50":18.32,"itl50":16.63,"itl90":16.77,"itl99":102.1,"e2e50":4978,"e2e99":5143,"q":8.0,"p":233.7,"dec":4663.1,"other":77.6,"runP50":8.0,"runMax":8.0,"waitMax":0.0,"waitPct":0.0,"kvMax":8.53,"pwrP50":347.7,"pwrMax":449.5,"tempMax":68,"iterTok":38.4,"iters":3837},{"c":16,"n":200,"dur":75.13,"tp":681.493,"tp1":682.568,"ttft50":474.4,"ttft99":1407.3,"ttftMean":481.3,"tpot50":21.01,"itl50":17.23,"itl90":17.57,"itl99":183.7,"e2e50":5850,"e2e99":6565,"q":35.8,"p":336.4,"dec":5392.2,"other":109.1,"runP50":16.0,"runMax":16.0,"waitMax":9.0,"waitPct":1.3,"kvMax":17.03,"pwrP50":366.7,"pwrMax":465.5,"tempMax":70,"iterTok":75.2,"iters":3348},{"c":32,"n":320,"dur":79.79,"tp":1026.684,"tp1":1033.51,"ttft50":588.3,"ttft99":2854.0,"ttftMean":687.5,"tpot50":28.6,"itl50":19.82,"itl90":21.16,"itl99":197.2,"e2e50":7962,"e2e99":10090,"q":127.9,"p":421.4,"dec":7379.1,"other":138.3,"runP50":32.0,"runMax":32.0,"waitMax":26.0,"waitPct":3.8,"kvMax":33.95,"pwrP50":398.1,"pwrMax":468.0,"tempMax":71,"iterTok":159.0,"iters":2549},{"c":64,"n":512,"dur":94.45,"tp":1387.769,"tp1":1404.662,"ttft50":786.7,"ttft99":5923.7,"ttftMean":999.7,"tpot50":43.41,"itl50":22.5,"itl90":187.48,"itl99":207.6,"e2e50":11779,"e2e99":16881,"q":379.6,"p":479.0,"dec":10957.3,"other":141.1,"runP50":61.0,"runMax":64.0,"waitMax":55.0,"waitPct":9.6,"kvMax":67.51,"pwrP50":447.4,"pwrMax":473.6,"tempMax":73,"iterTok":317.4,"iters":2083}],"windows":[{"c":1,"t0":118.6,"t1":283.4},{"c":2,"t0":299.5,"t1":428.2},{"c":4,"t0":444.2,"t1":533.7},{"c":8,"t0":550.8,"t1":624.2},{"c":16,"t0":641.3,"t1":715.7},{"c":32,"t0":732.8,"t1":811.2},{"c":64,"t0":830.3,"t1":923.8}],"series":[{"t":0.0,"r":0,"w":0,"k":0.0,"p":31.9,"tc":37},{"t":1.0,"r":0,"w":0,"k":0.0,"p":31.8,"tc":37},{"t":2.0,"r":0,"w":0,"k":0.0,"p":31.7,"tc":37},{"t":3.0,"r":0,"w":0,"k":0.0,"p":31.5,"tc":37},{"t":4.0,"r":0,"w":0,"k":0.0,"p":31.3,"tc":37},{"t":5.0,"r":0,"w":0,"k":0.0,"p":31.5,"tc":37},{"t":6.0,"r":0,"w":0,"k":0.0,"p":31.8,"tc":37},{"t":7.0,"r":0,"w":0,"k":0.0,"p":32.0,"tc":37},{"t":8.0,"r":0,"w":0,"k":0.0,"p":32.1,"tc":37},{"t":9.0,"r":0,"w":0,"k":0.0,"p":31.9,"tc":37},{"t":10.0,"r":0,"w":0,"k":0.0,"p":31.4,"tc":37},{"t":11.1,"r":0,"w":0,"k":0.0,"p":31.0,"tc":37},{"t":12.1,"r":0,"w":0,"k":0.0,"p":31.2,"tc":37},{"t":13.1,"r":0,"w":0,"k":0.0,"p":31.6,"tc":37},{"t":14.1,"r":0,"w":0,"k":0.0,"p":31.5,"tc":37},{"t":15.1,"r":0,"w":0,"k":0.0,"p":31.4,"tc":37},{"t":16.1,"r":0,"w":0,"k":0.0,"p":31.2,"tc":37},{"t":17.1,"r":0,"w":0,"k":0.0,"p":31.2,"tc":37},{"t":18.1,"r":0,"w":0,"k":0.0,"p":31.1,"tc":37},{"t":19.1,"r":0,"w":0,"k":0.0,"p":30.9,"tc":37},{"t":20.1,"r":0,"w":0,"k":0.0,"p":30.9,"tc":37},{"t":21.1,"r":0,"w":0,"k":0.0,"p":31.0,"tc":37},{"t":22.1,"r":0,"w":0,"k":0.0,"p":31.1,"tc":37},{"t":23.1,"r":0,"w":0,"k":0.0,"p":31.1,"tc":37},{"t":24.1,"r":0,"w":0,"k":0.0,"p":31.1,"tc":37},{"t":25.1,"r":0,"w":0,"k":0.0,"p":31.1,"tc":37},{"t":26.1,"r":0,"w":0,"k":0.0,"p":31.3,"tc":37},{"t":27.1,"r":0,"w":0,"k":0.0,"p":31.6,"tc":37},{"t":28.1,"r":0,"w":0,"k":0.0,"p":31.4,"tc":37},{"t":29.1,"r":0,"w":0,"k":0.0,"p":31.0,"tc":37},{"t":30.1,"r":0,"w":0,"k":0.0,"p":30.7,"tc":37},{"t":31.2,"r":0,"w":0,"k":0.0,"p":30.6,"tc":37},{"t":32.2,"r":0,"w":0,"k":0.0,"p":30.6,"tc":37},{"t":33.2,"r":0,"w":0,"k":0.0,"p":30.6,"tc":37},{"t":34.2,"r":0,"w":0,"k":0.0,"p":30.8,"tc":37},{"t":35.2,"r":0,"w":0,"k":0.0,"p":31.0,"tc":37},{"t":36.2,"r":0,"w":0,"k":0.0,"p":31.0,"tc":37},{"t":37.2,"r":0,"w":0,"k":0.0,"p":30.9,"tc":37},{"t":38.2,"r":0,"w":0,"k":0.0,"p":30.7,"tc":37},{"t":39.2,"r":0,"w":0,"k":0.0,"p":30.6,"tc":37},{"t":40.2,"r":0,"w":0,"k":0.0,"p":30.8,"tc":37},{"t":41.2,"r":0,"w":0,"k":0.0,"p":30.8,"tc":37},{"t":42.2,"r":0,"w":0,"k":0.0,"p":30.6,"tc":37},{"t":43.2,"r":0,"w":0,"k":0.0,"p":30.9,"tc":37},{"t":44.2,"r":0,"w":0,"k":0.0,"p":31.3,"tc":37},{"t":45.2,"r":0,"w":0,"k":0.0,"p":31.2,"tc":37},{"t":46.2,"r":0,"w":0,"k":0.0,"p":31.5,"tc":37},{"t":47.2,"r":0,"w":0,"k":0.0,"p":31.7,"tc":37},{"t":48.2,"r":0,"w":0,"k":0.0,"p":31.5,"tc":37},{"t":49.2,"r":0,"w":0,"k":0.0,"p":31.4,"tc":37},{"t":50.2,"r":0,"w":0,"k":0.0,"p":31.0,"tc":37},{"t":51.3,"r":0,"w":0,"k":0.0,"p":30.9,"tc":37},{"t":52.3,"r":0,"w":0,"k":0.0,"p":31.1,"tc":37},{"t":53.3,"r":0,"w":0,"k":0.0,"p":31.4,"tc":37},{"t":54.3,"r":0,"w":0,"k":0.0,"p":31.4,"tc":37},{"t":55.3,"r":0,"w":0,"k":0.0,"p":31.5,"tc":37},{"t":56.3,"r":0,"w":0,"k":0.0,"p":31.6,"tc":37},{"t":57.3,"r":0,"w":0,"k":0.0,"p":31.5,"tc":37},{"t":58.3,"r":0,"w":0,"k":0.0,"p":31.5,"tc":37},{"t":59.3,"r":0,"w":0,"k":0.0,"p":31.5,"tc":37},{"t":60.3,"r":0,"w":0,"k":0.0,"p":31.6,"tc":37},{"t":61.3,"r":0,"w":0,"k":0.0,"p":31.6,"tc":37},{"t":62.3,"r":0,"w":0,"k":0.0,"p":31.4,"tc":37},{"t":63.3,"r":0,"w":0,"k":0.0,"p":31.1,"tc":37},{"t":64.3,"r":0,"w":0,"k":0.0,"p":31.0,"tc":37},{"t":65.3,"r":0,"w":0,"k":0.0,"p":30.9,"tc":37},{"t":66.3,"r":0,"w":0,"k":0.0,"p":30.9,"tc":37},{"t":67.3,"r":0,"w":0,"k":0.0,"p":31.0,"tc":37},{"t":68.3,"r":0,"w":0,"k":0.0,"p":31.0,"tc":37},{"t":69.3,"r":0,"w":0,"k":0.0,"p":31.1,"tc":37},{"t":70.3,"r":0,"w":0,"k":0.0,"p":30.9,"tc":37},{"t":71.4,"r":0,"w":0,"k":0.0,"p":30.8,"tc":37},{"t":72.4,"r":0,"w":0,"k":0.0,"p":30.8,"tc":37},{"t":73.4,"r":0,"w":0,"k":0.0,"p":30.7,"tc":37},{"t":74.4,"r":0,"w":0,"k":0.0,"p":30.8,"tc":37},{"t":75.4,"r":0,"w":0,"k":0.0,"p":30.7,"tc":37},{"t":76.4,"r":0,"w":0,"k":0.0,"p":30.5,"tc":37},{"t":77.4,"r":0,"w":0,"k":0.0,"p":30.6,"tc":37},{"t":78.4,"r":0,"w":0,"k":0.0,"p":30.6,"tc":37},{"t":79.4,"r":0,"w":0,"k":0.0,"p":30.7,"tc":37},{"t":80.4,"r":0,"w":0,"k":0.0,"p":30.8,"tc":37},{"t":81.4,"r":0,"w":0,"k":0.0,"p":30.7,"tc":37},{"t":82.4,"r":0,"w":0,"k":0.0,"p":30.9,"tc":37},{"t":83.4,"r":8,"w":0,"k":6.93,"p":267.0,"tc":54},{"t":84.4,"r":8,"w":0,"k":7.33,"p":340.9,"tc":46},{"t":85.4,"r":8,"w":0,"k":7.68,"p":313.6,"tc":47},{"t":86.4,"r":8,"w":0,"k":8.1,"p":314.5,"tc":47},{"t":87.4,"r":8,"w":0,"k":8.53,"p":315.1,"tc":48},{"t":88.4,"r":8,"w":0,"k":6.93,"p":418.2,"tc":56},{"t":89.4,"r":8,"w":0,"k":7.36,"p":335.8,"tc":49},{"t":90.4,"r":8,"w":0,"k":7.77,"p":316.0,"tc":50},{"t":91.5,"r":8,"w":0,"k":8.12,"p":316.6,"tc":50},{"t":92.5,"r":8,"w":0,"k":8.53,"p":316.9,"tc":51},{"t":93.5,"r":8,"w":0,"k":6.93,"p":428.8,"tc":54},{"t":94.5,"r":8,"w":0,"k":7.36,"p":331.1,"tc":52},{"t":95.5,"r":8,"w":0,"k":7.78,"p":319.4,"tc":52},{"t":96.5,"r":8,"w":0,"k":8.21,"p":320.6,"tc":53},{"t":97.5,"r":6,"w":0,"k":6.18,"p":321.2,"tc":53},{"t":98.5,"r":8,"w":0,"k":7.0,"p":439.1,"tc":56},{"t":99.5,"r":8,"w":0,"k":7.37,"p":330.4,"tc":54},{"t":100.5,"r":8,"w":0,"k":7.78,"p":322.8,"tc":54},{"t":101.5,"r":8,"w":0,"k":8.21,"p":323.6,"tc":55},{"t":102.5,"r":0,"w":0,"k":0.0,"p":324.0,"tc":55},{"t":103.5,"r":0,"w":0,"k":0.0,"p":160.7,"tc":49},{"t":104.5,"r":0,"w":0,"k":0.0,"p":98.1,"tc":49},{"t":105.5,"r":0,"w":0,"k":0.0,"p":91.9,"tc":49},{"t":106.5,"r":0,"w":0,"k":0.0,"p":84.4,"tc":48},{"t":107.5,"r":0,"w":0,"k":0.0,"p":77.3,"tc":48},{"t":108.5,"r":0,"w":0,"k":0.0,"p":77.1,"tc":48},{"t":109.5,"r":0,"w":0,"k":0.0,"p":76.9,"tc":47},{"t":110.6,"r":0,"w":0,"k":0.0,"p":76.6,"tc":47},{"t":111.6,"r":0,"w":0,"k":0.0,"p":76.4,"tc":47},{"t":112.6,"r":0,"w":0,"k":0.0,"p":76.2,"tc":47},{"t":113.6,"r":0,"w":0,"k":0.0,"p":75.8,"tc":47},{"t":114.6,"r":0,"w":0,"k":0.0,"p":75.4,"tc":46},{"t":115.6,"r":0,"w":0,"k":0.0,"p":75.1,"tc":46},{"t":116.6,"r":0,"w":0,"k":0.0,"p":74.9,"tc":46},{"t":117.6,"r":0,"w":0,"k":0.0,"p":74.5,"tc":46},{"t":118.6,"r":1,"w":0,"k":0.88,"p":107.2,"tc":53},{"t":119.6,"r":1,"w":0,"k":0.93,"p":337.0,"tc":54},{"t":120.6,"r":1,"w":0,"k":0.99,"p":338.1,"tc":55},{"t":121.6,"r":1,"w":0,"k":1.04,"p":338.9,"tc":55},{"t":122.6,"r":1,"w":0,"k":0.88,"p":343.5,"tc":62},{"t":123.6,"r":1,"w":0,"k":0.93,"p":347.4,"tc":56},{"t":124.6,"r":1,"w":0,"k":0.99,"p":342.3,"tc":56},{"t":125.6,"r":1,"w":0,"k":1.04,"p":344.4,"tc":57},{"t":126.6,"r":1,"w":0,"k":0.87,"p":346.5,"tc":57},{"t":127.6,"r":1,"w":0,"k":0.92,"p":357.5,"tc":57},{"t":128.6,"r":1,"w":0,"k":0.97,"p":350.2,"tc":58},{"t":129.6,"r":1,"w":0,"k":1.03,"p":351.6,"tc":58},{"t":130.7,"r":1,"w":0,"k":0.87,"p":352.6,"tc":58},{"t":131.7,"r":1,"w":0,"k":0.92,"p":360.4,"tc":59},{"t":132.7,"r":1,"w":0,"k":0.97,"p":355.0,"tc":59},{"t":133.7,"r":1,"w":0,"k":1.03,"p":355.9,"tc":59},{"t":134.7,"r":0,"w":0,"k":0.0,"p":357.0,"tc":59},{"t":135.7,"r":1,"w":0,"k":0.91,"p":365.7,"tc":59},{"t":136.7,"r":1,"w":0,"k":0.96,"p":357.3,"tc":60},{"t":137.7,"r":1,"w":0,"k":1.01,"p":358.4,"tc":60},{"t":138.7,"r":1,"w":0,"k":1.07,"p":359.2,"tc":60},{"t":139.7,"r":1,"w":0,"k":0.91,"p":367.4,"tc":60},{"t":140.7,"r":1,"w":0,"k":0.96,"p":359.8,"tc":60},{"t":141.7,"r":1,"w":0,"k":1.01,"p":360.4,"tc":60},{"t":142.7,"r":1,"w":0,"k":1.07,"p":360.9,"tc":61},{"t":143.7,"r":1,"w":0,"k":0.89,"p":372.1,"tc":61},{"t":144.7,"r":1,"w":0,"k":0.95,"p":362.1,"tc":61},{"t":145.7,"r":1,"w":0,"k":1.0,"p":362.7,"tc":61},{"t":146.7,"r":1,"w":0,"k":1.05,"p":363.2,"tc":61},{"t":147.7,"r":1,"w":0,"k":0.89,"p":373.3,"tc":62},{"t":148.7,"r":1,"w":0,"k":0.95,"p":364.0,"tc":61},{"t":149.7,"r":1,"w":0,"k":1.0,"p":363.8,"tc":61},{"t":150.8,"r":1,"w":0,"k":1.05,"p":363.8,"tc":62},{"t":151.8,"r":1,"w":0,"k":0.88,"p":372.8,"tc":63},{"t":152.8,"r":1,"w":0,"k":0.93,"p":362.9,"tc":62},{"t":153.8,"r":1,"w":0,"k":0.99,"p":364.5,"tc":62},{"t":154.8,"r":1,"w":0,"k":1.04,"p":364.9,"tc":62},{"t":155.8,"r":1,"w":0,"k":0.88,"p":368.9,"tc":62},{"t":156.8,"r":1,"w":0,"k":0.93,"p":372.4,"tc":62},{"t":157.8,"r":1,"w":0,"k":0.99,"p":365.9,"tc":62},{"t":158.8,"r":1,"w":0,"k":1.04,"p":366.5,"tc":62},{"t":159.8,"r":1,"w":0,"k":0.88,"p":374.4,"tc":62},{"t":160.8,"r":1,"w":0,"k":0.92,"p":366.3,"tc":62},{"t":161.8,"r":1,"w":0,"k":0.97,"p":366.0,"tc":62},{"t":162.8,"r":1,"w":0,"k":1.03,"p":366.1,"tc":62},{"t":163.8,"r":1,"w":0,"k":0.87,"p":373.2,"tc":63},{"t":164.8,"r":1,"w":0,"k":0.92,"p":366.4,"tc":63},{"t":165.8,"r":1,"w":0,"k":0.97,"p":366.7,"tc":63},{"t":166.8,"r":1,"w":0,"k":1.03,"p":367.1,"tc":63},{"t":167.8,"r":1,"w":0,"k":0.87,"p":366.8,"tc":68},{"t":168.8,"r":1,"w":0,"k":0.92,"p":373.0,"tc":63},{"t":169.8,"r":1,"w":0,"k":0.96,"p":367.7,"tc":63},{"t":170.9,"r":1,"w":0,"k":1.01,"p":367.9,"tc":63},{"t":171.9,"r":0,"w":0,"k":0.0,"p":367.8,"tc":63},{"t":172.9,"r":1,"w":0,"k":0.91,"p":375.9,"tc":63},{"t":173.9,"r":1,"w":0,"k":0.96,"p":367.7,"tc":63},{"t":174.9,"r":1,"w":0,"k":1.01,"p":367.8,"tc":63},{"t":175.9,"r":1,"w":0,"k":1.07,"p":367.5,"tc":63},{"t":176.9,"r":1,"w":0,"k":0.91,"p":375.1,"tc":63},{"t":177.9,"r":1,"w":0,"k":0.96,"p":367.1,"tc":63},{"t":178.9,"r":1,"w":0,"k":1.01,"p":367.0,"tc":63},{"t":179.9,"r":1,"w":0,"k":1.07,"p":367.0,"tc":63},{"t":180.9,"r":1,"w":0,"k":0.89,"p":373.3,"tc":63},{"t":181.9,"r":1,"w":0,"k":0.95,"p":366.8,"tc":63},{"t":182.9,"r":1,"w":0,"k":1.0,"p":366.6,"tc":63},{"t":183.9,"r":1,"w":0,"k":1.05,"p":366.3,"tc":63},{"t":184.9,"r":1,"w":0,"k":0.89,"p":372.7,"tc":63},{"t":185.9,"r":1,"w":0,"k":0.95,"p":367.0,"tc":63},{"t":186.9,"r":1,"w":0,"k":1.0,"p":367.1,"tc":63},{"t":187.9,"r":1,"w":0,"k":1.05,"p":367.5,"tc":63},{"t":188.9,"r":1,"w":0,"k":0.88,"p":374.6,"tc":63},{"t":190.0,"r":1,"w":0,"k":0.93,"p":367.3,"tc":63},{"t":191.0,"r":1,"w":0,"k":0.99,"p":367.3,"tc":63},{"t":192.0,"r":1,"w":0,"k":1.04,"p":367.6,"tc":63},{"t":193.0,"r":1,"w":0,"k":0.88,"p":375.6,"tc":63},{"t":194.0,"r":1,"w":0,"k":0.93,"p":367.6,"tc":63},{"t":195.0,"r":1,"w":0,"k":0.99,"p":367.3,"tc":63},{"t":196.0,"r":1,"w":0,"k":1.04,"p":367.8,"tc":63},{"t":197.0,"r":1,"w":0,"k":0.87,"p":373.9,"tc":68},{"t":198.0,"r":1,"w":0,"k":0.92,"p":370.3,"tc":63},{"t":199.0,"r":1,"w":0,"k":0.97,"p":367.6,"tc":63},{"t":200.0,"r":1,"w":0,"k":1.03,"p":367.5,"tc":63},{"t":201.0,"r":1,"w":0,"k":0.87,"p":367.2,"tc":63},{"t":202.0,"r":1,"w":0,"k":0.92,"p":377.1,"tc":63},{"t":203.0,"r":1,"w":0,"k":0.97,"p":367.5,"tc":63},{"t":204.0,"r":1,"w":0,"k":1.03,"p":367.6,"tc":63},{"t":205.0,"r":0,"w":0,"k":0.0,"p":367.9,"tc":63},{"t":206.0,"r":1,"w":0,"k":0.91,"p":375.4,"tc":63},{"t":207.0,"r":1,"w":0,"k":0.96,"p":367.8,"tc":63},{"t":208.0,"r":1,"w":0,"k":1.01,"p":367.9,"tc":63},{"t":209.0,"r":1,"w":0,"k":1.07,"p":367.9,"tc":63},{"t":210.1,"r":1,"w":0,"k":0.91,"p":374.6,"tc":63},{"t":211.1,"r":1,"w":0,"k":0.96,"p":367.8,"tc":63},{"t":212.1,"r":1,"w":0,"k":1.01,"p":368.1,"tc":63},{"t":213.1,"r":1,"w":0,"k":1.07,"p":368.2,"tc":63},{"t":214.1,"r":1,"w":0,"k":0.89,"p":375.3,"tc":63},{"t":215.1,"r":1,"w":0,"k":0.95,"p":367.8,"tc":63},{"t":216.1,"r":1,"w":0,"k":1.0,"p":367.8,"tc":63},{"t":217.1,"r":1,"w":0,"k":1.05,"p":367.9,"tc":63},{"t":218.1,"r":1,"w":0,"k":0.89,"p":374.8,"tc":63},{"t":219.1,"r":1,"w":0,"k":0.95,"p":367.6,"tc":63},{"t":220.1,"r":1,"w":0,"k":1.0,"p":367.8,"tc":63},{"t":221.1,"r":1,"w":0,"k":1.05,"p":367.9,"tc":63},{"t":222.1,"r":1,"w":0,"k":0.88,"p":375.8,"tc":64},{"t":223.1,"r":1,"w":0,"k":0.93,"p":367.8,"tc":63},{"t":224.1,"r":1,"w":0,"k":0.99,"p":368.0,"tc":63},{"t":225.1,"r":1,"w":0,"k":1.04,"p":368.2,"tc":63},{"t":226.1,"r":1,"w":0,"k":0.88,"p":374.4,"tc":66},{"t":227.1,"r":1,"w":0,"k":0.93,"p":366.4,"tc":63},{"t":228.1,"r":1,"w":0,"k":0.99,"p":368.0,"tc":63},{"t":229.2,"r":1,"w":0,"k":1.04,"p":367.9,"tc":63},{"t":230.2,"r":1,"w":0,"k":0.88,"p":368.6,"tc":63},{"t":231.2,"r":1,"w":0,"k":0.92,"p":377.0,"tc":63},{"t":232.2,"r":1,"w":0,"k":0.97,"p":367.5,"tc":63},{"t":233.2,"r":1,"w":0,"k":1.03,"p":367.5,"tc":63},{"t":234.2,"r":1,"w":0,"k":0.87,"p":367.3,"tc":63},{"t":235.2,"r":1,"w":0,"k":0.92,"p":375.4,"tc":63},{"t":236.2,"r":1,"w":0,"k":0.97,"p":366.9,"tc":63},{"t":237.2,"r":1,"w":0,"k":1.03,"p":367.2,"tc":63},{"t":238.2,"r":1,"w":0,"k":0.87,"p":367.1,"tc":63},{"t":239.2,"r":1,"w":0,"k":0.92,"p":374.2,"tc":63},{"t":240.2,"r":1,"w":0,"k":0.97,"p":366.5,"tc":63},{"t":241.2,"r":1,"w":0,"k":1.01,"p":367.2,"tc":63},{"t":242.2,"r":0,"w":0,"k":0.0,"p":367.1,"tc":63},{"t":243.2,"r":1,"w":0,"k":0.91,"p":373.8,"tc":63},{"t":244.2,"r":1,"w":0,"k":0.96,"p":366.8,"tc":63},{"t":245.2,"r":1,"w":0,"k":1.01,"p":366.9,"tc":63},{"t":246.2,"r":1,"w":0,"k":1.07,"p":366.6,"tc":63},{"t":247.2,"r":1,"w":0,"k":0.91,"p":374.9,"tc":63},{"t":248.2,"r":1,"w":0,"k":0.96,"p":367.7,"tc":63},{"t":249.2,"r":1,"w":0,"k":1.01,"p":367.5,"tc":63},{"t":250.3,"r":1,"w":0,"k":1.07,"p":367.6,"tc":63},{"t":251.3,"r":1,"w":0,"k":0.89,"p":375.5,"tc":63},{"t":252.3,"r":1,"w":0,"k":0.95,"p":374.8,"tc":63},{"t":253.3,"r":1,"w":0,"k":1.0,"p":367.9,"tc":63},{"t":254.3,"r":1,"w":0,"k":1.05,"p":368.1,"tc":63},{"t":255.3,"r":1,"w":0,"k":0.89,"p":373.6,"tc":64},{"t":256.3,"r":1,"w":0,"k":0.95,"p":365.7,"tc":63},{"t":257.3,"r":1,"w":0,"k":1.0,"p":367.7,"tc":63},{"t":258.3,"r":1,"w":0,"k":1.05,"p":367.3,"tc":63},{"t":259.3,"r":1,"w":0,"k":0.88,"p":376.1,"tc":63},{"t":260.3,"r":1,"w":0,"k":0.93,"p":367.5,"tc":63},{"t":261.3,"r":1,"w":0,"k":0.99,"p":367.6,"tc":63},{"t":262.3,"r":1,"w":0,"k":1.04,"p":367.6,"tc":63},{"t":263.3,"r":1,"w":0,"k":0.88,"p":375.6,"tc":63},{"t":264.3,"r":1,"w":0,"k":0.93,"p":367.2,"tc":63},{"t":265.3,"r":1,"w":0,"k":0.99,"p":367.2,"tc":63},{"t":266.3,"r":1,"w":0,"k":1.04,"p":367.4,"tc":63},{"t":267.3,"r":1,"w":0,"k":0.87,"p":374.1,"tc":63},{"t":268.3,"r":1,"w":0,"k":0.92,"p":367.4,"tc":63},{"t":269.4,"r":1,"w":0,"k":0.97,"p":367.5,"tc":63},{"t":270.4,"r":1,"w":0,"k":1.03,"p":367.8,"tc":63},{"t":271.4,"r":1,"w":0,"k":0.87,"p":375.2,"tc":64},{"t":272.4,"r":1,"w":0,"k":0.92,"p":372.7,"tc":63},{"t":273.4,"r":1,"w":0,"k":0.97,"p":367.7,"tc":63},{"t":274.4,"r":1,"w":0,"k":1.03,"p":367.8,"tc":63},{"t":275.4,"r":0,"w":0,"k":0.0,"p":368.4,"tc":67},{"t":276.4,"r":1,"w":0,"k":0.91,"p":374.9,"tc":63},{"t":277.4,"r":1,"w":0,"k":0.96,"p":368.1,"tc":63},{"t":278.4,"r":1,"w":0,"k":1.01,"p":368.3,"tc":63},{"t":279.4,"r":1,"w":0,"k":1.07,"p":367.9,"tc":63},{"t":280.4,"r":1,"w":0,"k":0.91,"p":374.5,"tc":63},{"t":281.4,"r":1,"w":0,"k":0.96,"p":368.0,"tc":63},{"t":282.4,"r":1,"w":0,"k":1.01,"p":367.9,"tc":63},{"t":283.4,"r":1,"w":0,"k":1.07,"p":367.4,"tc":63},{"t":284.4,"r":0,"w":0,"k":0.0,"p":203.4,"tc":57},{"t":285.4,"r":0,"w":0,"k":0.0,"p":157.3,"tc":56},{"t":286.4,"r":0,"w":0,"k":0.0,"p":112.8,"tc":55},{"t":287.4,"r":0,"w":0,"k":0.0,"p":104.0,"tc":55},{"t":288.4,"r":0,"w":0,"k":0.0,"p":94.9,"tc":54},{"t":289.5,"r":0,"w":0,"k":0.0,"p":93.9,"tc":54},{"t":290.5,"r":0,"w":0,"k":0.0,"p":93.0,"tc":53},{"t":291.5,"r":0,"w":0,"k":0.0,"p":91.8,"tc":53},{"t":292.5,"r":0,"w":0,"k":0.0,"p":90.4,"tc":52},{"t":293.5,"r":0,"w":0,"k":0.0,"p":89.2,"tc":52},{"t":294.5,"r":0,"w":0,"k":0.0,"p":88.3,"tc":51},{"t":295.5,"r":0,"w":0,"k":0.0,"p":87.4,"tc":51},{"t":296.5,"r":0,"w":0,"k":0.0,"p":86.3,"tc":51},{"t":297.5,"r":0,"w":0,"k":0.0,"p":85.5,"tc":50},{"t":298.5,"r":0,"w":0,"k":0.0,"p":84.7,"tc":50},{"t":299.5,"r":2,"w":0,"k":1.79,"p":168.6,"tc":56},{"t":300.5,"r":2,"w":0,"k":1.88,"p":323.5,"tc":56},{"t":301.5,"r":2,"w":0,"k":1.97,"p":324.1,"tc":56},{"t":302.5,"r":2,"w":0,"k":2.08,"p":324.7,"tc":57},{"t":303.5,"r":2,"w":0,"k":1.73,"p":354.7,"tc":58},{"t":304.5,"r":2,"w":0,"k":1.84,"p":334.3,"tc":57},{"t":305.5,"r":2,"w":0,"k":1.95,"p":324.7,"tc":57},{"t":306.5,"r":2,"w":0,"k":2.05,"p":324.7,"tc":57},{"t":307.5,"r":2,"w":0,"k":1.72,"p":325.0,"tc":58},{"t":308.6,"r":2,"w":0,"k":1.81,"p":351.0,"tc":58},{"t":309.6,"r":2,"w":0,"k":1.92,"p":325.8,"tc":58},{"t":310.6,"r":2,"w":0,"k":2.03,"p":325.9,"tc":58},{"t":311.6,"r":2,"w":0,"k":2.13,"p":326.3,"tc":58},{"t":312.6,"r":2,"w":0,"k":1.79,"p":355.4,"tc":59},{"t":313.6,"r":2,"w":0,"k":1.89,"p":327.7,"tc":59},{"t":314.6,"r":2,"w":0,"k":2.0,"p":328.7,"tc":59},{"t":315.6,"r":2,"w":0,"k":2.11,"p":329.5,"tc":59},{"t":316.6,"r":2,"w":0,"k":1.76,"p":357.4,"tc":60},{"t":317.6,"r":2,"w":0,"k":1.87,"p":330.2,"tc":59},{"t":318.6,"r":2,"w":0,"k":1.97,"p":329.6,"tc":59},{"t":319.6,"r":2,"w":0,"k":2.08,"p":329.3,"tc":59},{"t":320.6,"r":2,"w":0,"k":1.73,"p":329.4,"tc":59},{"t":321.6,"r":2,"w":0,"k":1.84,"p":355.2,"tc":60},{"t":322.6,"r":2,"w":0,"k":1.95,"p":328.9,"tc":60},{"t":323.6,"r":2,"w":0,"k":2.04,"p":329.2,"tc":60},{"t":324.6,"r":2,"w":0,"k":2.13,"p":329.5,"tc":60},{"t":325.6,"r":2,"w":0,"k":1.81,"p":354.9,"tc":60},{"t":326.6,"r":2,"w":0,"k":1.91,"p":330.0,"tc":60},{"t":327.6,"r":2,"w":0,"k":2.0,"p":330.2,"tc":60},{"t":328.7,"r":2,"w":0,"k":2.11,"p":330.9,"tc":60},{"t":329.7,"r":2,"w":0,"k":1.76,"p":331.0,"tc":61},{"t":330.7,"r":2,"w":0,"k":1.87,"p":331.1,"tc":60},{"t":331.7,"r":2,"w":0,"k":1.97,"p":331.2,"tc":60},{"t":332.7,"r":2,"w":0,"k":2.08,"p":331.5,"tc":60},{"t":333.7,"r":2,"w":0,"k":1.73,"p":333.8,"tc":67},{"t":334.7,"r":2,"w":0,"k":1.84,"p":357.2,"tc":61},{"t":335.7,"r":2,"w":0,"k":1.95,"p":332.9,"tc":60},{"t":336.7,"r":2,"w":0,"k":2.05,"p":334.7,"tc":60},{"t":337.7,"r":2,"w":0,"k":1.72,"p":334.6,"tc":60},{"t":338.7,"r":2,"w":0,"k":1.81,"p":358.8,"tc":61},{"t":339.7,"r":2,"w":0,"k":1.92,"p":335.1,"tc":60},{"t":340.7,"r":2,"w":0,"k":2.03,"p":335.2,"tc":60},{"t":341.7,"r":2,"w":0,"k":2.13,"p":334.5,"tc":60},{"t":342.7,"r":2,"w":0,"k":1.79,"p":362.8,"tc":61},{"t":343.7,"r":2,"w":0,"k":1.89,"p":334.5,"tc":60},{"t":344.7,"r":2,"w":0,"k":2.0,"p":334.4,"tc":60},{"t":345.7,"r":2,"w":0,"k":2.11,"p":334.6,"tc":60},{"t":346.7,"r":2,"w":0,"k":1.76,"p":348.8,"tc":66},{"t":347.7,"r":2,"w":0,"k":1.87,"p":359.5,"tc":60},{"t":348.8,"r":2,"w":0,"k":1.97,"p":334.4,"tc":60},{"t":349.8,"r":2,"w":0,"k":2.05,"p":334.4,"tc":60},{"t":350.8,"r":2,"w":0,"k":1.73,"p":334.5,"tc":60},{"t":351.8,"r":2,"w":0,"k":1.84,"p":360.1,"tc":60},{"t":352.8,"r":2,"w":0,"k":1.92,"p":334.6,"tc":60},{"t":353.8,"r":2,"w":0,"k":2.03,"p":334.6,"tc":60},{"t":354.8,"r":2,"w":0,"k":2.13,"p":334.7,"tc":60},{"t":355.8,"r":2,"w":0,"k":1.79,"p":361.3,"tc":60},{"t":356.8,"r":2,"w":0,"k":1.89,"p":333.6,"tc":60},{"t":357.8,"r":2,"w":0,"k":2.0,"p":333.3,"tc":60},{"t":358.8,"r":2,"w":0,"k":2.11,"p":333.5,"tc":60},{"t":359.8,"r":2,"w":0,"k":1.76,"p":358.3,"tc":60},{"t":360.8,"r":2,"w":0,"k":1.87,"p":333.2,"tc":60},{"t":361.8,"r":2,"w":0,"k":1.97,"p":332.9,"tc":60},{"t":362.8,"r":2,"w":0,"k":2.08,"p":332.5,"tc":60},{"t":363.8,"r":2,"w":0,"k":1.73,"p":360.3,"tc":61},{"t":364.8,"r":2,"w":0,"k":1.84,"p":332.0,"tc":60},{"t":365.8,"r":2,"w":0,"k":1.95,"p":331.8,"tc":60},{"t":366.8,"r":2,"w":0,"k":2.05,"p":331.9,"tc":60},{"t":367.9,"r":1,"w":0,"k":0.85,"p":331.9,"tc":66},{"t":368.9,"r":2,"w":0,"k":1.81,"p":357.6,"tc":61},{"t":369.9,"r":2,"w":0,"k":1.92,"p":333.9,"tc":60},{"t":370.9,"r":2,"w":0,"k":2.03,"p":335.0,"tc":60},{"t":371.9,"r":2,"w":0,"k":2.13,"p":335.0,"tc":60},{"t":372.9,"r":2,"w":0,"k":1.79,"p":360.2,"tc":60},{"t":373.9,"r":2,"w":0,"k":1.89,"p":334.2,"tc":60},{"t":374.9,"r":2,"w":0,"k":2.0,"p":334.3,"tc":60},{"t":375.9,"r":2,"w":0,"k":2.08,"p":334.4,"tc":60},{"t":376.9,"r":2,"w":0,"k":1.76,"p":362.4,"tc":61},{"t":377.9,"r":2,"w":0,"k":1.85,"p":334.6,"tc":60},{"t":378.9,"r":2,"w":0,"k":1.95,"p":334.2,"tc":60},{"t":379.9,"r":2,"w":0,"k":2.05,"p":334.5,"tc":60},{"t":380.9,"r":2,"w":0,"k":1.72,"p":340.9,"tc":67},{"t":381.9,"r":2,"w":0,"k":1.81,"p":358.6,"tc":60},{"t":382.9,"r":2,"w":0,"k":1.92,"p":333.2,"tc":60},{"t":383.9,"r":2,"w":0,"k":2.03,"p":333.2,"tc":60},{"t":384.9,"r":2,"w":0,"k":2.13,"p":333.2,"tc":60},{"t":385.9,"r":2,"w":0,"k":1.79,"p":358.0,"tc":61},{"t":387.0,"r":2,"w":0,"k":1.89,"p":332.6,"tc":60},{"t":388.0,"r":2,"w":0,"k":2.0,"p":332.5,"tc":61},{"t":389.0,"r":2,"w":0,"k":2.11,"p":332.3,"tc":61},{"t":390.0,"r":2,"w":0,"k":1.76,"p":360.9,"tc":61},{"t":391.0,"r":2,"w":0,"k":1.87,"p":332.4,"tc":61},{"t":392.0,"r":2,"w":0,"k":1.97,"p":332.9,"tc":61},{"t":393.0,"r":2,"w":0,"k":2.08,"p":333.1,"tc":61},{"t":394.0,"r":2,"w":0,"k":1.73,"p":349.0,"tc":67},{"t":395.0,"r":2,"w":0,"k":1.84,"p":358.8,"tc":61},{"t":396.0,"r":2,"w":0,"k":1.95,"p":333.2,"tc":61},{"t":397.0,"r":2,"w":0,"k":2.05,"p":333.8,"tc":61},{"t":398.0,"r":1,"w":0,"k":0.85,"p":334.3,"tc":61},{"t":399.0,"r":2,"w":0,"k":1.81,"p":358.4,"tc":61},{"t":400.0,"r":2,"w":0,"k":1.92,"p":334.1,"tc":61},{"t":401.0,"r":2,"w":0,"k":2.01,"p":334.3,"tc":61},{"t":402.0,"r":2,"w":0,"k":2.11,"p":334.4,"tc":61},{"t":403.0,"r":2,"w":0,"k":1.79,"p":362.1,"tc":61},{"t":404.0,"r":2,"w":0,"k":1.88,"p":334.7,"tc":61},{"t":405.0,"r":2,"w":0,"k":1.97,"p":334.7,"tc":61},{"t":406.0,"r":2,"w":0,"k":2.08,"p":334.9,"tc":61},{"t":407.1,"r":2,"w":0,"k":1.73,"p":334.8,"tc":68},{"t":408.1,"r":2,"w":0,"k":1.84,"p":338.8,"tc":61},{"t":409.1,"r":2,"w":0,"k":1.95,"p":334.1,"tc":61},{"t":410.1,"r":2,"w":0,"k":2.05,"p":334.3,"tc":61},{"t":411.1,"r":2,"w":0,"k":1.72,"p":334.3,"tc":61},{"t":412.1,"r":2,"w":0,"k":1.81,"p":359.8,"tc":61},{"t":413.1,"r":2,"w":0,"k":1.92,"p":334.6,"tc":61},{"t":414.1,"r":2,"w":0,"k":2.03,"p":334.6,"tc":61},{"t":415.1,"r":2,"w":0,"k":2.13,"p":334.7,"tc":61},{"t":416.1,"r":2,"w":0,"k":1.79,"p":360.4,"tc":62},{"t":417.1,"r":2,"w":0,"k":1.89,"p":334.0,"tc":61},{"t":418.1,"r":2,"w":0,"k":2.0,"p":334.0,"tc":61},{"t":419.1,"r":2,"w":0,"k":2.11,"p":334.1,"tc":61},{"t":420.1,"r":2,"w":0,"k":1.76,"p":358.6,"tc":63},{"t":421.1,"r":2,"w":0,"k":1.87,"p":334.0,"tc":62},{"t":422.1,"r":2,"w":0,"k":1.97,"p":334.0,"tc":61},{"t":423.1,"r":2,"w":0,"k":2.08,"p":334.0,"tc":61},{"t":424.1,"r":2,"w":0,"k":1.73,"p":334.6,"tc":61},{"t":425.1,"r":2,"w":0,"k":1.84,"p":360.5,"tc":62},{"t":426.2,"r":2,"w":0,"k":1.95,"p":334.6,"tc":62},{"t":427.2,"r":2,"w":0,"k":2.04,"p":334.7,"tc":62},{"t":428.2,"r":2,"w":0,"k":2.13,"p":334.8,"tc":61},{"t":429.2,"r":0,"w":0,"k":0.0,"p":197.0,"tc":57},{"t":430.2,"r":0,"w":0,"k":0.0,"p":135.7,"tc":56},{"t":431.2,"r":0,"w":0,"k":0.0,"p":107.9,"tc":55},{"t":432.2,"r":0,"w":0,"k":0.0,"p":99.8,"tc":55},{"t":433.2,"r":0,"w":0,"k":0.0,"p":91.6,"tc":54},{"t":434.2,"r":0,"w":0,"k":0.0,"p":90.8,"tc":54},{"t":435.2,"r":0,"w":0,"k":0.0,"p":90.0,"tc":53},{"t":436.2,"r":0,"w":0,"k":0.0,"p":89.4,"tc":53},{"t":437.2,"r":0,"w":0,"k":0.0,"p":88.6,"tc":52},{"t":438.2,"r":0,"w":0,"k":0.0,"p":87.5,"tc":52},{"t":439.2,"r":0,"w":0,"k":0.0,"p":86.3,"tc":52},{"t":440.2,"r":0,"w":0,"k":0.0,"p":85.3,"tc":51},{"t":441.2,"r":0,"w":0,"k":0.0,"p":84.6,"tc":51},{"t":442.2,"r":0,"w":0,"k":0.0,"p":83.9,"tc":51},{"t":443.2,"r":0,"w":0,"k":0.0,"p":83.0,"tc":50},{"t":444.2,"r":4,"w":0,"k":3.52,"p":168.2,"tc":63},{"t":445.2,"r":4,"w":0,"k":3.73,"p":338.2,"tc":57},{"t":446.3,"r":4,"w":0,"k":3.95,"p":326.9,"tc":57},{"t":447.3,"r":4,"w":0,"k":4.16,"p":327.2,"tc":57},{"t":448.3,"r":4,"w":0,"k":3.44,"p":327.5,"tc":58},{"t":449.3,"r":4,"w":0,"k":3.63,"p":380.8,"tc":58},{"t":450.3,"r":4,"w":0,"k":3.84,"p":328.5,"tc":58},{"t":451.3,"r":4,"w":0,"k":4.05,"p":329.1,"tc":58},{"t":452.3,"r":4,"w":0,"k":4.22,"p":330.1,"tc":59},{"t":453.3,"r":4,"w":0,"k":3.52,"p":376.9,"tc":66},{"t":454.3,"r":4,"w":0,"k":3.73,"p":357.0,"tc":59},{"t":455.3,"r":4,"w":0,"k":3.95,"p":332.3,"tc":59},{"t":456.3,"r":4,"w":0,"k":4.12,"p":332.7,"tc":60},{"t":457.3,"r":3,"w":0,"k":2.59,"p":369.7,"tc":67},{"t":458.3,"r":4,"w":0,"k":3.63,"p":365.2,"tc":60},{"t":459.3,"r":4,"w":0,"k":3.83,"p":333.7,"tc":60},{"t":460.3,"r":4,"w":0,"k":4.01,"p":334.0,"tc":60},{"t":461.3,"r":4,"w":0,"k":4.21,"p":334.1,"tc":60},{"t":462.3,"r":4,"w":0,"k":3.52,"p":393.1,"tc":61},{"t":463.3,"r":4,"w":0,"k":3.72,"p":335.3,"tc":61},{"t":464.3,"r":4,"w":0,"k":3.91,"p":336.2,"tc":61},{"t":465.4,"r":4,"w":0,"k":4.11,"p":336.8,"tc":61},{"t":466.4,"r":2,"w":0,"k":1.72,"p":359.5,"tc":67},{"t":467.4,"r":4,"w":0,"k":3.61,"p":380.3,"tc":61},{"t":468.4,"r":4,"w":0,"k":3.79,"p":338.5,"tc":61},{"t":469.4,"r":4,"w":0,"k":4.0,"p":339.5,"tc":61},{"t":470.4,"r":4,"w":0,"k":4.21,"p":340.1,"tc":61},{"t":471.4,"r":4,"w":0,"k":3.49,"p":396.1,"tc":62},{"t":472.4,"r":4,"w":0,"k":3.68,"p":340.2,"tc":61},{"t":473.4,"r":4,"w":0,"k":3.89,"p":340.4,"tc":61},{"t":474.4,"r":4,"w":0,"k":4.11,"p":340.4,"tc":61},{"t":475.4,"r":2,"w":0,"k":1.72,"p":351.2,"tc":61},{"t":476.4,"r":4,"w":0,"k":3.57,"p":392.1,"tc":61},{"t":477.4,"r":4,"w":0,"k":3.79,"p":339.6,"tc":61},{"t":478.4,"r":4,"w":0,"k":4.0,"p":340.1,"tc":61},{"t":479.4,"r":4,"w":0,"k":4.21,"p":340.3,"tc":61},{"t":480.4,"r":4,"w":0,"k":3.47,"p":395.6,"tc":63},{"t":481.4,"r":4,"w":0,"k":3.68,"p":339.7,"tc":61},{"t":482.4,"r":4,"w":0,"k":3.89,"p":339.8,"tc":61},{"t":483.4,"r":4,"w":0,"k":4.11,"p":339.6,"tc":61},{"t":484.4,"r":2,"w":0,"k":1.92,"p":339.7,"tc":61},{"t":485.5,"r":4,"w":0,"k":3.57,"p":392.1,"tc":61},{"t":486.5,"r":4,"w":0,"k":3.79,"p":339.2,"tc":61},{"t":487.5,"r":4,"w":0,"k":4.0,"p":339.5,"tc":61},{"t":488.5,"r":4,"w":0,"k":4.21,"p":339.6,"tc":61},{"t":489.5,"r":4,"w":0,"k":3.47,"p":391.2,"tc":69},{"t":490.5,"r":4,"w":0,"k":3.68,"p":351.5,"tc":62},{"t":491.5,"r":4,"w":0,"k":3.89,"p":339.3,"tc":62},{"t":492.5,"r":4,"w":0,"k":4.11,"p":339.4,"tc":62},{"t":493.5,"r":2,"w":0,"k":1.92,"p":339.8,"tc":62},{"t":494.5,"r":4,"w":0,"k":3.57,"p":392.4,"tc":62},{"t":495.5,"r":4,"w":0,"k":3.79,"p":339.6,"tc":62},{"t":496.5,"r":4,"w":0,"k":4.0,"p":339.7,"tc":62},{"t":497.5,"r":4,"w":0,"k":4.18,"p":339.7,"tc":62},{"t":498.5,"r":4,"w":0,"k":3.47,"p":379.0,"tc":69},{"t":499.5,"r":4,"w":0,"k":3.68,"p":364.8,"tc":62},{"t":500.5,"r":4,"w":0,"k":3.89,"p":340.0,"tc":62},{"t":501.5,"r":4,"w":0,"k":4.07,"p":340.3,"tc":62},{"t":502.5,"r":4,"w":0,"k":4.26,"p":340.1,"tc":62},{"t":503.5,"r":4,"w":0,"k":3.57,"p":397.7,"tc":62},{"t":504.6,"r":4,"w":0,"k":3.77,"p":340.7,"tc":62},{"t":505.6,"r":4,"w":0,"k":3.96,"p":340.7,"tc":62},{"t":506.6,"r":4,"w":0,"k":4.16,"p":341.0,"tc":62},{"t":507.6,"r":4,"w":0,"k":3.47,"p":369.6,"tc":68},{"t":508.6,"r":4,"w":0,"k":3.67,"p":378.1,"tc":62},{"t":509.6,"r":4,"w":0,"k":3.84,"p":340.8,"tc":62},{"t":510.6,"r":4,"w":0,"k":4.05,"p":340.6,"tc":62},{"t":511.6,"r":4,"w":0,"k":4.26,"p":340.7,"tc":62},{"t":512.6,"r":4,"w":0,"k":3.55,"p":397.9,"tc":62},{"t":513.6,"r":4,"w":0,"k":3.73,"p":341.0,"tc":62},{"t":514.6,"r":4,"w":0,"k":3.95,"p":340.8,"tc":62},{"t":515.6,"r":4,"w":0,"k":4.16,"p":340.4,"tc":62},{"t":516.6,"r":4,"w":0,"k":3.45,"p":358.0,"tc":68},{"t":517.6,"r":4,"w":0,"k":3.63,"p":390.8,"tc":62},{"t":518.6,"r":4,"w":0,"k":3.84,"p":340.2,"tc":62},{"t":519.6,"r":4,"w":0,"k":4.05,"p":340.2,"tc":62},{"t":520.6,"r":4,"w":0,"k":4.26,"p":340.2,"tc":62},{"t":521.6,"r":4,"w":0,"k":3.52,"p":396.1,"tc":62},{"t":522.6,"r":4,"w":0,"k":3.73,"p":340.3,"tc":62},{"t":523.6,"r":4,"w":0,"k":3.95,"p":339.9,"tc":62},{"t":524.7,"r":4,"w":0,"k":4.16,"p":340.1,"tc":62},{"t":525.7,"r":4,"w":0,"k":3.45,"p":340.2,"tc":67},{"t":526.7,"r":4,"w":0,"k":3.63,"p":391.5,"tc":62},{"t":527.7,"r":4,"w":0,"k":3.84,"p":340.4,"tc":62},{"t":528.7,"r":4,"w":0,"k":4.05,"p":340.2,"tc":62},{"t":529.7,"r":4,"w":0,"k":4.26,"p":340.0,"tc":62},{"t":530.7,"r":4,"w":0,"k":3.52,"p":394.8,"tc":63},{"t":531.7,"r":4,"w":0,"k":3.73,"p":347.2,"tc":62},{"t":532.7,"r":4,"w":0,"k":3.95,"p":339.7,"tc":62},{"t":533.7,"r":4,"w":0,"k":4.16,"p":339.8,"tc":62},{"t":534.7,"r":0,"w":0,"k":0.0,"p":340.1,"tc":62},{"t":535.7,"r":0,"w":0,"k":0.0,"p":158.9,"tc":57},{"t":536.7,"r":0,"w":0,"k":0.0,"p":138.1,"tc":55},{"t":537.7,"r":0,"w":0,"k":0.0,"p":107.2,"tc":55},{"t":538.7,"r":0,"w":0,"k":0.0,"p":99.8,"tc":54},{"t":539.7,"r":0,"w":0,"k":0.0,"p":92.5,"tc":54},{"t":540.7,"r":0,"w":0,"k":0.0,"p":91.7,"tc":53},{"t":541.7,"r":0,"w":0,"k":0.0,"p":90.8,"tc":53},{"t":542.7,"r":0,"w":0,"k":0.0,"p":89.6,"tc":53},{"t":543.7,"r":0,"w":0,"k":0.0,"p":88.4,"tc":52},{"t":544.8,"r":0,"w":0,"k":0.0,"p":87.5,"tc":52},{"t":545.8,"r":0,"w":0,"k":0.0,"p":86.6,"tc":51},{"t":546.8,"r":0,"w":0,"k":0.0,"p":85.7,"tc":51},{"t":547.8,"r":0,"w":0,"k":0.0,"p":84.8,"tc":51},{"t":548.8,"r":0,"w":0,"k":0.0,"p":83.2,"tc":51},{"t":549.8,"r":0,"w":0,"k":0.0,"p":83.2,"tc":50},{"t":550.8,"r":8,"w":0,"k":6.9,"p":138.1,"tc":64},{"t":551.8,"r":8,"w":0,"k":7.26,"p":408.8,"tc":57},{"t":552.8,"r":8,"w":0,"k":7.68,"p":334.7,"tc":57},{"t":553.8,"r":8,"w":0,"k":8.1,"p":335.1,"tc":58},{"t":554.8,"r":8,"w":0,"k":8.53,"p":335.5,"tc":58},{"t":555.8,"r":8,"w":0,"k":6.93,"p":441.6,"tc":60},{"t":556.8,"r":8,"w":0,"k":7.34,"p":337.4,"tc":59},{"t":557.8,"r":8,"w":0,"k":7.69,"p":337.4,"tc":59},{"t":558.8,"r":8,"w":0,"k":8.1,"p":338.2,"tc":59},{"t":559.8,"r":8,"w":0,"k":8.53,"p":338.5,"tc":59},{"t":560.8,"r":8,"w":0,"k":6.93,"p":446.0,"tc":61},{"t":561.8,"r":8,"w":0,"k":7.36,"p":401.4,"tc":60},{"t":562.8,"r":8,"w":0,"k":7.76,"p":340.2,"tc":60},{"t":563.8,"r":8,"w":0,"k":8.13,"p":341.6,"tc":60},{"t":564.9,"r":8,"w":0,"k":8.53,"p":342.2,"tc":60},{"t":565.9,"r":8,"w":0,"k":6.93,"p":445.9,"tc":61},{"t":566.9,"r":8,"w":0,"k":7.36,"p":343.5,"tc":61},{"t":567.9,"r":8,"w":0,"k":7.78,"p":345.9,"tc":61},{"t":568.9,"r":8,"w":0,"k":8.17,"p":346.6,"tc":61},{"t":569.9,"r":6,"w":0,"k":6.4,"p":346.9,"tc":61},{"t":570.9,"r":8,"w":0,"k":6.97,"p":447.0,"tc":62},{"t":571.9,"r":8,"w":0,"k":7.36,"p":347.9,"tc":61},{"t":572.9,"r":8,"w":0,"k":7.78,"p":347.6,"tc":61},{"t":573.9,"r":8,"w":0,"k":8.21,"p":347.3,"tc":61},{"t":574.9,"r":6,"w":0,"k":6.18,"p":346.7,"tc":63},{"t":575.9,"r":8,"w":0,"k":7.01,"p":446.1,"tc":62},{"t":576.9,"r":8,"w":0,"k":7.4,"p":346.7,"tc":61},{"t":577.9,"r":8,"w":0,"k":7.78,"p":346.5,"tc":61},{"t":578.9,"r":8,"w":0,"k":8.21,"p":346.2,"tc":61},{"t":579.9,"r":6,"w":0,"k":5.98,"p":346.2,"tc":66},{"t":580.9,"r":8,"w":0,"k":7.04,"p":449.5,"tc":62},{"t":581.9,"r":8,"w":0,"k":7.44,"p":347.3,"tc":62},{"t":582.9,"r":8,"w":0,"k":7.81,"p":347.2,"tc":62},{"t":583.9,"r":8,"w":0,"k":8.21,"p":347.9,"tc":62},{"t":585.0,"r":6,"w":0,"k":5.98,"p":349.7,"tc":67},{"t":586.0,"r":8,"w":0,"k":7.04,"p":438.9,"tc":62},{"t":587.0,"r":8,"w":0,"k":7.46,"p":348.1,"tc":62},{"t":588.0,"r":8,"w":0,"k":7.85,"p":347.8,"tc":62},{"t":589.0,"r":8,"w":0,"k":8.22,"p":347.8,"tc":62},{"t":590.0,"r":6,"w":0,"k":5.98,"p":357.5,"tc":68},{"t":591.0,"r":8,"w":0,"k":7.04,"p":440.6,"tc":62},{"t":592.0,"r":8,"w":0,"k":7.46,"p":347.2,"tc":62},{"t":593.0,"r":8,"w":0,"k":7.89,"p":347.1,"tc":62},{"t":594.0,"r":8,"w":0,"k":8.26,"p":347.7,"tc":62},{"t":595.0,"r":6,"w":0,"k":5.78,"p":355.0,"tc":68},{"t":596.0,"r":8,"w":0,"k":7.06,"p":440.8,"tc":63},{"t":597.0,"r":8,"w":0,"k":7.46,"p":348.0,"tc":62},{"t":598.0,"r":8,"w":0,"k":7.89,"p":348.3,"tc":62},{"t":599.0,"r":8,"w":0,"k":8.3,"p":348.7,"tc":62},{"t":600.0,"r":6,"w":0,"k":5.78,"p":358.8,"tc":68},{"t":601.0,"r":8,"w":0,"k":7.09,"p":436.0,"tc":63},{"t":602.0,"r":8,"w":0,"k":7.48,"p":348.6,"tc":62},{"t":603.0,"r":8,"w":0,"k":7.89,"p":348.1,"tc":62},{"t":604.0,"r":8,"w":0,"k":8.32,"p":347.8,"tc":62},{"t":605.1,"r":6,"w":0,"k":5.58,"p":362.0,"tc":68},{"t":606.1,"r":8,"w":0,"k":7.13,"p":438.8,"tc":63},{"t":607.1,"r":8,"w":0,"k":7.52,"p":347.1,"tc":62},{"t":608.1,"r":8,"w":0,"k":7.89,"p":346.9,"tc":62},{"t":609.1,"r":8,"w":0,"k":8.32,"p":346.8,"tc":62},{"t":610.1,"r":6,"w":0,"k":5.58,"p":363.4,"tc":68},{"t":611.1,"r":8,"w":0,"k":7.14,"p":438.1,"tc":63},{"t":612.1,"r":8,"w":0,"k":7.56,"p":347.6,"tc":62},{"t":613.1,"r":8,"w":0,"k":7.93,"p":347.7,"tc":62},{"t":614.1,"r":8,"w":0,"k":8.32,"p":348.3,"tc":62},{"t":615.1,"r":6,"w":0,"k":5.38,"p":365.2,"tc":68},{"t":616.1,"r":8,"w":0,"k":7.14,"p":429.6,"tc":63},{"t":617.1,"r":8,"w":0,"k":7.57,"p":347.5,"tc":62},{"t":618.1,"r":8,"w":0,"k":7.97,"p":347.6,"tc":62},{"t":619.1,"r":8,"w":0,"k":8.34,"p":347.7,"tc":62},{"t":620.1,"r":6,"w":0,"k":5.38,"p":368.5,"tc":68},{"t":621.1,"r":8,"w":0,"k":7.14,"p":431.3,"tc":63},{"t":622.1,"r":8,"w":0,"k":7.57,"p":347.1,"tc":62},{"t":623.1,"r":8,"w":0,"k":8.0,"p":347.2,"tc":62},{"t":624.2,"r":8,"w":0,"k":8.38,"p":347.7,"tc":62},{"t":625.2,"r":0,"w":0,"k":0.0,"p":327.5,"tc":58},{"t":626.2,"r":0,"w":0,"k":0.0,"p":135.3,"tc":57},{"t":627.2,"r":0,"w":0,"k":0.0,"p":109.3,"tc":56},{"t":628.2,"r":0,"w":0,"k":0.0,"p":101.2,"tc":55},{"t":629.2,"r":0,"w":0,"k":0.0,"p":92.6,"tc":54},{"t":630.2,"r":0,"w":0,"k":0.0,"p":91.5,"tc":54},{"t":631.2,"r":0,"w":0,"k":0.0,"p":90.6,"tc":53},{"t":632.2,"r":0,"w":0,"k":0.0,"p":89.7,"tc":53},{"t":633.2,"r":0,"w":0,"k":0.0,"p":88.5,"tc":53},{"t":634.2,"r":0,"w":0,"k":0.0,"p":87.2,"tc":52},{"t":635.2,"r":0,"w":0,"k":0.0,"p":86.3,"tc":52},{"t":636.3,"r":0,"w":0,"k":0.0,"p":85.5,"tc":51},{"t":637.3,"r":0,"w":0,"k":0.0,"p":84.5,"tc":51},{"t":638.3,"r":0,"w":0,"k":0.0,"p":83.7,"tc":51},{"t":639.3,"r":0,"w":0,"k":0.0,"p":83.7,"tc":51},{"t":640.3,"r":0,"w":0,"k":0.0,"p":82.4,"tc":50},{"t":641.3,"r":7,"w":9,"k":6.02,"p":112.8,"tc":63},{"t":642.3,"r":16,"w":0,"k":13.86,"p":465.5,"tc":64},{"t":643.3,"r":16,"w":0,"k":14.71,"p":350.1,"tc":59},{"t":644.3,"r":16,"w":0,"k":15.43,"p":351.6,"tc":59},{"t":645.3,"r":16,"w":0,"k":16.21,"p":352.3,"tc":59},{"t":646.3,"r":16,"w":0,"k":17.03,"p":353.6,"tc":59},{"t":647.3,"r":12,"w":0,"k":10.73,"p":451.1,"tc":66},{"t":648.3,"r":16,"w":0,"k":14.07,"p":423.2,"tc":61},{"t":649.3,"r":16,"w":0,"k":14.83,"p":359.9,"tc":61},{"t":650.4,"r":16,"w":0,"k":15.58,"p":361.7,"tc":61},{"t":651.4,"r":16,"w":0,"k":16.42,"p":363.9,"tc":61},{"t":652.4,"r":14,"w":0,"k":14.71,"p":364.1,"tc":65},{"t":653.4,"r":12,"w":0,"k":10.53,"p":463.6,"tc":67},{"t":654.4,"r":16,"w":0,"k":14.21,"p":416.0,"tc":62},{"t":655.4,"r":16,"w":0,"k":14.95,"p":364.6,"tc":61},{"t":656.4,"r":16,"w":0,"k":15.78,"p":364.5,"tc":61},{"t":657.4,"r":16,"w":0,"k":16.53,"p":364.6,"tc":61},{"t":658.4,"r":13,"w":0,"k":13.25,"p":380.5,"tc":67},{"t":659.4,"r":14,"w":0,"k":12.05,"p":452.7,"tc":68},{"t":660.4,"r":16,"w":0,"k":14.33,"p":408.8,"tc":62},{"t":661.4,"r":16,"w":0,"k":15.14,"p":364.2,"tc":62},{"t":662.4,"r":16,"w":0,"k":15.9,"p":364.3,"tc":62},{"t":663.4,"r":16,"w":0,"k":16.66,"p":364.9,"tc":62},{"t":664.4,"r":12,"w":0,"k":11.78,"p":408.0,"tc":68},{"t":665.4,"r":15,"w":0,"k":12.91,"p":448.9,"tc":69},{"t":666.4,"r":16,"w":0,"k":14.5,"p":390.0,"tc":63},{"t":667.4,"r":16,"w":0,"k":15.27,"p":365.0,"tc":62},{"t":668.4,"r":16,"w":0,"k":16.03,"p":365.3,"tc":62},{"t":669.5,"r":16,"w":0,"k":16.85,"p":365.6,"tc":62},{"t":670.5,"r":12,"w":0,"k":11.17,"p":424.6,"tc":69},{"t":671.5,"r":16,"w":0,"k":13.86,"p":449.3,"tc":70},{"t":672.5,"r":16,"w":0,"k":14.65,"p":376.6,"tc":63},{"t":673.5,"r":16,"w":0,"k":15.41,"p":365.9,"tc":63},{"t":674.5,"r":16,"w":0,"k":16.21,"p":366.0,"tc":63},{"t":675.5,"r":16,"w":0,"k":16.97,"p":365.9,"tc":63},{"t":676.5,"r":12,"w":0,"k":10.97,"p":437.5,"tc":69},{"t":677.5,"r":16,"w":0,"k":13.99,"p":435.2,"tc":64},{"t":678.5,"r":16,"w":0,"k":14.77,"p":366.2,"tc":63},{"t":679.5,"r":16,"w":0,"k":15.57,"p":365.6,"tc":63},{"t":680.5,"r":16,"w":0,"k":16.34,"p":366.0,"tc":63},{"t":681.5,"r":14,"w":0,"k":14.71,"p":365.9,"tc":63},{"t":682.5,"r":12,"w":0,"k":10.77,"p":447.3,"tc":68},{"t":683.5,"r":16,"w":0,"k":14.13,"p":431.9,"tc":64},{"t":684.5,"r":16,"w":0,"k":14.93,"p":366.6,"tc":63},{"t":685.5,"r":16,"w":0,"k":15.69,"p":365.8,"tc":63},{"t":686.5,"r":16,"w":0,"k":16.46,"p":366.2,"tc":63},{"t":687.5,"r":14,"w":0,"k":14.51,"p":370.9,"tc":63},{"t":688.6,"r":13,"w":0,"k":11.21,"p":456.1,"tc":69},{"t":689.6,"r":16,"w":0,"k":14.29,"p":417.1,"tc":64},{"t":690.6,"r":16,"w":0,"k":15.05,"p":366.2,"tc":64},{"t":691.6,"r":16,"w":0,"k":15.83,"p":366.0,"tc":63},{"t":692.6,"r":16,"w":0,"k":16.63,"p":366.8,"tc":63},{"t":693.6,"r":14,"w":0,"k":14.11,"p":386.0,"tc":69},{"t":694.6,"r":14,"w":0,"k":12.08,"p":453.7,"tc":69},{"t":695.6,"r":16,"w":0,"k":14.41,"p":410.3,"tc":64},{"t":696.6,"r":16,"w":0,"k":15.19,"p":366.7,"tc":64},{"t":697.6,"r":16,"w":0,"k":15.99,"p":366.6,"tc":64},{"t":698.6,"r":16,"w":0,"k":16.74,"p":367.2,"tc":64},{"t":699.6,"r":14,"w":0,"k":13.71,"p":403.3,"tc":69},{"t":700.6,"r":16,"w":0,"k":13.83,"p":452.5,"tc":70},{"t":701.6,"r":16,"w":0,"k":14.54,"p":402.1,"tc":64},{"t":702.6,"r":16,"w":0,"k":15.35,"p":366.5,"tc":64},{"t":703.6,"r":16,"w":0,"k":16.1,"p":366.4,"tc":64},{"t":704.6,"r":16,"w":0,"k":16.87,"p":366.4,"tc":64},{"t":705.6,"r":14,"w":0,"k":13.31,"p":418.7,"tc":70},{"t":706.6,"r":16,"w":0,"k":13.9,"p":451.4,"tc":70},{"t":707.6,"r":16,"w":0,"k":14.67,"p":391.5,"tc":64},{"t":708.7,"r":16,"w":0,"k":15.46,"p":367.2,"tc":64},{"t":709.7,"r":16,"w":0,"k":16.23,"p":367.4,"tc":64},{"t":710.7,"r":16,"w":0,"k":17.01,"p":367.6,"tc":64},{"t":711.7,"r":8,"w":0,"k":6.93,"p":428.8,"tc":70},{"t":712.7,"r":8,"w":0,"k":7.36,"p":380.2,"tc":63},{"t":713.7,"r":8,"w":0,"k":7.74,"p":350.7,"tc":63},{"t":714.7,"r":8,"w":0,"k":8.13,"p":350.7,"tc":63},{"t":715.7,"r":8,"w":0,"k":8.53,"p":350.2,"tc":63},{"t":716.7,"r":0,"w":0,"k":0.0,"p":338.8,"tc":58},{"t":717.7,"r":0,"w":0,"k":0.0,"p":146.7,"tc":57},{"t":718.7,"r":0,"w":0,"k":0.0,"p":111.1,"tc":56},{"t":719.7,"r":0,"w":0,"k":0.0,"p":103.9,"tc":55},{"t":720.7,"r":0,"w":0,"k":0.0,"p":96.8,"tc":55},{"t":721.7,"r":0,"w":0,"k":0.0,"p":96.5,"tc":54},{"t":722.7,"r":0,"w":0,"k":0.0,"p":95.7,"tc":54},{"t":723.7,"r":0,"w":0,"k":0.0,"p":94.5,"tc":53},{"t":724.7,"r":0,"w":0,"k":0.0,"p":93.4,"tc":53},{"t":725.7,"r":0,"w":0,"k":0.0,"p":92.6,"tc":52},{"t":726.7,"r":0,"w":0,"k":0.0,"p":91.5,"tc":52},{"t":727.7,"r":0,"w":0,"k":0.0,"p":90.3,"tc":52},{"t":728.8,"r":0,"w":0,"k":0.0,"p":89.3,"tc":51},{"t":729.8,"r":0,"w":0,"k":0.0,"p":88.5,"tc":51},{"t":730.8,"r":0,"w":0,"k":0.0,"p":87.7,"tc":51},{"t":731.8,"r":0,"w":0,"k":0.0,"p":86.8,"tc":50},{"t":732.8,"r":6,"w":26,"k":5.16,"p":94.0,"tc":50},{"t":733.8,"r":16,"w":16,"k":13.78,"p":468.0,"tc":64},{"t":734.8,"r":28,"w":4,"k":24.08,"p":448.1,"tc":65},{"t":735.8,"r":32,"w":0,"k":28.27,"p":449.2,"tc":65},{"t":736.8,"r":32,"w":0,"k":29.63,"p":383.7,"tc":60},{"t":737.8,"r":32,"w":0,"k":30.99,"p":378.8,"tc":60},{"t":738.8,"r":32,"w":0,"k":32.35,"p":380.0,"tc":61},{"t":739.8,"r":32,"w":0,"k":33.69,"p":381.1,"tc":61},{"t":740.8,"r":28,"w":0,"k":28.38,"p":443.6,"tc":67},{"t":741.8,"r":28,"w":0,"k":25.86,"p":448.6,"tc":68},{"t":742.8,"r":29,"w":0,"k":24.82,"p":449.4,"tc":68},{"t":743.8,"r":32,"w":0,"k":28.42,"p":413.4,"tc":63},{"t":744.8,"r":32,"w":0,"k":29.77,"p":387.9,"tc":63},{"t":745.8,"r":32,"w":0,"k":31.16,"p":387.7,"tc":63},{"t":746.9,"r":32,"w":0,"k":32.49,"p":388.5,"tc":63},{"t":747.9,"r":32,"w":0,"k":33.83,"p":388.3,"tc":63},{"t":748.9,"r":28,"w":0,"k":28.18,"p":445.4,"tc":67},{"t":749.9,"r":28,"w":0,"k":25.66,"p":446.2,"tc":68},{"t":750.9,"r":30,"w":0,"k":25.68,"p":448.5,"tc":68},{"t":751.9,"r":32,"w":0,"k":28.55,"p":411.0,"tc":64},{"t":752.9,"r":32,"w":0,"k":29.91,"p":388.8,"tc":64},{"t":753.9,"r":32,"w":0,"k":31.25,"p":388.7,"tc":64},{"t":754.9,"r":32,"w":0,"k":32.61,"p":389.8,"tc":64},{"t":755.9,"r":32,"w":0,"k":33.95,"p":389.5,"tc":64},{"t":756.9,"r":28,"w":0,"k":27.98,"p":446.2,"tc":68},{"t":757.9,"r":28,"w":0,"k":25.87,"p":446.0,"tc":69},{"t":758.9,"r":31,"w":0,"k":26.56,"p":446.0,"tc":69},{"t":759.9,"r":32,"w":0,"k":28.66,"p":409.7,"tc":65},{"t":760.9,"r":32,"w":0,"k":30.01,"p":389.9,"tc":64},{"t":761.9,"r":32,"w":0,"k":31.37,"p":389.3,"tc":64},{"t":762.9,"r":32,"w":0,"k":32.71,"p":389.7,"tc":64},{"t":763.9,"r":30,"w":0,"k":31.93,"p":389.6,"tc":64},{"t":765.0,"r":28,"w":0,"k":27.78,"p":453.6,"tc":69},{"t":766.0,"r":28,"w":0,"k":25.67,"p":445.8,"tc":68},{"t":767.0,"r":32,"w":0,"k":27.44,"p":446.2,"tc":70},{"t":768.0,"r":32,"w":0,"k":28.78,"p":409.8,"tc":65},{"t":769.0,"r":32,"w":0,"k":30.13,"p":390.6,"tc":65},{"t":770.0,"r":32,"w":0,"k":31.47,"p":390.5,"tc":65},{"t":771.0,"r":32,"w":0,"k":32.87,"p":391.0,"tc":65},{"t":772.0,"r":30,"w":0,"k":31.73,"p":390.8,"tc":65},{"t":773.0,"r":28,"w":0,"k":27.58,"p":450.3,"tc":69},{"t":774.0,"r":28,"w":0,"k":25.47,"p":445.8,"tc":69},{"t":775.0,"r":31,"w":0,"k":26.59,"p":448.1,"tc":70},{"t":776.0,"r":32,"w":0,"k":28.87,"p":408.6,"tc":65},{"t":777.0,"r":32,"w":0,"k":30.25,"p":390.4,"tc":65},{"t":778.0,"r":32,"w":0,"k":31.63,"p":390.3,"tc":65},{"t":779.0,"r":32,"w":0,"k":32.93,"p":390.9,"tc":65},{"t":780.0,"r":30,"w":0,"k":31.55,"p":390.4,"tc":68},{"t":781.0,"r":28,"w":0,"k":27.38,"p":451.7,"tc":70},{"t":782.0,"r":28,"w":0,"k":25.27,"p":446.7,"tc":70},{"t":783.1,"r":32,"w":0,"k":27.47,"p":449.0,"tc":70},{"t":784.1,"r":32,"w":0,"k":29.0,"p":407.9,"tc":66},{"t":785.1,"r":32,"w":0,"k":30.36,"p":390.8,"tc":66},{"t":786.1,"r":32,"w":0,"k":31.68,"p":391.1,"tc":66},{"t":787.1,"r":32,"w":0,"k":33.01,"p":391.0,"tc":66},{"t":788.1,"r":30,"w":0,"k":31.36,"p":391.7,"tc":70},{"t":789.1,"r":28,"w":0,"k":27.18,"p":453.1,"tc":70},{"t":790.1,"r":28,"w":0,"k":25.07,"p":448.2,"tc":71},{"t":791.1,"r":32,"w":0,"k":27.75,"p":447.6,"tc":71},{"t":792.1,"r":32,"w":0,"k":29.1,"p":407.3,"tc":66},{"t":793.1,"r":32,"w":0,"k":30.41,"p":391.2,"tc":66},{"t":794.1,"r":32,"w":0,"k":31.77,"p":391.0,"tc":66},{"t":795.1,"r":32,"w":0,"k":33.11,"p":391.6,"tc":66},{"t":796.1,"r":30,"w":0,"k":31.35,"p":396.3,"tc":70},{"t":797.1,"r":28,"w":0,"k":26.98,"p":453.5,"tc":70},{"t":798.1,"r":28,"w":0,"k":24.87,"p":447.9,"tc":71},{"t":799.1,"r":32,"w":0,"k":27.82,"p":447.6,"tc":71},{"t":800.1,"r":32,"w":0,"k":29.15,"p":407.6,"tc":66},{"t":801.1,"r":32,"w":0,"k":30.51,"p":391.4,"tc":66},{"t":802.2,"r":32,"w":0,"k":31.84,"p":391.6,"tc":66},{"t":803.2,"r":32,"w":0,"k":33.24,"p":391.8,"tc":66},{"t":804.2,"r":30,"w":0,"k":31.16,"p":398.1,"tc":70},{"t":805.2,"r":28,"w":0,"k":27.22,"p":453.5,"tc":70},{"t":806.2,"r":28,"w":0,"k":24.68,"p":447.9,"tc":71},{"t":807.2,"r":32,"w":0,"k":27.87,"p":448.1,"tc":71},{"t":808.2,"r":32,"w":0,"k":29.21,"p":407.7,"tc":67},{"t":809.2,"r":32,"w":0,"k":30.59,"p":391.2,"tc":66},{"t":810.2,"r":32,"w":0,"k":31.99,"p":391.4,"tc":66},{"t":811.2,"r":32,"w":0,"k":33.35,"p":391.9,"tc":66},{"t":812.2,"r":0,"w":0,"k":0.0,"p":391.3,"tc":66},{"t":813.2,"r":0,"w":0,"k":0.0,"p":201.1,"tc":59},{"t":814.2,"r":0,"w":0,"k":0.0,"p":151.6,"tc":59},{"t":815.2,"r":0,"w":0,"k":0.0,"p":113.8,"tc":58},{"t":816.2,"r":0,"w":0,"k":0.0,"p":106.1,"tc":57},{"t":817.2,"r":0,"w":0,"k":0.0,"p":98.3,"tc":56},{"t":818.2,"r":0,"w":0,"k":0.0,"p":98.0,"tc":55},{"t":819.2,"r":0,"w":0,"k":0.0,"p":97.5,"tc":55},{"t":820.3,"r":0,"w":0,"k":0.0,"p":97.2,"tc":54},{"t":821.3,"r":0,"w":0,"k":0.0,"p":96.9,"tc":54},{"t":822.3,"r":0,"w":0,"k":0.0,"p":96.3,"tc":53},{"t":823.3,"r":0,"w":0,"k":0.0,"p":95.9,"tc":53},{"t":824.3,"r":0,"w":0,"k":0.0,"p":95.2,"tc":53},{"t":825.3,"r":0,"w":0,"k":0.0,"p":94.5,"tc":52},{"t":826.3,"r":0,"w":0,"k":0.0,"p":93.6,"tc":52},{"t":827.3,"r":0,"w":0,"k":0.0,"p":92.4,"tc":51},{"t":828.3,"r":0,"w":0,"k":0.0,"p":91.2,"tc":51},{"t":829.3,"r":0,"w":0,"k":0.0,"p":90.4,"tc":51},{"t":830.3,"r":9,"w":55,"k":7.76,"p":118.4,"tc":64},{"t":831.3,"r":19,"w":45,"k":16.37,"p":473.6,"tc":64},{"t":832.3,"r":29,"w":35,"k":24.94,"p":450.1,"tc":65},{"t":833.3,"r":39,"w":25,"k":33.52,"p":451.9,"tc":66},{"t":834.3,"r":51,"w":13,"k":43.86,"p":450.2,"tc":67},{"t":835.3,"r":61,"w":3,"k":52.43,"p":450.9,"tc":67},{"t":836.3,"r":64,"w":0,"k":56.83,"p":429.4,"tc":63},{"t":837.3,"r":64,"w":0,"k":59.24,"p":403.0,"tc":63},{"t":838.3,"r":64,"w":0,"k":61.63,"p":403.0,"tc":63},{"t":839.4,"r":64,"w":0,"k":64.03,"p":403.4,"tc":63},{"t":840.4,"r":64,"w":0,"k":66.43,"p":403.2,"tc":63},{"t":841.4,"r":60,"w":0,"k":62.76,"p":427.9,"tc":68},{"t":842.4,"r":60,"w":0,"k":60.64,"p":448.9,"tc":69},{"t":843.4,"r":60,"w":0,"k":58.54,"p":451.3,"tc":69},{"t":844.4,"r":60,"w":0,"k":56.39,"p":448.9,"tc":69},{"t":845.4,"r":59,"w":1,"k":54.26,"p":450.3,"tc":69},{"t":846.4,"r":59,"w":1,"k":52.15,"p":449.2,"tc":69},{"t":847.4,"r":63,"w":1,"k":54.32,"p":448.7,"tc":69},{"t":848.4,"r":64,"w":0,"k":57.66,"p":422.4,"tc":65},{"t":849.4,"r":64,"w":0,"k":60.06,"p":404.9,"tc":65},{"t":850.4,"r":64,"w":0,"k":62.44,"p":404.5,"tc":65},{"t":851.4,"r":64,"w":0,"k":64.79,"p":404.4,"tc":65},{"t":852.4,"r":64,"w":0,"k":67.19,"p":404.0,"tc":65},{"t":853.4,"r":60,"w":0,"k":62.12,"p":442.9,"tc":69},{"t":854.4,"r":60,"w":0,"k":60.02,"p":447.5,"tc":69},{"t":855.5,"r":60,"w":0,"k":57.92,"p":447.9,"tc":70},{"t":856.5,"r":60,"w":0,"k":56.79,"p":448.1,"tc":70},{"t":857.5,"r":60,"w":0,"k":54.67,"p":448.1,"tc":70},{"t":858.5,"r":60,"w":0,"k":52.57,"p":448.4,"tc":70},{"t":859.5,"r":64,"w":0,"k":55.94,"p":448.6,"tc":70},{"t":860.5,"r":64,"w":0,"k":58.38,"p":411.3,"tc":66},{"t":861.5,"r":64,"w":0,"k":60.76,"p":405.5,"tc":66},{"t":862.5,"r":64,"w":0,"k":63.16,"p":405.0,"tc":66},{"t":863.5,"r":64,"w":0,"k":65.51,"p":405.0,"tc":66},{"t":864.5,"r":63,"w":0,"k":66.47,"p":404.9,"tc":66},{"t":865.5,"r":60,"w":0,"k":61.52,"p":447.6,"tc":70},{"t":866.5,"r":60,"w":0,"k":59.42,"p":449.9,"tc":69},{"t":867.5,"r":60,"w":0,"k":57.32,"p":447.4,"tc":70},{"t":868.5,"r":60,"w":0,"k":56.18,"p":447.7,"tc":71},{"t":869.5,"r":60,"w":0,"k":54.06,"p":448.2,"tc":71},{"t":870.5,"r":60,"w":0,"k":51.95,"p":448.3,"tc":71},{"t":871.5,"r":64,"w":0,"k":56.64,"p":449.1,"tc":67},{"t":872.5,"r":64,"w":0,"k":59.08,"p":403.3,"tc":67},{"t":873.6,"r":64,"w":0,"k":61.48,"p":406.0,"tc":67},{"t":874.6,"r":64,"w":0,"k":63.88,"p":405.8,"tc":67},{"t":875.6,"r":64,"w":0,"k":66.24,"p":405.4,"tc":67},{"t":876.6,"r":62,"w":0,"k":65.11,"p":413.6,"tc":70},{"t":877.6,"r":60,"w":0,"k":60.91,"p":451.4,"tc":71},{"t":878.6,"r":60,"w":0,"k":58.8,"p":449.3,"tc":71},{"t":879.6,"r":60,"w":0,"k":56.71,"p":449.0,"tc":71},{"t":880.6,"r":60,"w":0,"k":55.55,"p":448.9,"tc":72},{"t":881.6,"r":60,"w":0,"k":53.45,"p":449.0,"tc":72},{"t":882.6,"r":62,"w":0,"k":53.5,"p":448.7,"tc":72},{"t":883.6,"r":64,"w":0,"k":57.35,"p":435.5,"tc":68},{"t":884.6,"r":64,"w":0,"k":59.75,"p":406.1,"tc":68},{"t":885.6,"r":64,"w":0,"k":62.15,"p":406.2,"tc":67},{"t":886.6,"r":64,"w":0,"k":64.52,"p":405.9,"tc":67},{"t":887.6,"r":64,"w":0,"k":66.92,"p":405.9,"tc":67},{"t":888.6,"r":60,"w":0,"k":62.43,"p":426.5,"tc":71},{"t":889.6,"r":60,"w":0,"k":60.31,"p":448.9,"tc":73},{"t":890.6,"r":60,"w":0,"k":58.2,"p":450.9,"tc":73},{"t":891.7,"r":61,"w":0,"k":57.15,"p":450.4,"tc":73},{"t":892.7,"r":60,"w":0,"k":54.95,"p":450.0,"tc":73},{"t":893.7,"r":60,"w":0,"k":52.85,"p":448.6,"tc":72},{"t":894.7,"r":64,"w":0,"k":55.87,"p":449.1,"tc":72},{"t":895.7,"r":64,"w":0,"k":58.02,"p":427.4,"tc":68},{"t":896.7,"r":64,"w":0,"k":60.42,"p":406.4,"tc":68},{"t":897.7,"r":64,"w":0,"k":62.84,"p":406.5,"tc":68},{"t":898.7,"r":64,"w":0,"k":65.19,"p":406.4,"tc":68},{"t":899.7,"r":64,"w":0,"k":67.51,"p":406.5,"tc":68},{"t":900.7,"r":60,"w":0,"k":61.82,"p":440.4,"tc":72},{"t":901.7,"r":60,"w":0,"k":59.7,"p":449.9,"tc":72},{"t":902.7,"r":60,"w":0,"k":57.6,"p":449.1,"tc":72},{"t":903.7,"r":61,"w":0,"k":56.52,"p":448.2,"tc":73},{"t":904.7,"r":60,"w":0,"k":54.34,"p":448.6,"tc":73},{"t":905.7,"r":60,"w":0,"k":52.25,"p":448.5,"tc":73},{"t":906.7,"r":64,"w":0,"k":56.23,"p":448.9,"tc":73},{"t":907.7,"r":64,"w":0,"k":58.64,"p":420.2,"tc":68},{"t":908.8,"r":64,"w":0,"k":61.12,"p":408.2,"tc":68},{"t":909.8,"r":64,"w":0,"k":63.45,"p":408.1,"tc":68},{"t":910.8,"r":64,"w":0,"k":65.83,"p":407.6,"tc":68},{"t":911.8,"r":62,"w":0,"k":65.2,"p":407.6,"tc":68},{"t":912.8,"r":60,"w":0,"k":61.19,"p":449.4,"tc":71},{"t":913.8,"r":60,"w":0,"k":59.08,"p":446.7,"tc":72},{"t":914.8,"r":60,"w":0,"k":57.02,"p":447.3,"tc":72},{"t":915.8,"r":60,"w":0,"k":55.86,"p":447.6,"tc":72},{"t":916.8,"r":60,"w":0,"k":53.74,"p":447.8,"tc":73},{"t":917.8,"r":61,"w":0,"k":52.73,"p":447.8,"tc":73},{"t":918.8,"r":64,"w":0,"k":56.92,"p":447.8,"tc":72},{"t":919.8,"r":64,"w":0,"k":59.36,"p":410.1,"tc":69},{"t":920.8,"r":64,"w":0,"k":61.72,"p":407.9,"tc":68},{"t":921.8,"r":64,"w":0,"k":64.09,"p":407.6,"tc":68},{"t":922.8,"r":64,"w":0,"k":66.44,"p":407.3,"tc":68},{"t":923.8,"r":22,"w":0,"k":23.46,"p":403.3,"tc":67},{"t":924.8,"r":0,"w":0,"k":0.0,"p":192.2,"tc":60},{"t":925.9,"r":0,"w":0,"k":0.0,"p":143.0,"tc":60},{"t":926.9,"r":0,"w":0,"k":0.0,"p":114.7,"tc":59},{"t":927.9,"r":0,"w":0,"k":0.0,"p":106.5,"tc":58},{"t":928.9,"r":0,"w":0,"k":0.0,"p":98.2,"tc":57},{"t":929.9,"r":0,"w":0,"k":0.0,"p":97.5,"tc":57},{"t":930.9,"r":0,"w":0,"k":0.0,"p":97.3,"tc":56},{"t":931.9,"r":0,"w":0,"k":0.0,"p":97.1,"tc":55},{"t":932.9,"r":0,"w":0,"k":0.0,"p":96.7,"tc":55},{"t":933.9,"r":0,"w":0,"k":0.0,"p":96.2,"tc":54},{"t":934.9,"r":0,"w":0,"k":0.0,"p":95.3,"tc":54},{"t":935.9,"r":0,"w":0,"k":0.0,"p":94.4,"tc":53},{"t":936.9,"r":0,"w":0,"k":0.0,"p":93.6,"tc":53},{"t":937.9,"r":0,"w":0,"k":0.0,"p":92.8,"tc":53},{"t":938.9,"r":0,"w":0,"k":0.0,"p":91.8,"tc":52},{"t":939.9,"r":0,"w":0,"k":0.0,"p":90.7,"tc":52},{"t":940.9,"r":0,"w":0,"k":0.0,"p":89.4,"tc":52},{"t":941.9,"r":0,"w":0,"k":0.0,"p":84.3,"tc":50},{"t":943.0,"r":0,"w":0,"k":0.0,"p":65.0,"tc":50},{"t":944.0,"r":0,"w":0,"k":0.0,"p":47.3,"tc":49},{"t":945.0,"r":0,"w":0,"k":0.0,"p":43.7,"tc":49},{"t":946.0,"r":0,"w":0,"k":0.0,"p":42.6,"tc":48},{"t":947.0,"r":0,"w":0,"k":0.0,"p":41.9,"tc":48},{"t":948.0,"r":0,"w":0,"k":0.0,"p":40.9,"tc":48},{"t":949.0,"r":0,"w":0,"k":0.0,"p":40.0,"tc":48},{"t":950.0,"r":0,"w":0,"k":0.0,"p":39.5,"tc":47},{"t":951.0,"r":0,"w":0,"k":0.0,"p":39.2,"tc":47},{"t":952.0,"r":0,"w":0,"k":0.0,"p":38.6,"tc":47},{"t":953.0,"r":0,"w":0,"k":0.0,"p":38.0,"tc":46},{"t":954.0,"r":0,"w":0,"k":0.0,"p":37.4,"tc":46},{"t":955.0,"r":0,"w":0,"k":0.0,"p":37.0,"tc":46},{"t":956.0,"r":0,"w":0,"k":0.0,"p":36.5,"tc":46},{"t":957.0,"r":0,"w":0,"k":0.0,"p":36.2,"tc":46},{"t":958.0,"r":0,"w":0,"k":0.0,"p":36.1,"tc":45},{"t":959.0,"r":0,"w":0,"k":0.0,"p":36.0,"tc":45},{"t":960.0,"r":0,"w":0,"k":0.0,"p":35.6,"tc":45},{"t":961.1,"r":0,"w":0,"k":0.0,"p":35.0,"tc":45},{"t":962.1,"r":0,"w":0,"k":0.0,"p":34.5,"tc":45},{"t":963.1,"r":0,"w":0,"k":0.0,"p":34.3,"tc":45},{"t":964.1,"r":0,"w":0,"k":0.0,"p":34.1,"tc":45},{"t":965.1,"r":0,"w":0,"k":0.0,"p":33.7,"tc":44},{"t":966.1,"r":0,"w":0,"k":0.0,"p":33.5,"tc":44},{"t":967.1,"r":0,"w":0,"k":0.0,"p":33.2,"tc":44},{"t":968.1,"r":0,"w":0,"k":0.0,"p":32.9,"tc":44},{"t":969.1,"r":0,"w":0,"k":0.0,"p":32.6,"tc":44},{"t":970.1,"r":0,"w":0,"k":0.0,"p":32.5,"tc":44},{"t":971.1,"r":0,"w":0,"k":0.0,"p":32.7,"tc":44},{"t":972.1,"r":0,"w":0,"k":0.0,"p":32.8,"tc":44},{"t":973.1,"r":0,"w":0,"k":0.0,"p":32.6,"tc":44}],"span":973.1,"nSamples":969,"kv":[{"c":1,"runP50":1.0,"kvP50":0.96,"kvP90":1.05,"kvMax":1.07,"expMean":0.96,"expPeak":1.07,"errP50":0.0,"errMax":0.0},{"c":2,"runP50":2.0,"kvP50":1.92,"kvP90":2.11,"kvMax":2.13,"expMean":1.92,"expPeak":2.13,"errP50":0.0,"errMax":-0.0},{"c":4,"runP50":4.0,"kvP50":3.83,"kvP90":4.19,"kvMax":4.26,"expMean":3.84,"expPeak":4.26,"errP50":-0.01,"errMax":-0.0},{"c":8,"runP50":8.0,"kvP50":7.5,"kvP90":8.31,"kvMax":8.53,"expMean":7.68,"expPeak":8.53,"errP50":-0.18,"errMax":0.0},{"c":16,"runP50":16.0,"kvP50":14.71,"kvP90":16.59,"kvMax":17.03,"expMean":15.35,"expPeak":17.06,"errP50":-0.64,"errMax":-0.03},{"c":32,"runP50":32.0,"kvP50":29.21,"kvP90":32.88,"kvMax":33.95,"expMean":30.7,"expPeak":34.12,"errP50":-1.49,"errMax":-0.17},{"c":64,"runP50":61.0,"kvP50":58.72,"kvP90":65.2,"kvMax":67.51,"expMean":61.41,"expPeak":68.23,"errP50":-2.69,"errMax":-0.72}]};
+var P = DATA.points, S = DATA.series, W = DATA.windows;
+
+var NS = "http://www.w3.org/2000/svg";
+function el(n, a){ var e = document.createElementNS(NS, n); if(a) for(var k in a) e.setAttribute(k, a[k]); return e; }
+function txt(x, y, s, a){ var t = el("text", a||{}); t.setAttribute("x",x); t.setAttribute("y",y); t.textContent = s; return t; }
+function lin(d0,d1,r0,r1){ return function(v){ return r0 + (v-d0)/(d1-d0)*(r1-r0); }; }
+function lg(d0,d1,r0,r1){ var a=Math.log(d0), b=Math.log(d1);
+  return function(v){ v = Math.max(v, d0); return r0 + (Math.log(v)-a)/(b-a)*(r1-r0); }; }
+function cv(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+
+var CW = 860;
+function frame(id, h){
+  var host = document.getElementById(id); host.innerHTML = "";
+  var svg = el("svg", {viewBox:"0 0 "+CW+" "+h, role:"img"});
+  host.appendChild(svg); return svg;
+}
+function pathOf(pts){
+  return pts.map(function(p,i){ return (i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1); }).join("");
+}
+function line(pts, color, w, dash){
+  return el("path", {d:pathOf(pts), fill:"none", stroke:color, "stroke-width":w||2.2,
+    "stroke-dasharray":dash||"none", "stroke-linejoin":"round", "stroke-linecap":"round"});
+}
+function tip(node, s){ var t = el("title",{}); t.textContent = s; node.appendChild(t); return node; }
+function mono(x,y,s,color,size,anchor,weight){
+  return txt(x,y,s,{"text-anchor":anchor||"middle", fill:color, "font-size":size||11,
+    "font-weight":weight||600, "font-family":"var(--font-mono)", "font-variant-numeric":"tabular-nums"});
+}
+function gridY(svg, ticks, y, l, r, fmt){
+  ticks.forEach(function(v){
+    var yy = y(v);
+    svg.appendChild(el("line",{x1:l,y1:yy,x2:r,y2:yy,stroke:cv("--grid-2"),"stroke-width":1}));
+    svg.appendChild(mono(l-9, yy+4, fmt?fmt(v):v, cv("--ink-3"), 11, "end", 400));
+  });
+}
+function axisLabel(svg, s, l, r, h){
+  svg.appendChild(mono((l+r)/2, h-6, s, cv("--ink-3"), 11, "middle", 600));
+}
+function yLabel(svg, s, t, b){
+  var e = mono(0,0,s,cv("--ink-3"),11,"middle",600);
+  e.setAttribute("transform","translate(13,"+((t+b)/2)+") rotate(-90)");
+  svg.appendChild(e);
+}
+
+/* ---------- Fig 1 · TTFT 三段堆叠 ---------- */
+function figDecomp(){
+  var H = 380, svg = frame("ch-decomp", H);
+  var l = 62, r = CW-24, t = 30, b = H-52;
+  var y = lin(0, 1050, b, t);
+  gridY(svg, [0,200,400,600,800,1000], y, l, r, function(v){ return v+"ms"; });
+  var bw = (r-l)/P.length;
+  var C = {q:cv("--crit"), p:cv("--warn"), o:cv("--ink-3")};
+
+  P.forEach(function(d,i){
+    var x = l + i*bw + bw*0.22, w = bw*0.56;
+    var segs = [["q",d.q,C.q,"排队"],["p",d.p,C.p,"prefill"],["other",d.other,C.o,"前端+IPC"]];
+    var acc = 0;
+    segs.forEach(function(s){
+      var v = Math.max(s[1], 0);
+      if (v <= 0) return;
+      var y1 = y(acc+v), y0 = y(acc);
+      svg.appendChild(tip(el("rect",{x:x,y:y1,width:w,height:Math.max(y0-y1,0.6),
+        fill:s[2],opacity:.86,rx:1.5}), "C="+d.c+" · "+s[3]+" "+s[1].toFixed(1)+" ms"));
+      if (y0-y1 > 15) svg.appendChild(mono(x+w/2, (y0+y1)/2+4, s[1].toFixed(0), "#fff", 10.5, "middle", 700));
+      acc += v;
+    });
+    svg.appendChild(mono(x+w/2, y(acc)-8, d.ttftMean.toFixed(0), cv("--ink"), 12, "middle", 700));
+    svg.appendChild(mono(x+w/2, b+19, "C="+d.c, cv("--ink-3"), 11, "middle", 600));
+  });
+  svg.appendChild(el("line",{x1:l,y1:b,x2:r,y2:b,stroke:cv("--rule"),"stroke-width":1.5}));
+  yLabel(svg, "MEAN TTFT", t, b);
+  axisLabel(svg, "CONCURRENCY", l, r, H);
+}
+
+/* ---------- Fig 2 · queue vs prefill ---------- */
+function figQP(){
+  var H = 380, svg = frame("ch-qp", H);
+  var l = 66, r = CW-26, t = 26, b = H-52;
+  var x = lg(1,64,l,r), y = lg(0.03,1200,b,t);
+  [1,2,4,8,16,32,64].forEach(function(v){
+    svg.appendChild(el("line",{x1:x(v),y1:t,x2:x(v),y2:b,stroke:cv("--grid-2"),"stroke-width":1}));
+    svg.appendChild(mono(x(v), b+19, v, cv("--ink-3"), 11, "middle", 400));
+  });
+  gridY(svg, [0.05,0.5,5,50,500], y, l, r, function(v){ return v>=1? v+"ms" : v+"ms"; });
+
+  var q = P.map(function(d){ return [x(d.c), y(Math.max(d.q,0.03))]; });
+  var p = P.map(function(d){ return [x(d.c), y(d.p)]; });
+  var tt = P.map(function(d){ return [x(d.c), y(d.ttftMean)]; });
+  svg.appendChild(line(tt, cv("--accent"), 1.8, "5 4"));
+  svg.appendChild(line(p, cv("--warn"), 2.6));
+  svg.appendChild(line(q, cv("--crit"), 2.8));
+
+  P.forEach(function(d,i){
+    svg.appendChild(tip(el("circle",{cx:q[i][0],cy:q[i][1],r:4.6,fill:cv("--crit"),
+      stroke:cv("--surface"),"stroke-width":1.8}), "C="+d.c+" · 排队 "+d.q+" ms"));
+    svg.appendChild(tip(el("circle",{cx:p[i][0],cy:p[i][1],r:4.2,fill:cv("--warn"),
+      stroke:cv("--surface"),"stroke-width":1.8}), "C="+d.c+" · prefill "+d.p+" ms"));
+  });
+  svg.appendChild(el("line",{x1:l,y1:b,x2:r,y2:b,stroke:cv("--rule"),"stroke-width":1.5}));
+  yLabel(svg, "LATENCY (log)", t, b);
+  axisLabel(svg, "CONCURRENCY", l, r, H);
+}
+
+/* ---------- Fig 3 · 迭代混批 ---------- */
+function figIter(){
+  var H = 330, svg = frame("ch-iter", H);
+  var l = 62, r = CW-26, t = 26, b = H-52;
+  var y = lin(0, 350, b, t);
+  gridY(svg, [0,50,100,150,200,250,300,350], y, l, r);
+  var bw = (r-l)/P.length;
+  P.forEach(function(d,i){
+    var x = l + i*bw + bw*0.24, w = bw*0.52;
+    var dec = Math.min(d.runP50, d.iterTok), pre = Math.max(d.iterTok - dec, 0);
+    var yD = y(dec), yT = y(dec+pre);
+    svg.appendChild(tip(el("rect",{x:x,y:yD,width:w,height:b-yD,fill:cv("--accent"),opacity:.85,rx:1.5}),
+      "C="+d.c+" · decode ≈ "+dec+" tok"));
+    svg.appendChild(tip(el("rect",{x:x,y:yT,width:w,height:yD-yT,fill:cv("--warn"),opacity:.85,rx:1.5}),
+      "C="+d.c+" · prefill ≈ "+pre.toFixed(0)+" tok"));
+    svg.appendChild(mono(x+w/2, yT-8, d.iterTok.toFixed(0), cv("--ink"), 11.5, "middle", 700));
+    svg.appendChild(mono(x+w/2, b+19, "C="+d.c, cv("--ink-3"), 11, "middle", 600));
+  });
+  svg.appendChild(el("line",{x1:l,y1:b,x2:r,y2:b,stroke:cv("--rule"),"stroke-width":1.5}));
+  yLabel(svg, "TOKENS / ITERATION", t, b);
+  axisLabel(svg, "CONCURRENCY", l, r, H);
+}
+
+/* ---------- Fig 4 · 波形 ---------- */
+function figWave(){
+  var H = 400, svg = frame("ch-wave", H);
+  var l = 54, r = CW-46, t = 26, b = H-52;
+  var x = lin(0, DATA.span, l, r);
+  var yL = lin(0, 70, b, t);        // running / waiting
+  var yR = lin(0, 100, b, t);       // kv %
+
+  W.forEach(function(w, i){
+    if (i % 2 === 0) svg.appendChild(el("rect",{x:x(w.t0),y:t,width:x(w.t1)-x(w.t0),
+      height:b-t,fill:cv("--ink"),opacity:.035}));
+    svg.appendChild(mono((x(w.t0)+x(w.t1))/2, t-8, "C="+w.c, cv("--ink-3"), 10.5, "middle", 700));
+  });
+  gridY(svg, [0,20,40,60], yL, l, r);
+  [0,25,50,75,100].forEach(function(v){
+    svg.appendChild(mono(r+8, yR(v)+4, v+"%", cv("--violet"), 10.5, "start", 600));
+  });
+
+  svg.appendChild(line(S.map(function(s){ return [x(s.t), yR(s.k)]; }), cv("--violet"), 1.4));
+  svg.appendChild(line(S.map(function(s){ return [x(s.t), yL(s.r)]; }), cv("--accent"), 1.6));
+  svg.appendChild(line(S.map(function(s){ return [x(s.t), yL(s.w)]; }), cv("--crit"), 1.6));
+
+  svg.appendChild(el("line",{x1:l,y1:b,x2:r,y2:b,stroke:cv("--rule"),"stroke-width":1.5}));
+  [0,200,400,600,800].forEach(function(v){
+    svg.appendChild(mono(x(v), b+19, v+"s", cv("--ink-3"), 11, "middle", 400));
+  });
+  yLabel(svg, "REQUESTS", t, b);
+  axisLabel(svg, "ELAPSED", l, r, H);
+}
+
+/* ---------- Fig 5 · 功耗温度 ---------- */
+function figPower(){
+  var H = 320, svg = frame("ch-power", H);
+  var l = 54, r = CW-46, t = 26, b = H-52;
+  var x = lin(0, DATA.span, l, r);
+  var yP = lin(0, 500, b, t), yT = lin(0, 100, b, t);
+
+  W.forEach(function(w,i){
+    if (i % 2 === 0) svg.appendChild(el("rect",{x:x(w.t0),y:t,width:x(w.t1)-x(w.t0),
+      height:b-t,fill:cv("--ink"),opacity:.035}));
+    svg.appendChild(mono((x(w.t0)+x(w.t1))/2, t-8, "C="+w.c, cv("--ink-3"), 10.5, "middle", 700));
+  });
+  gridY(svg, [0,100,200,300,400,500], yP, l, r, function(v){ return v+"W"; });
+  [0,25,50,75,100].forEach(function(v){
+    svg.appendChild(mono(r+8, yT(v)+4, v+"°", cv("--accent"), 10.5, "start", 600));
+  });
+
+  svg.appendChild(el("line",{x1:l,y1:yP(450),x2:r,y2:yP(450),stroke:cv("--crit"),
+    "stroke-width":1.4,"stroke-dasharray":"5 4",opacity:.75}));
+  svg.appendChild(mono(l+6, yP(450)-7, "450 W 功耗墙", cv("--crit"), 10.5, "start", 700));
+
+  svg.appendChild(line(S.map(function(s){ return [x(s.t), yT(s.tc)]; }), cv("--accent"), 1.4));
+  svg.appendChild(line(S.map(function(s){ return [x(s.t), yP(s.p)]; }), cv("--warn"), 1.5));
+
+  svg.appendChild(el("line",{x1:l,y1:b,x2:r,y2:b,stroke:cv("--rule"),"stroke-width":1.5}));
+  [0,200,400,600,800].forEach(function(v){
+    svg.appendChild(mono(x(v), b+19, v+"s", cv("--ink-3"), 11, "middle", 400));
+  });
+  yLabel(svg, "POWER", t, b);
+  axisLabel(svg, "ELAPSED", l, r, H);
+}
+
+/* ---------- Fig 6 · KV 对账 ---------- */
+function figKV(){
+  var K = DATA.kv;
+  var H = 360, svg = frame("ch-kv", H);
+  var l = 62, r = CW-26, t = 26, b = H-52;
+  var x = lg(1,64,l,r), y = lin(0,100,b,t);
+  [1,2,4,8,16,32,64].forEach(function(v){
+    svg.appendChild(el("line",{x1:x(v),y1:t,x2:x(v),y2:b,stroke:cv("--grid-2"),"stroke-width":1}));
+    svg.appendChild(mono(x(v), b+19, v, cv("--ink-3"), 11, "middle", 400));
+  });
+  gridY(svg, [0,25,50,75,100], y, l, r, function(v){ return v+"%"; });
+
+  var eP = K.map(function(d){ return [x(d.c), y(d.expPeak)]; });
+  var eM = K.map(function(d){ return [x(d.c), y(d.expMean)]; });
+  var aP = K.map(function(d){ return [x(d.c), y(d.kvMax)]; });
+  var aM = K.map(function(d){ return [x(d.c), y(d.kvP50)]; });
+
+  svg.appendChild(line(eP, cv("--warn"), 4.5, "7 5"));
+  svg.appendChild(line(eM, cv("--accent"), 4.5, "7 5"));
+  svg.appendChild(line(aP, cv("--warn"), 1.8));
+  svg.appendChild(line(aM, cv("--accent"), 1.8));
+
+  K.forEach(function(d,i){
+    svg.appendChild(tip(el("circle",{cx:aP[i][0],cy:aP[i][1],r:4,fill:cv("--warn"),
+      stroke:cv("--surface"),"stroke-width":1.6}),
+      "C="+d.c+" 峰值 · 实测 "+d.kvMax+"% vs 预期 "+d.expPeak+"% ("+(d.errMax>=0?"+":"")+d.errMax+" pp)"));
+    svg.appendChild(tip(el("circle",{cx:aM[i][0],cy:aM[i][1],r:4,fill:cv("--accent"),
+      stroke:cv("--surface"),"stroke-width":1.6}),
+      "C="+d.c+" 稳态 · 实测 "+d.kvP50+"% vs 预期 "+d.expMean+"% ("+(d.errP50>=0?"+":"")+d.errP50+" pp)"));
+  });
+  svg.appendChild(el("line",{x1:l,y1:b,x2:r,y2:b,stroke:cv("--rule"),"stroke-width":1.5}));
+  svg.appendChild(mono(l+10, t+14, "粗虚线 = 理论预期   细实线 = 实测(几乎完全重合)", cv("--ink-3"), 11, "start", 600));
+  yLabel(svg, "KV POOL USAGE", t, b);
+  axisLabel(svg, "CONCURRENCY", l, r, H);
+}
+
+function tableKV(){
+  var tb = document.getElementById("tb-kv"); tb.innerHTML = "";
+  DATA.kv.forEach(function(d){
+    var tr = document.createElement("tr");
+    var cls = function(e){ var a = Math.abs(e); return a <= 1 ? "ok" : (a <= 2 ? "mid" : "bad"); };
+    var rn = d.runP50 < d.c ? "<td class='bad'>"+d.runP50+"</td>" : "<td>"+d.runP50+"</td>";
+    tr.innerHTML =
+      "<td><strong>"+d.c+"</strong></td>"+ rn +
+      "<td class='hl'>"+d.kvP50.toFixed(1)+"</td><td>"+d.expMean.toFixed(1)+"</td>"+
+      "<td class='"+cls(d.errP50)+"'>"+(d.errP50>=0?"+":"")+d.errP50.toFixed(1)+"</td>"+
+      "<td class='hl'>"+d.kvMax.toFixed(1)+"</td><td>"+d.expPeak.toFixed(1)+"</td>"+
+      "<td class='"+cls(d.errMax)+"'>"+(d.errMax>=0?"+":"")+d.errMax.toFixed(1)+"</td>";
+    tb.appendChild(tr);
+  });
+}
+
+/* ---------- Fig 7 · 复现性 ---------- */
+function figRepro(){
+  var H = 320, svg = frame("ch-repro", H);
+  var l = 66, r = CW-26, t = 26, b = H-52;
+  var x = lg(1,64,l,r), y = lg(50,1600,b,t);
+  [1,2,4,8,16,32,64].forEach(function(v){
+    svg.appendChild(el("line",{x1:x(v),y1:t,x2:x(v),y2:b,stroke:cv("--grid-2"),"stroke-width":1}));
+    svg.appendChild(mono(x(v), b+19, v, cv("--ink-3"), 11, "middle", 400));
+  });
+  gridY(svg, [50,100,250,500,1000,1500], y, l, r);
+
+  var a = P.filter(function(d){ return d.tp1 != null; }).map(function(d){ return [x(d.c), y(d.tp1)]; });
+  var c = P.map(function(d){ return [x(d.c), y(d.tp)]; });
+  if (a.length) svg.appendChild(line(a, cv("--ink-3"), 5, "none"));
+  svg.appendChild(line(c, cv("--accent"), 2.2));
+
+  P.forEach(function(d,i){
+    if (d.tp1 == null) return;
+    var dd = (d.tp - d.tp1)/d.tp1*100;
+    svg.appendChild(tip(el("circle",{cx:c[i][0],cy:c[i][1],r:4.4,fill:cv("--accent"),
+      stroke:cv("--surface"),"stroke-width":1.8}),
+      "C="+d.c+" · 第一轮 "+d.tp1+" → 第二轮 "+d.tp+" tok/s ("+(dd>=0?"+":"")+dd.toFixed(2)+"%)"));
+    svg.appendChild(mono(c[i][0], c[i][1]-13, (dd>=0?"+":"")+dd.toFixed(2)+"%", cv("--good"), 10, "middle", 600));
+  });
+  svg.appendChild(el("line",{x1:l,y1:b,x2:r,y2:b,stroke:cv("--rule"),"stroke-width":1.5}));
+  svg.appendChild(mono(l+10, t+14, "粗灰线 = 第一轮   细青线 = 第二轮(几乎完全重合)", cv("--ink-3"), 11, "start", 600));
+  yLabel(svg, "OUTPUT tok/s", t, b);
+  axisLabel(svg, "CONCURRENCY", l, r, H);
+}
+
+/* ---------- 表格 ---------- */
+function table(){
+  var tb = document.getElementById("tb"); tb.innerHTML = "";
+  P.forEach(function(d){
+    var tr = document.createElement("tr");
+    if (d.c === 16) tr.className = "pick";
+    var qc = d.q >= 100 ? "bad" : (d.q >= 20 ? "mid" : "ok");
+    var ic = d.itl99 >= 100 ? "bad" : (d.itl99 >= 50 ? "mid" : "");
+    var kc = d.kvMax >= 85 ? "bad" : (d.kvMax >= 45 ? "mid" : "");
+    var pc = d.pwrP50 >= 420 ? "bad" : (d.pwrP50 >= 340 ? "mid" : "");
+    var wc = d.waitMax >= 20 ? "bad" : (d.waitMax > 0 ? "mid" : "");
+    tr.innerHTML =
+      "<td><strong>"+d.c+"</strong></td>"+
+      "<td class='hl'>"+d.tp.toFixed(1)+"</td>"+
+      "<td class='"+qc+"'>"+d.q.toFixed(1)+"</td>"+
+      "<td>"+d.p.toFixed(1)+"</td>"+
+      "<td>"+d.other.toFixed(1)+"</td>"+
+      "<td>"+d.ttftMean.toFixed(1)+"</td>"+
+      "<td class='"+(d.ttft99>=2000?"bad":(d.ttft99>=1000?"mid":""))+"'>"+d.ttft99.toFixed(0)+"</td>"+
+      "<td>"+d.itl50.toFixed(2)+"</td>"+
+      "<td class='"+ic+"'>"+d.itl99.toFixed(1)+"</td>"+
+      "<td>"+d.runP50+"</td>"+
+      "<td class='"+wc+"'>"+d.waitMax+"</td>"+
+      "<td class='"+kc+"'>"+d.kvMax.toFixed(1)+"</td>"+
+      "<td class='"+pc+"'>"+d.pwrP50.toFixed(0)+"</td>";
+    tb.appendChild(tr);
+  });
+}
+
+function drawAll(){ figDecomp(); figQP(); figIter(); figWave(); figPower();
+  figKV(); tableKV(); figRepro(); table(); }
+drawAll();
+if (window.matchMedia){
+  var mq = window.matchMedia("(prefers-color-scheme: dark)");
+  if (mq.addEventListener) mq.addEventListener("change", drawAll);
+}
+new MutationObserver(drawAll).observe(document.documentElement, {attributes:true, attributeFilter:["data-theme"]});
+})();
+</script>

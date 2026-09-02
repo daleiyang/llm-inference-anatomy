@@ -1,0 +1,14 @@
+=== date ===
+Mon Aug 17 19:18:07 UTC 2026
+=== gpu ===
+name, driver_version, memory.total [MiB]
+NVIDIA GeForce RTX 4090, 590.48.01, 24564 MiB
+=== nvidia-smi header ===
+Mon Aug 17 19:18:07 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 590.48.01              Driver Version: 590.48.01      CUDA Version: 13.1     |
+=== python/torch/vllm ===
+=== cpu/mem ===
+48
+               total        used        free      shared  buff/cache   available
+Mem:             503         272          98           0         132         227
