@@ -43,7 +43,7 @@
 | 阶段 | 内容 | 要证明什么 | 状态 |
 |---|---|---|---|
 | **01** | [**Decode Latency Anatomy**](01-decode-latency-anatomy/)<br>推理成本模型：prefill/decode、KV Cache、roofline | 我懂成本模型 | ✅ **已完成** |
-| 02 | **CUDA from a Systems Engineer's Eyes**<br>naive → tiled → coalesced matmul 逼近 cuBLAS，融合 softmax/RMSNorm，配 Nsight roofline | 我能写 GPU 代码 | 🚧 进行中 |
+| 02 | [**CUDA from a Systems Engineer's Eyes**](02-cuda-from-systems-eyes/)<br>naive → tiled → coalesced matmul 逼近 cuBLAS，融合 softmax/RMSNorm，配 Nsight roofline | 我能写 GPU 代码 | 🚧 **进行中** —— [设计与预测已就绪](02-cuda-from-systems-eyes/)，kernel 待写 |
 | 03 | **Quantization Shootout**<br>同一模型族跨 GGUF-Q4_K_M / AWQ / GPTQ / FP16，同硬件比 perplexity、tok/s、TTFT、VRAM | 我有 serving 判断力 | 📋 计划中 |
 | 04 | **FlashAttention Forward in Triton**<br>实现 FA-2 前向，对 `sdpa` 验证并基准 | 我是可信地精通，不是会调库 | 📋 计划中 |
 | 05 | **Speed Up a Real Deployment**<br>baseline → 调 batching/prefix-cache + AWQ/FP8 + 投机解码，报告每一步的 delta | **这就是客户交付物本身** | 📋 计划中 |
