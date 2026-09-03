@@ -93,9 +93,9 @@ llm-inference-anatomy/
     └── Scripts/                   # 可复制粘贴的完整命令串
 ```
 
-> **提示**：GitHub 网页端点击 `.html` 只显示源码。
-> 开启仓库 Pages（Settings → Pages → main 分支根目录）后即可直接阅读报告，
-> 或 `git clone` 到本地用浏览器打开。
+> **在线阅读**：<https://daleiyang.github.io/llm-inference-anatomy/>
+> 报告是自包含的单页 HTML（数据与 SVG 内嵌，无外部依赖，支持明暗主题），
+> 经由 GitHub Pages 提供 —— 直接在仓库里点 `.html` 只会看到源码。
 
 ---
 

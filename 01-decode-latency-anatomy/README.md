@@ -14,13 +14,13 @@
 
 | 问题 | 答案 | 出处 |
 |---|---|---|
-| **这块内存为什么是 56 KiB/token？** | 从模型结构逐层推：`2×28层×4 KV头×128 dim×2B`。GQA 让它比 MHA **小 7 倍** —— 这个数决定了并发上限 | [结构拆解](Reports/Qwen2.5-7B%20结构拆解.html) |
-| **选 vLLM 还是 llama.cpp？** | 分界线不是并发数，是**延迟预算**：p99 TTFT ≈ **730 ms**。比这紧 llama.cpp 赢，比这松 vLLM 赢 | [选型指南](Reports/Round2/06-选型指南-vllm-llama-cpp.html) |
-| **这张卡能扛多少并发？** | **不用压测，可以算**：KV 每 token 占 56 KiB，池子 ÷ 上下文即上限。实测与理论差 **0.045%** | [KV 的线性](Reports/Round2/03-vllm-KV的线性.html) |
-| **并发加到多少开始亏？** | 吞吐到 C=64 都没饱和，但 **C=8 起 ITL 尾部裂开**（p99 从 17.6 → 102.1 ms） | [并发曲线](Reports/Round2/01-vllm-Qwen2.5-7B并发曲线.html) |
-| **首字延迟慢，该换卡吗？** | 过载时 **98.9% 的 TTFT 是排队**，真正算 prefill 只要 1.10 秒。换 H100 救不了，限流才行 | [TTFT 解剖](Reports/Round2/02-vllm-TTFT解剖.html) |
-| **KV 池压爆会怎样？** | 超卖 **4.4 倍**、KV 顶到 100%、抢占 38 次 —— 结果**零失败、输出 token 一个不少** | [断崖](Reports/Round2/04-vllm-断崖.html) |
-| **量化到底省下了什么？** | 省字节（单流快 **2.71×**），**省不了调度**（C=64 批处理效率 81% vs 25%） | [llama.cpp 压测](Reports/Round2/05-llama-cpp-压测.html) |
+| **这块内存为什么是 56 KiB/token？** | 从模型结构逐层推：`2×28层×4 KV头×128 dim×2B`。GQA 让它比 MHA **小 7 倍** —— 这个数决定了并发上限 | [结构拆解](https://daleiyang.github.io/llm-inference-anatomy/01-decode-latency-anatomy/Reports/Qwen2.5-7B%20结构拆解.html) |
+| **选 vLLM 还是 llama.cpp？** | 分界线不是并发数，是**延迟预算**：p99 TTFT ≈ **730 ms**。比这紧 llama.cpp 赢，比这松 vLLM 赢 | [选型指南](https://daleiyang.github.io/llm-inference-anatomy/01-decode-latency-anatomy/Reports/Round2/06-选型指南-vllm-llama-cpp.html) |
+| **这张卡能扛多少并发？** | **不用压测，可以算**：KV 每 token 占 56 KiB，池子 ÷ 上下文即上限。实测与理论差 **0.045%** | [KV 的线性](https://daleiyang.github.io/llm-inference-anatomy/01-decode-latency-anatomy/Reports/Round2/03-vllm-KV的线性.html) |
+| **并发加到多少开始亏？** | 吞吐到 C=64 都没饱和，但 **C=8 起 ITL 尾部裂开**（p99 从 17.6 → 102.1 ms） | [并发曲线](https://daleiyang.github.io/llm-inference-anatomy/01-decode-latency-anatomy/Reports/Round2/01-vllm-Qwen2.5-7B并发曲线.html) |
+| **首字延迟慢，该换卡吗？** | 过载时 **98.9% 的 TTFT 是排队**，真正算 prefill 只要 1.10 秒。换 H100 救不了，限流才行 | [TTFT 解剖](https://daleiyang.github.io/llm-inference-anatomy/01-decode-latency-anatomy/Reports/Round2/02-vllm-TTFT解剖.html) |
+| **KV 池压爆会怎样？** | 超卖 **4.4 倍**、KV 顶到 100%、抢占 38 次 —— 结果**零失败、输出 token 一个不少** | [断崖](https://daleiyang.github.io/llm-inference-anatomy/01-decode-latency-anatomy/Reports/Round2/04-vllm-断崖.html) |
+| **量化到底省下了什么？** | 省字节（单流快 **2.71×**），**省不了调度**（C=64 批处理效率 81% vs 25%） | [llama.cpp 压测](https://daleiyang.github.io/llm-inference-anatomy/01-decode-latency-anatomy/Reports/Round2/05-llama-cpp-压测.html) |
 
 ---
 
@@ -29,7 +29,7 @@
 ### 1 · 容量可以纯算术推出来，压测只用来标定
 
 每 token 的 KV 字节完全由模型结构决定，不需要试
-（推导见[结构拆解](Reports/Qwen2.5-7B%20结构拆解.html)第 09 节）：
+（推导见[结构拆解](https://daleiyang.github.io/llm-inference-anatomy/01-decode-latency-anatomy/Reports/Qwen2.5-7B%20结构拆解.html)第 09 节）：
 
 ```
 2 (K,V) × 28 层 × 4 KV head × 128 dim × 2 B = 57,344 B = 56.0 KiB
@@ -126,13 +126,12 @@ estimated_flops_total   比模型标定值多出 +29%        ← 换算回约 30
 
 ## 报告目录
 
-> **GitHub 网页端点击 `.html` 只显示源码。** 开启仓库的 **Pages**
-> （Settings → Pages → 选 main 分支根目录）后即可直接阅读；或 `git clone` 到本地用浏览器打开。
+> 下面的链接指向 **[GitHub Pages](https://daleiyang.github.io/llm-inference-anatomy/) 上渲染好的版本**，点开即读。
 > 所有报告都是**自包含单文件**：数据与 SVG 全部内嵌，无外部依赖，支持明暗两套主题。
 
 ### 理论底座 · 先读这一份
 
-[**Qwen2.5-7B 结构拆解**](Reports/Qwen2.5-7B%20结构拆解.html) —— 把 **7,615,616,512** 个参数逐层摊开
+[**Qwen2.5-7B 结构拆解**](https://daleiyang.github.io/llm-inference-anatomy/01-decode-latency-anatomy/Reports/Qwen2.5-7B%20结构拆解.html) —— 把 **7,615,616,512** 个参数逐层摊开
 
 后面六份压测报告反复用到的两个常数，都是在这里从模型结构算出来的：
 
@@ -153,20 +152,20 @@ SwiGLU 的门在门什么 → 76 亿参数都堆在哪儿 → KV Cache 与并发
 
 | # | 报告 | 回答什么 | 一句话结论 |
 |---|---|---|---|
-| **06** | [**选型指南**](Reports/Round2/06-选型指南-vllm-llama-cpp.html) | 两个引擎生产上怎么选 | 分界线是 p99 TTFT ≈ 730 ms，不是并发数 |
-| 01 | [并发曲线](Reports/Round2/01-vllm-Qwen2.5-7B并发曲线.html) | 吞吐涨到多少开始拿延迟换 | 拐点 C=8，被调度器卡住而非显存 |
-| 02 | [TTFT 解剖](Reports/Round2/02-vllm-TTFT解剖.html) | 首字延迟涨在哪一段 | 拆成排队 / prefill / 前端三段，排队是主因 |
-| 03 | [KV 的线性](Reports/Round2/03-vllm-KV的线性.html) | KV 占用是不是线性的 | R²=0.99993，容量可以算不用测 |
-| 04 | [断崖](Reports/Round2/04-vllm-断崖.html) | 越过 KV 容量会怎样 | 超卖 4.4 倍仍零失败，抢占是控制环 |
-| 05 | [llama.cpp 压测](Reports/Round2/05-llama-cpp-压测.html) | 量化到底省下了什么 | 单流 2.71×，批处理效率 81% vs 25% |
+| **06** | [**选型指南**](https://daleiyang.github.io/llm-inference-anatomy/01-decode-latency-anatomy/Reports/Round2/06-选型指南-vllm-llama-cpp.html) | 两个引擎生产上怎么选 | 分界线是 p99 TTFT ≈ 730 ms，不是并发数 |
+| 01 | [并发曲线](https://daleiyang.github.io/llm-inference-anatomy/01-decode-latency-anatomy/Reports/Round2/01-vllm-Qwen2.5-7B并发曲线.html) | 吞吐涨到多少开始拿延迟换 | 拐点 C=8，被调度器卡住而非显存 |
+| 02 | [TTFT 解剖](https://daleiyang.github.io/llm-inference-anatomy/01-decode-latency-anatomy/Reports/Round2/02-vllm-TTFT解剖.html) | 首字延迟涨在哪一段 | 拆成排队 / prefill / 前端三段，排队是主因 |
+| 03 | [KV 的线性](https://daleiyang.github.io/llm-inference-anatomy/01-decode-latency-anatomy/Reports/Round2/03-vllm-KV的线性.html) | KV 占用是不是线性的 | R²=0.99993，容量可以算不用测 |
+| 04 | [断崖](https://daleiyang.github.io/llm-inference-anatomy/01-decode-latency-anatomy/Reports/Round2/04-vllm-断崖.html) | 越过 KV 容量会怎样 | 超卖 4.4 倍仍零失败，抢占是控制环 |
+| 05 | [llama.cpp 压测](https://daleiyang.github.io/llm-inference-anatomy/01-decode-latency-anatomy/Reports/Round2/05-llama-cpp-压测.html) | 量化到底省下了什么 | 单流 2.71×，批处理效率 81% vs 25% |
 
 ### 第一轮 · 保留全过程（含被第二轮修正的判断）
 
-[并发曲线](Reports/Round1/01-vllm-Qwen2.5-7B%20并发曲线.html) ·
-[TTFT 解剖](Reports/Round1/02-vllm-TTFT%20解剖.html) ·
-[KV 的线性](Reports/Round1/03-vllm-KV%20的线性.html) ·
-[断崖](Reports/Round1/04-vllm-断崖.html) ·
-[llama.cpp 与选型](Reports/Round1/05-llama-cpp-压测-选型指南.html)
+[并发曲线](https://daleiyang.github.io/llm-inference-anatomy/01-decode-latency-anatomy/Reports/Round1/01-vllm-Qwen2.5-7B%20并发曲线.html) ·
+[TTFT 解剖](https://daleiyang.github.io/llm-inference-anatomy/01-decode-latency-anatomy/Reports/Round1/02-vllm-TTFT%20解剖.html) ·
+[KV 的线性](https://daleiyang.github.io/llm-inference-anatomy/01-decode-latency-anatomy/Reports/Round1/03-vllm-KV%20的线性.html) ·
+[断崖](https://daleiyang.github.io/llm-inference-anatomy/01-decode-latency-anatomy/Reports/Round1/04-vllm-断崖.html) ·
+[llama.cpp 与选型](https://daleiyang.github.io/llm-inference-anatomy/01-decode-latency-anatomy/Reports/Round1/05-llama-cpp-压测-选型指南.html)
 
 ---
 
@@ -219,7 +218,7 @@ SwiGLU 的门在门什么 → 76 亿参数都堆在哪儿 → KV Cache 与并发
 - **跨引擎对比时发现了一个坑**：`--ignore-eos` 在两个引擎上行为不一致 ——
   vLLM 每条精确 256 个输出 token，llama.cpp 是 250–256 不等，合计差 **1.35%**。
   已在报告中披露，并说明它对结论无影响。
-- **原始数据一条没删**，都在 [`Results/`](Results/) 下：bench 原始 JSON、1 Hz 采样 CSV、
+- **原始数据一条没删**，都在 [`Results/`](https://github.com/daleiyang/llm-inference-anatomy/tree/main/01-decode-latency-anatomy/Results) 下：bench 原始 JSON、1 Hz 采样 CSV、
   服务端完整日志、环境指纹。报告里每个数都能追回源文件。
 
 ---
@@ -265,7 +264,7 @@ SwiGLU 的门在门什么 → 76 亿参数都堆在哪儿 → KV Cache 与并发
 ## 怎么复现
 
 完整命令串（开机 → 装环境 → 起服务 → 4 项验证 → 压测 + 采样 → 切引擎对比 → 收工）
-见 [`Scripts/第二轮测试脚本.md`](Scripts/第二轮测试脚本.md)。三条关键规矩：
+见 [`Scripts/第二轮测试脚本.md`](https://github.com/daleiyang/llm-inference-anatomy/blob/main/01-decode-latency-anatomy/Scripts/第二轮测试脚本.md)。三条关键规矩：
 
 1. **一份 `sweep.sh` 打两个端口。** 跨引擎对比的客户端必须完全一致，
    并显式写死 `--temperature 0`、`--random-range-ratio 0`、每档独立 seed。
