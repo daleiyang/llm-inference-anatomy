@@ -1,0 +1,26 @@
+# 环境指纹 · 02 阶段 Round1
+
+采集时间   2026-09-24T18:01:14+00:00
+主机       ba6cd7afd8e0   Linux 6.8.0-124-generic
+nvidia-smi name, driver_version, clocks.max.sm, clocks.max.memory, power.limit, persistence_mode
+           NVIDIA GeForce RTX 4090, 580.159.03, 3105 MHz, 10501 MHz, 450.00 W, Enabled
+程序自报   GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+
+# 编译
+nvcc -O3 -arch=sm_89 -lineinfo -Xptxas -v sgemm_all.cu -o sgemm_all -lcublas
+NVIDIA_TF32_OVERRIDE=0   （cuBLAS 另有 cublasSetMathMode(CUBLAS_PEDANTIC_MATH)）
+
+# ptxas 报告的每线程寄存器数（全部 0 bytes stack frame / 0 spill）
+  sgemm_k6   111 registers
+  sgemm_k5    72 registers
+  sgemm_k4    54 registers
+  sgemm_k3c   38 registers
+  sgemm_k3    38 registers
+  sgemm_k2    40 registers
+  sgemm_k1    40 registers
+
+# 口径
+FP32 峰值   128 SM × 128 core × 2 × 2.52 GHz = 82,575 GFLOP/s
+            （程序按设备报告的 clockRate 算；按加速时钟 2713 MHz 则为 88.9 TFLOP/s）
+显存带宽    10501 MHz × 2 × 384 bit ÷ 8 = 1008 GB/s
+L2          75.5 MB

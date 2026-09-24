@@ -1,0 +1,1255 @@
+=============================================================
+ 形状扫描   2026-09-24T18:06:19+00:00
+ kernels: k0 k1 k2 k3 k3c k4 k5 k6
+=============================================================
+
+四组形状的理论账（跑之前先算，见导学 §5·二）：
+  形状          M     N     K    算术强度   瓶颈      下限
+  方阵基准    4096  4096  4096     682.7   算力    1.546 ms
+  prefill     2048 18944  3584     609.7   算力    3.128 ms
+  decode-b32    32 18944  3584      15.8   带宽    0.272 ms
+  decode-b1      1 18944  3584       0.5   带宽    0.270 ms
+
+  ⚠ decode 两组的下限几乎相同（0.272 vs 0.270 ms）——
+    都被'把权重矩阵读一遍'钉死。batch=32 和 batch=1 花一样的时间、
+    吞吐却差 32 倍，这就是 decode 必须批量化的根本原因。
+
+=== 正确性：非方阵的边界检查有没有写对，全看这一步 ===
+--- 方阵基准 (4096 x 4096 x 4096) · 用 k3 抽查 ---
+$ ./sgemm_all k3 4096 4096 4096 2
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3] 矩阵 4096×4096×4096   TILE 32   block 32×32   grid 128×128
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 23.138 ms   5939.9 GFLOP/s = FP32 峰值的 7.19%
+字节账: 算术强度 7.969 FLOP/byte → roofline 上限 8033 GFLOP/s，达成率 73.9%
+条数账: load/FMA 2.062（32 路 1.000 + 广播 1.000 + 全局 0.062）
+        节拍 3.48 周期/warp圈 → 每条 load 1.69 周期   模型预测 3.26
+--- prefill (2048 x 18944 x 3584) · 用 k3 抽查 ---
+$ ./sgemm_all k3 2048 18944 3584 2
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3] 矩阵 2048×18944×3584   TILE 32   block 32×32   grid 592×64
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 47.787 ms   5819.6 GFLOP/s = FP32 峰值的 7.05%
+字节账: 算术强度 7.964 FLOP/byte → roofline 上限 8029 GFLOP/s，达成率 72.5%
+条数账: load/FMA 2.062（32 路 1.000 + 广播 1.000 + 全局 0.062）
+        节拍 3.55 周期/warp圈 → 每条 load 1.72 周期   模型预测 3.26
+--- decode-b32 (32 x 18944 x 3584) · 用 k3 抽查 ---
+$ ./sgemm_all k3 32 18944 3584 2
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3] 矩阵 32×18944×3584   TILE 32   block 32×32   grid 592×1
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.811 ms   5357.9 GFLOP/s = FP32 峰值的 6.49%
+字节账: 算术强度 7.964 FLOP/byte → roofline 上限 8029 GFLOP/s，达成率 66.7%
+条数账: load/FMA 2.062（32 路 1.000 + 广播 1.000 + 全局 0.062）
+        节拍 3.85 周期/warp圈 → 每条 load 1.87 周期   模型预测 3.26
+--- decode-b1 (1 x 18944 x 3584) · 用 k3 抽查 ---
+$ ./sgemm_all k3 1 18944 3584 2
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3] 矩阵 1×18944×3584   TILE 32   block 32×32   grid 592×1
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.808 ms   168.1 GFLOP/s = FP32 峰值的 0.20%
+字节账: 算术强度 7.964 FLOP/byte → roofline 上限 8029 GFLOP/s，达成率 2.1%
+条数账: load/FMA 2.062（32 路 1.000 + 广播 1.000 + 全局 0.062）
+        节拍 122.81 周期/warp圈 → 每条 load 59.55 周期   模型预测 3.26
+
+##################### 第 1 轮 #####################
+
+========== 方阵基准 : M=4096 N=4096 K=4096 ==========
+
+--- round 1 · 方阵基准 · k0 · ITERS=11 ---
+$ ./sgemm_all k0 4096 4096 4096 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k0] 矩阵 4096×4096×4096   （cuBLAS 自己决定 tile 和 grid，我们看不见）
+cuBLAS（列主序换位调用，TF32 已禁用）—— 没有我们自己的 block/grid
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 2.390 ms   57508.5 GFLOP/s = FP32 峰值的 69.64%
+（cuBLAS 内部实现未知，不记三本账 —— 它在这里的角色是分母）
+
+--- round 1 · 方阵基准 · k1 · ITERS=3 ---
+$ ./sgemm_all k1 4096 4096 4096 3
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k1] 矩阵 4096×4096×4096   TILE 32   block 32×32   grid 128×128
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 211.995 ms   648.3 GFLOP/s = FP32 峰值的 0.79%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 257.3%
+请求账: 内存请求 33 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 31.84 周期/warp圈 → 每条 load 15.92 周期   模型预测 3.78
+
+--- round 1 · 方阵基准 · k2 · ITERS=5 ---
+$ ./sgemm_all k2 4096 4096 4096 5
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k2] 矩阵 4096×4096×4096   TILE 32   block 32×32   grid 128×128
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 25.837 ms   5319.5 GFLOP/s = FP32 峰值的 6.44%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 2111.0%
+请求账: 内存请求 2 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 3.88 周期/warp圈 → 每条 load 1.94 周期   模型预测 3.78
+
+--- round 1 · 方阵基准 · k3 · ITERS=11 ---
+$ ./sgemm_all k3 4096 4096 4096 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3] 矩阵 4096×4096×4096   TILE 32   block 32×32   grid 128×128
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 22.270 ms   6171.5 GFLOP/s = FP32 峰值的 7.47%
+字节账: 算术强度 7.969 FLOP/byte → roofline 上限 8033 GFLOP/s，达成率 76.8%
+条数账: load/FMA 2.062（32 路 1.000 + 广播 1.000 + 全局 0.062）
+        节拍 3.35 周期/warp圈 → 每条 load 1.62 周期   模型预测 3.26
+
+--- round 1 · 方阵基准 · k3c · ITERS=11 ---
+$ ./sgemm_all k3c 4096 4096 4096 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3c] 矩阵 4096×4096×4096   TILE 32   block 32×32   grid 32×128
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 20.551 ms   6687.6 GFLOP/s = FP32 峰值的 8.10%
+字节账: 算术强度 12.720 FLOP/byte → roofline 上限 12823 GFLOP/s，达成率 52.2%
+条数账: load/FMA 2.039（32 路 1.000 + 广播 1.000 + 全局 0.039）
+        节拍 3.09 周期/warp圈 → 每条 load 1.51 周期   模型预测 3.21
+
+--- round 1 · 方阵基准 · k4 · ITERS=11 ---
+$ ./sgemm_all k4 4096 4096 4096 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k4] 矩阵 4096×4096×4096   TILE 32   block 32×4   grid 128×128
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 9 block × 128 线程 = 1152 / 1536 = 75.0%
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 6.598 ms   20831.5 GFLOP/s = FP32 峰值的 25.23%
+字节账: 算术强度 7.969 FLOP/byte → roofline 上限 8033 GFLOP/s，达成率 259.3%
+条数账: load/FMA 1.188（32 路 0.125 + 广播 1.000 + 全局 0.062）
+        节拍 0.99 周期/warp圈 → 每条 load 0.83 周期   模型预测 0.97
+
+--- round 1 · 方阵基准 · k5 · ITERS=11 ---
+$ ./sgemm_all k5 4096 4096 4096 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k5] 矩阵 4096×4096×4096   TILE 32   block 32×4   grid 32×128
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 3.973 ms   34589.7 GFLOP/s = FP32 峰值的 41.89%
+字节账: 算术强度 12.720 FLOP/byte → roofline 上限 12823 GFLOP/s，达成率 269.7%
+条数账: load/FMA 0.414（32 路 0.125 + 广播 0.250 + 全局 0.039）
+        节拍 0.60 周期/warp圈 → 每条 load 1.44 周期   模型预测 0.53
+
+--- round 1 · 方阵基准 · k6 · ITERS=11 ---
+$ ./sgemm_all k6 4096 4096 4096 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k6] 矩阵 4096×4096×4096   TILE 32   block 32×4   grid 32×128
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 3.343 ms   41117.9 GFLOP/s = FP32 峰值的 49.79%
+字节账: 算术强度 12.720 FLOP/byte → roofline 上限 12823 GFLOP/s，达成率 320.6%
+条数账: load/FMA 0.104（32 路 0.031 + 广播 0.062 + 全局 0.010）
+        节拍 0.50 周期/warp圈 → 每条 load 4.85 周期   模型预测 0.13（k6 是 128 位 load，单价未标定，这个数只当下界）
+
+========== prefill : M=2048 N=18944 K=3584 ==========
+
+--- round 1 · prefill · k0 · ITERS=11 ---
+$ ./sgemm_all k0 2048 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k0] 矩阵 2048×18944×3584   （cuBLAS 自己决定 tile 和 grid，我们看不见）
+cuBLAS（列主序换位调用，TF32 已禁用）—— 没有我们自己的 block/grid
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 5.000 ms   55618.8 GFLOP/s = FP32 峰值的 67.36%
+（cuBLAS 内部实现未知，不记三本账 —— 它在这里的角色是分母）
+
+--- round 1 · prefill · k1 · ITERS=3 ---
+$ ./sgemm_all k1 2048 18944 3584 3
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k1] 矩阵 2048×18944×3584   TILE 32   block 32×32   grid 64×592
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 431.030 ms   645.2 GFLOP/s = FP32 峰值的 0.78%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 256.0%
+请求账: 内存请求 33 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 32.00 周期/warp圈 → 每条 load 16.00 周期   模型预测 3.78
+
+--- round 1 · prefill · k2 · ITERS=5 ---
+$ ./sgemm_all k2 2048 18944 3584 5
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k2] 矩阵 2048×18944×3584   TILE 32   block 32×32   grid 592×64
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 60.884 ms   4567.7 GFLOP/s = FP32 峰值的 5.53%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 1812.6%
+请求账: 内存请求 2 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 4.52 周期/warp圈 → 每条 load 2.26 周期   模型预测 3.78
+
+--- round 1 · prefill · k3 · ITERS=11 ---
+$ ./sgemm_all k3 2048 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3] 矩阵 2048×18944×3584   TILE 32   block 32×32   grid 592×64
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 47.939 ms   5801.1 GFLOP/s = FP32 峰值的 7.03%
+字节账: 算术强度 7.964 FLOP/byte → roofline 上限 8029 GFLOP/s，达成率 72.3%
+条数账: load/FMA 2.062（32 路 1.000 + 广播 1.000 + 全局 0.062）
+        节拍 3.56 周期/warp圈 → 每条 load 1.73 周期   模型预测 3.26
+
+--- round 1 · prefill · k3c · ITERS=11 ---
+$ ./sgemm_all k3c 2048 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3c] 矩阵 2048×18944×3584   TILE 32   block 32×32   grid 148×64
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 48.072 ms   5785.0 GFLOP/s = FP32 峰值的 7.01%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 45.2%
+条数账: load/FMA 2.039（32 路 1.000 + 广播 1.000 + 全局 0.039）
+        节拍 3.57 周期/warp圈 → 每条 load 1.75 周期   模型预测 3.21
+
+--- round 1 · prefill · k4 · ITERS=11 ---
+$ ./sgemm_all k4 2048 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k4] 矩阵 2048×18944×3584   TILE 32   block 32×4   grid 592×64
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 9 block × 128 线程 = 1152 / 1536 = 75.0%
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 19.603 ms   14186.3 GFLOP/s = FP32 峰值的 17.18%
+字节账: 算术强度 7.964 FLOP/byte → roofline 上限 8029 GFLOP/s，达成率 176.7%
+条数账: load/FMA 1.188（32 路 0.125 + 广播 1.000 + 全局 0.062）
+        节拍 1.46 周期/warp圈 → 每条 load 1.23 周期   模型预测 0.97
+
+--- round 1 · prefill · k5 · ITERS=11 ---
+$ ./sgemm_all k5 2048 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k5] 矩阵 2048×18944×3584   TILE 32   block 32×4   grid 148×64
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 13.415 ms   20729.9 GFLOP/s = FP32 峰值的 25.10%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 161.8%
+条数账: load/FMA 0.414（32 路 0.125 + 广播 0.250 + 全局 0.039）
+        节拍 1.00 周期/warp圈 → 每条 load 2.41 周期   模型预测 0.53
+
+--- round 1 · prefill · k6 · ITERS=11 ---
+$ ./sgemm_all k6 2048 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k6] 矩阵 2048×18944×3584   TILE 32   block 32×4   grid 148×64
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 8.761 ms   31742.9 GFLOP/s = FP32 峰值的 38.44%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 247.8%
+条数账: load/FMA 0.104（32 路 0.031 + 广播 0.062 + 全局 0.010）
+        节拍 0.65 周期/warp圈 → 每条 load 6.28 周期   模型预测 0.13（k6 是 128 位 load，单价未标定，这个数只当下界）
+
+========== decode-b32 : M=32 N=18944 K=3584 ==========
+
+--- round 1 · decode-b32 · k0 · ITERS=11 ---
+$ ./sgemm_all k0 32 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k0] 矩阵 32×18944×3584   （cuBLAS 自己决定 tile 和 grid，我们看不见）
+cuBLAS（列主序换位调用，TF32 已禁用）—— 没有我们自己的 block/grid
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.312 ms   13917.2 GFLOP/s = FP32 峰值的 16.85%
+（cuBLAS 内部实现未知，不记三本账 —— 它在这里的角色是分母）
+
+--- round 1 · decode-b32 · k1 · ITERS=3 ---
+$ ./sgemm_all k1 32 18944 3584 3
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k1] 矩阵 32×18944×3584   TILE 32   block 32×32   grid 1×592
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 7.280 ms   596.9 GFLOP/s = FP32 峰值的 0.72%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 236.9%
+请求账: 内存请求 33 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 34.58 周期/warp圈 → 每条 load 17.29 周期   模型预测 3.78
+
+--- round 1 · decode-b32 · k2 · ITERS=5 ---
+$ ./sgemm_all k2 32 18944 3584 5
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k2] 矩阵 32×18944×3584   TILE 32   block 32×32   grid 592×1
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 1.074 ms   4046.1 GFLOP/s = FP32 峰值的 4.90%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 1605.7%
+请求账: 内存请求 2 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 5.10 周期/warp圈 → 每条 load 2.55 周期   模型预测 3.78
+
+--- round 1 · decode-b32 · k3 · ITERS=11 ---
+$ ./sgemm_all k3 32 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3] 矩阵 32×18944×3584   TILE 32   block 32×32   grid 592×1
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.849 ms   5117.0 GFLOP/s = FP32 峰值的 6.20%
+字节账: 算术强度 7.964 FLOP/byte → roofline 上限 8029 GFLOP/s，达成率 63.7%
+条数账: load/FMA 2.062（32 路 1.000 + 广播 1.000 + 全局 0.062）
+        节拍 4.03 周期/warp圈 → 每条 load 1.96 周期   模型预测 3.26
+
+--- round 1 · decode-b32 · k3c · ITERS=11 ---
+$ ./sgemm_all k3c 32 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3c] 矩阵 32×18944×3584   TILE 32   block 32×32   grid 148×1
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 1.327 ms   3275.7 GFLOP/s = FP32 峰值的 3.97%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 25.6%
+条数账: load/FMA 2.039（32 路 1.000 + 广播 1.000 + 全局 0.039）
+        节拍 6.30 周期/warp圈 → 每条 load 3.09 周期   模型预测 3.21
+
+--- round 1 · decode-b32 · k4 · ITERS=11 ---
+$ ./sgemm_all k4 32 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k4] 矩阵 32×18944×3584   TILE 32   block 32×4   grid 592×1
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 9 block × 128 线程 = 1152 / 1536 = 75.0%
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.305 ms   14268.2 GFLOP/s = FP32 峰值的 17.28%
+字节账: 算术强度 7.964 FLOP/byte → roofline 上限 8029 GFLOP/s，达成率 177.7%
+条数账: load/FMA 1.188（32 路 0.125 + 广播 1.000 + 全局 0.062）
+        节拍 1.45 周期/warp圈 → 每条 load 1.22 周期   模型预测 0.97
+
+--- round 1 · decode-b32 · k5 · ITERS=11 ---
+$ ./sgemm_all k5 32 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k5] 矩阵 32×18944×3584   TILE 32   block 32×4   grid 148×1
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.344 ms   12645.8 GFLOP/s = FP32 峰值的 15.31%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 98.7%
+条数账: load/FMA 0.414（32 路 0.125 + 广播 0.250 + 全局 0.039）
+        节拍 1.63 周期/warp圈 → 每条 load 3.94 周期   模型预测 0.53
+
+--- round 1 · decode-b32 · k6 · ITERS=11 ---
+$ ./sgemm_all k6 32 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k6] 矩阵 32×18944×3584   TILE 32   block 32×4   grid 148×1
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.321 ms   13537.1 GFLOP/s = FP32 峰值的 16.39%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 105.7%
+条数账: load/FMA 0.104（32 路 0.031 + 广播 0.062 + 全局 0.010）
+        节拍 1.52 周期/warp圈 → 每条 load 14.73 周期   模型预测 0.13（k6 是 128 位 load，单价未标定，这个数只当下界）
+
+========== decode-b1 : M=1 N=18944 K=3584 ==========
+
+--- round 1 · decode-b1 · k0 · ITERS=11 ---
+$ ./sgemm_all k0 1 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k0] 矩阵 1×18944×3584   （cuBLAS 自己决定 tile 和 grid，我们看不见）
+cuBLAS（列主序换位调用，TF32 已禁用）—— 没有我们自己的 block/grid
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.301 ms   450.5 GFLOP/s = FP32 峰值的 0.55%
+（cuBLAS 内部实现未知，不记三本账 —— 它在这里的角色是分母）
+
+--- round 1 · decode-b1 · k1 · ITERS=3 ---
+$ ./sgemm_all k1 1 18944 3584 3
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k1] 矩阵 1×18944×3584   TILE 32   block 32×32   grid 1×592
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 1.075 ms   126.3 GFLOP/s = FP32 峰值的 0.15%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 50.1%
+请求账: 内存请求 33 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 163.43 周期/warp圈 → 每条 load 81.72 周期   模型预测 3.78
+
+--- round 1 · decode-b1 · k2 · ITERS=5 ---
+$ ./sgemm_all k2 1 18944 3584 5
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k2] 矩阵 1×18944×3584   TILE 32   block 32×32   grid 592×1
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.481 ms   282.6 GFLOP/s = FP32 峰值的 0.34%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 112.1%
+请求账: 内存请求 2 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 73.06 周期/warp圈 → 每条 load 36.53 周期   模型预测 3.78
+
+--- round 1 · decode-b1 · k3 · ITERS=11 ---
+$ ./sgemm_all k3 1 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3] 矩阵 1×18944×3584   TILE 32   block 32×32   grid 592×1
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.854 ms   159.0 GFLOP/s = FP32 峰值的 0.19%
+字节账: 算术强度 7.964 FLOP/byte → roofline 上限 8029 GFLOP/s，达成率 2.0%
+条数账: load/FMA 2.062（32 路 1.000 + 广播 1.000 + 全局 0.062）
+        节拍 129.86 周期/warp圈 → 每条 load 62.96 周期   模型预测 3.26
+
+--- round 1 · decode-b1 · k3c · ITERS=11 ---
+$ ./sgemm_all k3c 1 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3c] 矩阵 1×18944×3584   TILE 32   block 32×32   grid 148×1
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 1.309 ms   103.7 GFLOP/s = FP32 峰值的 0.13%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 0.8%
+条数账: load/FMA 2.039（32 路 1.000 + 广播 1.000 + 全局 0.039）
+        节拍 199.07 周期/warp圈 → 每条 load 97.63 周期   模型预测 3.21
+
+--- round 1 · decode-b1 · k4 · ITERS=11 ---
+$ ./sgemm_all k4 1 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k4] 矩阵 1×18944×3584   TILE 32   block 32×4   grid 592×1
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 9 block × 128 线程 = 1152 / 1536 = 75.0%
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.300 ms   452.1 GFLOP/s = FP32 峰值的 0.55%
+字节账: 算术强度 7.964 FLOP/byte → roofline 上限 8029 GFLOP/s，达成率 5.6%
+条数账: load/FMA 1.188（32 路 0.125 + 广播 1.000 + 全局 0.062）
+        节拍 45.66 周期/warp圈 → 每条 load 38.45 周期   模型预测 0.97
+
+--- round 1 · decode-b1 · k5 · ITERS=11 ---
+$ ./sgemm_all k5 1 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k5] 矩阵 1×18944×3584   TILE 32   block 32×4   grid 148×1
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.333 ms   407.4 GFLOP/s = FP32 峰值的 0.49%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 3.2%
+条数账: load/FMA 0.414（32 路 0.125 + 广播 0.250 + 全局 0.039）
+        节拍 50.67 周期/warp圈 → 每条 load 122.38 周期   模型预测 0.53
+
+--- round 1 · decode-b1 · k6 · ITERS=11 ---
+$ ./sgemm_all k6 1 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k6] 矩阵 1×18944×3584   TILE 32   block 32×4   grid 148×1
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.319 ms   426.0 GFLOP/s = FP32 峰值的 0.52%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 3.3%
+条数账: load/FMA 0.104（32 路 0.031 + 广播 0.062 + 全局 0.010）
+        节拍 48.46 周期/warp圈 → 每条 load 468.13 周期   模型预测 0.13（k6 是 128 位 load，单价未标定，这个数只当下界）
+
+##################### 第 2 轮 #####################
+
+========== 方阵基准 : M=4096 N=4096 K=4096 ==========
+
+--- round 2 · 方阵基准 · k0 · ITERS=11 ---
+$ ./sgemm_all k0 4096 4096 4096 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k0] 矩阵 4096×4096×4096   （cuBLAS 自己决定 tile 和 grid，我们看不见）
+cuBLAS（列主序换位调用，TF32 已禁用）—— 没有我们自己的 block/grid
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 2.394 ms   57415.5 GFLOP/s = FP32 峰值的 69.53%
+（cuBLAS 内部实现未知，不记三本账 —— 它在这里的角色是分母）
+
+--- round 2 · 方阵基准 · k1 · ITERS=3 ---
+$ ./sgemm_all k1 4096 4096 4096 3
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k1] 矩阵 4096×4096×4096   TILE 32   block 32×32   grid 128×128
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 211.984 ms   648.3 GFLOP/s = FP32 峰值的 0.79%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 257.3%
+请求账: 内存请求 33 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 31.84 周期/warp圈 → 每条 load 15.92 周期   模型预测 3.78
+
+--- round 2 · 方阵基准 · k2 · ITERS=5 ---
+$ ./sgemm_all k2 4096 4096 4096 5
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k2] 矩阵 4096×4096×4096   TILE 32   block 32×32   grid 128×128
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 25.827 ms   5321.5 GFLOP/s = FP32 峰值的 6.44%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 2111.7%
+请求账: 内存请求 2 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 3.88 周期/warp圈 → 每条 load 1.94 周期   模型预测 3.78
+
+--- round 2 · 方阵基准 · k3 · ITERS=11 ---
+$ ./sgemm_all k3 4096 4096 4096 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3] 矩阵 4096×4096×4096   TILE 32   block 32×32   grid 128×128
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 22.285 ms   6167.2 GFLOP/s = FP32 峰值的 7.47%
+字节账: 算术强度 7.969 FLOP/byte → roofline 上限 8033 GFLOP/s，达成率 76.8%
+条数账: load/FMA 2.062（32 路 1.000 + 广播 1.000 + 全局 0.062）
+        节拍 3.35 周期/warp圈 → 每条 load 1.62 周期   模型预测 3.26
+
+--- round 2 · 方阵基准 · k3c · ITERS=11 ---
+$ ./sgemm_all k3c 4096 4096 4096 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3c] 矩阵 4096×4096×4096   TILE 32   block 32×32   grid 32×128
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 20.581 ms   6678.0 GFLOP/s = FP32 峰值的 8.09%
+字节账: 算术强度 12.720 FLOP/byte → roofline 上限 12823 GFLOP/s，达成率 52.1%
+条数账: load/FMA 2.039（32 路 1.000 + 广播 1.000 + 全局 0.039）
+        节拍 3.09 周期/warp圈 → 每条 load 1.52 周期   模型预测 3.21
+
+--- round 2 · 方阵基准 · k4 · ITERS=11 ---
+$ ./sgemm_all k4 4096 4096 4096 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k4] 矩阵 4096×4096×4096   TILE 32   block 32×4   grid 128×128
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 9 block × 128 线程 = 1152 / 1536 = 75.0%
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 6.590 ms   20856.2 GFLOP/s = FP32 峰值的 25.26%
+字节账: 算术强度 7.969 FLOP/byte → roofline 上限 8033 GFLOP/s，达成率 259.6%
+条数账: load/FMA 1.188（32 路 0.125 + 广播 1.000 + 全局 0.062）
+        节拍 0.99 周期/warp圈 → 每条 load 0.83 周期   模型预测 0.97
+
+--- round 2 · 方阵基准 · k5 · ITERS=11 ---
+$ ./sgemm_all k5 4096 4096 4096 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k5] 矩阵 4096×4096×4096   TILE 32   block 32×4   grid 32×128
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 3.977 ms   34561.0 GFLOP/s = FP32 峰值的 41.85%
+字节账: 算术强度 12.720 FLOP/byte → roofline 上限 12823 GFLOP/s，达成率 269.5%
+条数账: load/FMA 0.414（32 路 0.125 + 广播 0.250 + 全局 0.039）
+        节拍 0.60 周期/warp圈 → 每条 load 1.44 周期   模型预测 0.53
+
+--- round 2 · 方阵基准 · k6 · ITERS=11 ---
+$ ./sgemm_all k6 4096 4096 4096 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k6] 矩阵 4096×4096×4096   TILE 32   block 32×4   grid 32×128
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 3.337 ms   41185.7 GFLOP/s = FP32 峰值的 49.88%
+字节账: 算术强度 12.720 FLOP/byte → roofline 上限 12823 GFLOP/s，达成率 321.2%
+条数账: load/FMA 0.104（32 路 0.031 + 广播 0.062 + 全局 0.010）
+        节拍 0.50 周期/warp圈 → 每条 load 4.84 周期   模型预测 0.13（k6 是 128 位 load，单价未标定，这个数只当下界）
+
+========== prefill : M=2048 N=18944 K=3584 ==========
+
+--- round 2 · prefill · k0 · ITERS=11 ---
+$ ./sgemm_all k0 2048 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k0] 矩阵 2048×18944×3584   （cuBLAS 自己决定 tile 和 grid，我们看不见）
+cuBLAS（列主序换位调用，TF32 已禁用）—— 没有我们自己的 block/grid
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 5.003 ms   55586.7 GFLOP/s = FP32 峰值的 67.32%
+（cuBLAS 内部实现未知，不记三本账 —— 它在这里的角色是分母）
+
+--- round 2 · prefill · k1 · ITERS=3 ---
+$ ./sgemm_all k1 2048 18944 3584 3
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k1] 矩阵 2048×18944×3584   TILE 32   block 32×32   grid 64×592
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 431.083 ms   645.1 GFLOP/s = FP32 峰值的 0.78%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 256.0%
+请求账: 内存请求 33 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 32.00 周期/warp圈 → 每条 load 16.00 周期   模型预测 3.78
+
+--- round 2 · prefill · k2 · ITERS=5 ---
+$ ./sgemm_all k2 2048 18944 3584 5
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k2] 矩阵 2048×18944×3584   TILE 32   block 32×32   grid 592×64
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 60.865 ms   4569.1 GFLOP/s = FP32 峰值的 5.53%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 1813.2%
+请求账: 内存请求 2 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 4.52 周期/warp圈 → 每条 load 2.26 周期   模型预测 3.78
+
+--- round 2 · prefill · k3 · ITERS=11 ---
+$ ./sgemm_all k3 2048 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3] 矩阵 2048×18944×3584   TILE 32   block 32×32   grid 592×64
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 47.896 ms   5806.3 GFLOP/s = FP32 峰值的 7.03%
+字节账: 算术强度 7.964 FLOP/byte → roofline 上限 8029 GFLOP/s，达成率 72.3%
+条数账: load/FMA 2.062（32 路 1.000 + 广播 1.000 + 全局 0.062）
+        节拍 3.56 周期/warp圈 → 每条 load 1.72 周期   模型预测 3.26
+
+--- round 2 · prefill · k3c · ITERS=11 ---
+$ ./sgemm_all k3c 2048 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3c] 矩阵 2048×18944×3584   TILE 32   block 32×32   grid 148×64
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 48.134 ms   5777.6 GFLOP/s = FP32 峰值的 7.00%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 45.1%
+条数账: load/FMA 2.039（32 路 1.000 + 广播 1.000 + 全局 0.039）
+        节拍 3.57 周期/warp圈 → 每条 load 1.75 周期   模型预测 3.21
+
+--- round 2 · prefill · k4 · ITERS=11 ---
+$ ./sgemm_all k4 2048 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k4] 矩阵 2048×18944×3584   TILE 32   block 32×4   grid 592×64
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 9 block × 128 线程 = 1152 / 1536 = 75.0%
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 19.610 ms   14181.4 GFLOP/s = FP32 峰值的 17.17%
+字节账: 算术强度 7.964 FLOP/byte → roofline 上限 8029 GFLOP/s，达成率 176.6%
+条数账: load/FMA 1.188（32 路 0.125 + 广播 1.000 + 全局 0.062）
+        节拍 1.46 周期/warp圈 → 每条 load 1.23 周期   模型预测 0.97
+
+--- round 2 · prefill · k5 · ITERS=11 ---
+$ ./sgemm_all k5 2048 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k5] 矩阵 2048×18944×3584   TILE 32   block 32×4   grid 148×64
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 13.296 ms   20916.0 GFLOP/s = FP32 峰值的 25.33%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 163.3%
+条数账: load/FMA 0.414（32 路 0.125 + 广播 0.250 + 全局 0.039）
+        节拍 0.99 周期/warp圈 → 每条 load 2.38 周期   模型预测 0.53
+
+--- round 2 · prefill · k6 · ITERS=11 ---
+$ ./sgemm_all k6 2048 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k6] 矩阵 2048×18944×3584   TILE 32   block 32×4   grid 148×64
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 8.801 ms   31600.1 GFLOP/s = FP32 峰值的 38.27%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 246.6%
+条数账: load/FMA 0.104（32 路 0.031 + 广播 0.062 + 全局 0.010）
+        节拍 0.65 周期/warp圈 → 每条 load 6.31 周期   模型预测 0.13（k6 是 128 位 load，单价未标定，这个数只当下界）
+
+========== decode-b32 : M=32 N=18944 K=3584 ==========
+
+--- round 2 · decode-b32 · k0 · ITERS=11 ---
+$ ./sgemm_all k0 32 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k0] 矩阵 32×18944×3584   （cuBLAS 自己决定 tile 和 grid，我们看不见）
+cuBLAS（列主序换位调用，TF32 已禁用）—— 没有我们自己的 block/grid
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.313 ms   13871.8 GFLOP/s = FP32 峰值的 16.80%
+（cuBLAS 内部实现未知，不记三本账 —— 它在这里的角色是分母）
+
+--- round 2 · decode-b32 · k1 · ITERS=3 ---
+$ ./sgemm_all k1 32 18944 3584 3
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k1] 矩阵 32×18944×3584   TILE 32   block 32×32   grid 1×592
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 7.629 ms   569.6 GFLOP/s = FP32 峰值的 0.69%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 226.0%
+请求账: 内存请求 33 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 36.24 周期/warp圈 → 每条 load 18.12 周期   模型预测 3.78
+
+--- round 2 · decode-b32 · k2 · ITERS=5 ---
+$ ./sgemm_all k2 32 18944 3584 5
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k2] 矩阵 32×18944×3584   TILE 32   block 32×32   grid 592×1
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 1.071 ms   4057.8 GFLOP/s = FP32 峰值的 4.91%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 1610.3%
+请求账: 内存请求 2 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 5.09 周期/warp圈 → 每条 load 2.54 周期   模型预测 3.78
+
+--- round 2 · decode-b32 · k3 · ITERS=11 ---
+$ ./sgemm_all k3 32 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3] 矩阵 32×18944×3584   TILE 32   block 32×32   grid 592×1
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.853 ms   5093.6 GFLOP/s = FP32 峰值的 6.17%
+字节账: 算术强度 7.964 FLOP/byte → roofline 上限 8029 GFLOP/s，达成率 63.4%
+条数账: load/FMA 2.062（32 路 1.000 + 广播 1.000 + 全局 0.062）
+        节拍 4.05 周期/warp圈 → 每条 load 1.97 周期   模型预测 3.26
+
+--- round 2 · decode-b32 · k3c · ITERS=11 ---
+$ ./sgemm_all k3c 32 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3c] 矩阵 32×18944×3584   TILE 32   block 32×32   grid 148×1
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 1.328 ms   3272.0 GFLOP/s = FP32 峰值的 3.96%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 25.5%
+条数账: load/FMA 2.039（32 路 1.000 + 广播 1.000 + 全局 0.039）
+        节拍 6.31 周期/warp圈 → 每条 load 3.09 周期   模型预测 3.21
+
+--- round 2 · decode-b32 · k4 · ITERS=11 ---
+$ ./sgemm_all k4 32 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k4] 矩阵 32×18944×3584   TILE 32   block 32×4   grid 592×1
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 9 block × 128 线程 = 1152 / 1536 = 75.0%
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.304 ms   14311.8 GFLOP/s = FP32 峰值的 17.33%
+字节账: 算术强度 7.964 FLOP/byte → roofline 上限 8029 GFLOP/s，达成率 178.3%
+条数账: load/FMA 1.188（32 路 0.125 + 广播 1.000 + 全局 0.062）
+        节拍 1.44 周期/warp圈 → 每条 load 1.21 周期   模型预测 0.97
+
+--- round 2 · decode-b32 · k5 · ITERS=11 ---
+$ ./sgemm_all k5 32 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k5] 矩阵 32×18944×3584   TILE 32   block 32×4   grid 148×1
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.342 ms   12694.3 GFLOP/s = FP32 峰值的 15.37%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 99.1%
+条数账: load/FMA 0.414（32 路 0.125 + 广播 0.250 + 全局 0.039）
+        节拍 1.63 周期/warp圈 → 每条 load 3.93 周期   模型预测 0.53
+
+--- round 2 · decode-b32 · k6 · ITERS=11 ---
+$ ./sgemm_all k6 32 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k6] 矩阵 32×18944×3584   TILE 32   block 32×4   grid 148×1
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.321 ms   13556.0 GFLOP/s = FP32 峰值的 16.42%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 105.8%
+条数账: load/FMA 0.104（32 路 0.031 + 广播 0.062 + 全局 0.010）
+        节拍 1.52 周期/warp圈 → 每条 load 14.71 周期   模型预测 0.13（k6 是 128 位 load，单价未标定，这个数只当下界）
+
+========== decode-b1 : M=1 N=18944 K=3584 ==========
+
+--- round 2 · decode-b1 · k0 · ITERS=11 ---
+$ ./sgemm_all k0 1 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k0] 矩阵 1×18944×3584   （cuBLAS 自己决定 tile 和 grid，我们看不见）
+cuBLAS（列主序换位调用，TF32 已禁用）—— 没有我们自己的 block/grid
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.302 ms   448.9 GFLOP/s = FP32 峰值的 0.54%
+（cuBLAS 内部实现未知，不记三本账 —— 它在这里的角色是分母）
+
+--- round 2 · decode-b1 · k1 · ITERS=3 ---
+$ ./sgemm_all k1 1 18944 3584 3
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k1] 矩阵 1×18944×3584   TILE 32   block 32×32   grid 1×592
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 1.071 ms   126.8 GFLOP/s = FP32 峰值的 0.15%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 50.3%
+请求账: 内存请求 33 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 162.79 周期/warp圈 → 每条 load 81.39 周期   模型预测 3.78
+
+--- round 2 · decode-b1 · k2 · ITERS=5 ---
+$ ./sgemm_all k2 1 18944 3584 5
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k2] 矩阵 1×18944×3584   TILE 32   block 32×32   grid 592×1
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.479 ms   283.3 GFLOP/s = FP32 峰值的 0.34%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 112.4%
+请求账: 内存请求 2 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 72.87 周期/warp圈 → 每条 load 36.44 周期   模型预测 3.78
+
+--- round 2 · decode-b1 · k3 · ITERS=11 ---
+$ ./sgemm_all k3 1 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3] 矩阵 1×18944×3584   TILE 32   block 32×32   grid 592×1
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.855 ms   158.7 GFLOP/s = FP32 峰值的 0.19%
+字节账: 算术强度 7.964 FLOP/byte → roofline 上限 8029 GFLOP/s，达成率 2.0%
+条数账: load/FMA 2.062（32 路 1.000 + 广播 1.000 + 全局 0.062）
+        节拍 130.05 周期/warp圈 → 每条 load 63.05 周期   模型预测 3.26
+
+--- round 2 · decode-b1 · k3c · ITERS=11 ---
+$ ./sgemm_all k3c 1 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3c] 矩阵 1×18944×3584   TILE 32   block 32×32   grid 148×1
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 1.310 ms   103.6 GFLOP/s = FP32 峰值的 0.13%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 0.8%
+条数账: load/FMA 2.039（32 路 1.000 + 广播 1.000 + 全局 0.039）
+        节拍 199.18 周期/warp圈 → 每条 load 97.68 周期   模型预测 3.21
+
+--- round 2 · decode-b1 · k4 · ITERS=11 ---
+$ ./sgemm_all k4 1 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k4] 矩阵 1×18944×3584   TILE 32   block 32×4   grid 592×1
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 9 block × 128 线程 = 1152 / 1536 = 75.0%
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.300 ms   453.1 GFLOP/s = FP32 峰值的 0.55%
+字节账: 算术强度 7.964 FLOP/byte → roofline 上限 8029 GFLOP/s，达成率 5.6%
+条数账: load/FMA 1.188（32 路 0.125 + 广播 1.000 + 全局 0.062）
+        节拍 45.56 周期/warp圈 → 每条 load 38.37 周期   模型预测 0.97
+
+--- round 2 · decode-b1 · k5 · ITERS=11 ---
+$ ./sgemm_all k5 1 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k5] 矩阵 1×18944×3584   TILE 32   block 32×4   grid 148×1
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.334 ms   406.6 GFLOP/s = FP32 峰值的 0.49%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 3.2%
+条数账: load/FMA 0.414（32 路 0.125 + 广播 0.250 + 全局 0.039）
+        节拍 50.77 周期/warp圈 → 每条 load 122.61 周期   模型预测 0.53
+
+--- round 2 · decode-b1 · k6 · ITERS=11 ---
+$ ./sgemm_all k6 1 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k6] 矩阵 1×18944×3584   TILE 32   block 32×4   grid 148×1
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.318 ms   427.3 GFLOP/s = FP32 峰值的 0.52%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 3.3%
+条数账: load/FMA 0.104（32 路 0.031 + 广播 0.062 + 全局 0.010）
+        节拍 48.31 周期/warp圈 → 每条 load 466.72 周期   模型预测 0.13（k6 是 128 位 load，单价未标定，这个数只当下界）
+
+##################### 第 3 轮 #####################
+
+========== 方阵基准 : M=4096 N=4096 K=4096 ==========
+
+--- round 3 · 方阵基准 · k0 · ITERS=11 ---
+$ ./sgemm_all k0 4096 4096 4096 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k0] 矩阵 4096×4096×4096   （cuBLAS 自己决定 tile 和 grid，我们看不见）
+cuBLAS（列主序换位调用，TF32 已禁用）—— 没有我们自己的 block/grid
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 2.389 ms   57532.4 GFLOP/s = FP32 峰值的 69.67%
+（cuBLAS 内部实现未知，不记三本账 —— 它在这里的角色是分母）
+
+--- round 3 · 方阵基准 · k1 · ITERS=3 ---
+$ ./sgemm_all k1 4096 4096 4096 3
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k1] 矩阵 4096×4096×4096   TILE 32   block 32×32   grid 128×128
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 212.003 ms   648.3 GFLOP/s = FP32 峰值的 0.79%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 257.3%
+请求账: 内存请求 33 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 31.84 周期/warp圈 → 每条 load 15.92 周期   模型预测 3.78
+
+--- round 3 · 方阵基准 · k2 · ITERS=5 ---
+$ ./sgemm_all k2 4096 4096 4096 5
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k2] 矩阵 4096×4096×4096   TILE 32   block 32×32   grid 128×128
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 25.843 ms   5318.2 GFLOP/s = FP32 峰值的 6.44%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 2110.4%
+请求账: 内存请求 2 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 3.88 周期/warp圈 → 每条 load 1.94 周期   模型预测 3.78
+
+--- round 3 · 方阵基准 · k3 · ITERS=11 ---
+$ ./sgemm_all k3 4096 4096 4096 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3] 矩阵 4096×4096×4096   TILE 32   block 32×32   grid 128×128
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 22.291 ms   6165.7 GFLOP/s = FP32 峰值的 7.47%
+字节账: 算术强度 7.969 FLOP/byte → roofline 上限 8033 GFLOP/s，达成率 76.8%
+条数账: load/FMA 2.062（32 路 1.000 + 广播 1.000 + 全局 0.062）
+        节拍 3.35 周期/warp圈 → 每条 load 1.62 周期   模型预测 3.26
+
+--- round 3 · 方阵基准 · k3c · ITERS=11 ---
+$ ./sgemm_all k3c 4096 4096 4096 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3c] 矩阵 4096×4096×4096   TILE 32   block 32×32   grid 32×128
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 20.592 ms   6674.3 GFLOP/s = FP32 峰值的 8.08%
+字节账: 算术强度 12.720 FLOP/byte → roofline 上限 12823 GFLOP/s，达成率 52.0%
+条数账: load/FMA 2.039（32 路 1.000 + 广播 1.000 + 全局 0.039）
+        节拍 3.09 周期/warp圈 → 每条 load 1.52 周期   模型预测 3.21
+
+--- round 3 · 方阵基准 · k4 · ITERS=11 ---
+$ ./sgemm_all k4 4096 4096 4096 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k4] 矩阵 4096×4096×4096   TILE 32   block 32×4   grid 128×128
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 9 block × 128 线程 = 1152 / 1536 = 75.0%
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 6.595 ms   20840.0 GFLOP/s = FP32 峰值的 25.24%
+字节账: 算术强度 7.969 FLOP/byte → roofline 上限 8033 GFLOP/s，达成率 259.4%
+条数账: load/FMA 1.188（32 路 0.125 + 广播 1.000 + 全局 0.062）
+        节拍 0.99 周期/warp圈 → 每条 load 0.83 周期   模型预测 0.97
+
+--- round 3 · 方阵基准 · k5 · ITERS=11 ---
+$ ./sgemm_all k5 4096 4096 4096 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k5] 矩阵 4096×4096×4096   TILE 32   block 32×4   grid 32×128
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 3.981 ms   34519.6 GFLOP/s = FP32 峰值的 41.80%
+字节账: 算术强度 12.720 FLOP/byte → roofline 上限 12823 GFLOP/s，达成率 269.2%
+条数账: load/FMA 0.414（32 路 0.125 + 广播 0.250 + 全局 0.039）
+        节拍 0.60 周期/warp圈 → 每条 load 1.44 周期   模型预测 0.53
+
+--- round 3 · 方阵基准 · k6 · ITERS=11 ---
+$ ./sgemm_all k6 4096 4096 4096 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k6] 矩阵 4096×4096×4096   TILE 32   block 32×4   grid 32×128
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 201.3 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 3.347 ms   41064.4 GFLOP/s = FP32 峰值的 49.73%
+字节账: 算术强度 12.720 FLOP/byte → roofline 上限 12823 GFLOP/s，达成率 320.2%
+条数账: load/FMA 0.104（32 路 0.031 + 广播 0.062 + 全局 0.010）
+        节拍 0.50 周期/warp圈 → 每条 load 4.86 周期   模型预测 0.13（k6 是 128 位 load，单价未标定，这个数只当下界）
+
+========== prefill : M=2048 N=18944 K=3584 ==========
+
+--- round 3 · prefill · k0 · ITERS=11 ---
+$ ./sgemm_all k0 2048 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k0] 矩阵 2048×18944×3584   （cuBLAS 自己决定 tile 和 grid，我们看不见）
+cuBLAS（列主序换位调用，TF32 已禁用）—— 没有我们自己的 block/grid
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 5.006 ms   55549.8 GFLOP/s = FP32 峰值的 67.27%
+（cuBLAS 内部实现未知，不记三本账 —— 它在这里的角色是分母）
+
+--- round 3 · prefill · k1 · ITERS=3 ---
+$ ./sgemm_all k1 2048 18944 3584 3
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k1] 矩阵 2048×18944×3584   TILE 32   block 32×32   grid 64×592
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 431.749 ms   644.1 GFLOP/s = FP32 峰值的 0.78%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 255.6%
+请求账: 内存请求 33 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 32.05 周期/warp圈 → 每条 load 16.02 周期   模型预测 3.78
+
+--- round 3 · prefill · k2 · ITERS=5 ---
+$ ./sgemm_all k2 2048 18944 3584 5
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k2] 矩阵 2048×18944×3584   TILE 32   block 32×32   grid 592×64
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 60.890 ms   4567.2 GFLOP/s = FP32 峰值的 5.53%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 1812.5%
+请求账: 内存请求 2 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 4.52 周期/warp圈 → 每条 load 2.26 周期   模型预测 3.78
+
+--- round 3 · prefill · k3 · ITERS=11 ---
+$ ./sgemm_all k3 2048 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3] 矩阵 2048×18944×3584   TILE 32   block 32×32   grid 592×64
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 47.506 ms   5854.0 GFLOP/s = FP32 峰值的 7.09%
+字节账: 算术强度 7.964 FLOP/byte → roofline 上限 8029 GFLOP/s，达成率 72.9%
+条数账: load/FMA 2.062（32 路 1.000 + 广播 1.000 + 全局 0.062）
+        节拍 3.53 周期/warp圈 → 每条 load 1.71 周期   模型预测 3.26
+
+--- round 3 · prefill · k3c · ITERS=11 ---
+$ ./sgemm_all k3c 2048 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3c] 矩阵 2048×18944×3584   TILE 32   block 32×32   grid 148×64
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 48.005 ms   5793.1 GFLOP/s = FP32 峰值的 7.02%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 45.2%
+条数账: load/FMA 2.039（32 路 1.000 + 广播 1.000 + 全局 0.039）
+        节拍 3.56 周期/warp圈 → 每条 load 1.75 周期   模型预测 3.21
+
+--- round 3 · prefill · k4 · ITERS=11 ---
+$ ./sgemm_all k4 2048 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k4] 矩阵 2048×18944×3584   TILE 32   block 32×4   grid 592×64
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 9 block × 128 线程 = 1152 / 1536 = 75.0%
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 19.604 ms   14186.0 GFLOP/s = FP32 峰值的 17.18%
+字节账: 算术强度 7.964 FLOP/byte → roofline 上限 8029 GFLOP/s，达成率 176.7%
+条数账: load/FMA 1.188（32 路 0.125 + 广播 1.000 + 全局 0.062）
+        节拍 1.46 周期/warp圈 → 每条 load 1.23 周期   模型预测 0.97
+
+--- round 3 · prefill · k5 · ITERS=11 ---
+$ ./sgemm_all k5 2048 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k5] 矩阵 2048×18944×3584   TILE 32   block 32×4   grid 148×64
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 13.139 ms   21166.3 GFLOP/s = FP32 峰值的 25.63%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 165.2%
+条数账: load/FMA 0.414（32 路 0.125 + 广播 0.250 + 全局 0.039）
+        节拍 0.98 周期/warp圈 → 每条 load 2.36 周期   模型预测 0.53
+
+--- round 3 · prefill · k6 · ITERS=11 ---
+$ ./sgemm_all k6 2048 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k6] 矩阵 2048×18944×3584   TILE 32   block 32×4   grid 148×64
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 456.1 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 8.654 ms   32135.7 GFLOP/s = FP32 峰值的 38.92%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 250.8%
+条数账: load/FMA 0.104（32 路 0.031 + 广播 0.062 + 全局 0.010）
+        节拍 0.64 周期/warp圈 → 每条 load 6.21 周期   模型预测 0.13（k6 是 128 位 load，单价未标定，这个数只当下界）
+
+========== decode-b32 : M=32 N=18944 K=3584 ==========
+
+--- round 3 · decode-b32 · k0 · ITERS=11 ---
+$ ./sgemm_all k0 32 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k0] 矩阵 32×18944×3584   （cuBLAS 自己决定 tile 和 grid，我们看不见）
+cuBLAS（列主序换位调用，TF32 已禁用）—— 没有我们自己的 block/grid
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.313 ms   13864.7 GFLOP/s = FP32 峰值的 16.79%
+（cuBLAS 内部实现未知，不记三本账 —— 它在这里的角色是分母）
+
+--- round 3 · decode-b32 · k1 · ITERS=3 ---
+$ ./sgemm_all k1 32 18944 3584 3
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k1] 矩阵 32×18944×3584   TILE 32   block 32×32   grid 1×592
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 7.629 ms   569.5 GFLOP/s = FP32 峰值的 0.69%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 226.0%
+请求账: 内存请求 33 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 36.25 周期/warp圈 → 每条 load 18.12 周期   模型预测 3.78
+
+--- round 3 · decode-b32 · k2 · ITERS=5 ---
+$ ./sgemm_all k2 32 18944 3584 5
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k2] 矩阵 32×18944×3584   TILE 32   block 32×32   grid 592×1
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 1.071 ms   4058.2 GFLOP/s = FP32 峰值的 4.91%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 1610.5%
+请求账: 内存请求 2 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 5.09 周期/warp圈 → 每条 load 2.54 周期   模型预测 3.78
+
+--- round 3 · decode-b32 · k3 · ITERS=11 ---
+$ ./sgemm_all k3 32 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3] 矩阵 32×18944×3584   TILE 32   block 32×32   grid 592×1
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.854 ms   5088.1 GFLOP/s = FP32 峰值的 6.16%
+字节账: 算术强度 7.964 FLOP/byte → roofline 上限 8029 GFLOP/s，达成率 63.4%
+条数账: load/FMA 2.062（32 路 1.000 + 广播 1.000 + 全局 0.062）
+        节拍 4.06 周期/warp圈 → 每条 load 1.97 周期   模型预测 3.26
+
+--- round 3 · decode-b32 · k3c · ITERS=11 ---
+$ ./sgemm_all k3c 32 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3c] 矩阵 32×18944×3584   TILE 32   block 32×32   grid 148×1
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 1.326 ms   3277.7 GFLOP/s = FP32 峰值的 3.97%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 25.6%
+条数账: load/FMA 2.039（32 路 1.000 + 广播 1.000 + 全局 0.039）
+        节拍 6.30 周期/warp圈 → 每条 load 3.09 周期   模型预测 3.21
+
+--- round 3 · decode-b32 · k4 · ITERS=11 ---
+$ ./sgemm_all k4 32 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k4] 矩阵 32×18944×3584   TILE 32   block 32×4   grid 592×1
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 9 block × 128 线程 = 1152 / 1536 = 75.0%
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.305 ms   14269.7 GFLOP/s = FP32 峰值的 17.28%
+字节账: 算术强度 7.964 FLOP/byte → roofline 上限 8029 GFLOP/s，达成率 177.7%
+条数账: load/FMA 1.188（32 路 0.125 + 广播 1.000 + 全局 0.062）
+        节拍 1.45 周期/warp圈 → 每条 load 1.22 周期   模型预测 0.97
+
+--- round 3 · decode-b32 · k5 · ITERS=11 ---
+$ ./sgemm_all k5 32 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k5] 矩阵 32×18944×3584   TILE 32   block 32×4   grid 148×1
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.343 ms   12651.7 GFLOP/s = FP32 峰值的 15.32%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 98.7%
+条数账: load/FMA 0.414（32 路 0.125 + 广播 0.250 + 全局 0.039）
+        节拍 1.63 周期/warp圈 → 每条 load 3.94 周期   模型预测 0.53
+
+--- round 3 · decode-b32 · k6 · ITERS=11 ---
+$ ./sgemm_all k6 32 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k6] 矩阵 32×18944×3584   TILE 32   block 32×4   grid 148×1
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 274.5 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.321 ms   13549.3 GFLOP/s = FP32 峰值的 16.41%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 105.8%
+条数账: load/FMA 0.104（32 路 0.031 + 广播 0.062 + 全局 0.010）
+        节拍 1.52 周期/warp圈 → 每条 load 14.72 周期   模型预测 0.13（k6 是 128 位 load，单价未标定，这个数只当下界）
+
+========== decode-b1 : M=1 N=18944 K=3584 ==========
+
+--- round 3 · decode-b1 · k0 · ITERS=11 ---
+$ ./sgemm_all k0 1 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k0] 矩阵 1×18944×3584   （cuBLAS 自己决定 tile 和 grid，我们看不见）
+cuBLAS（列主序换位调用，TF32 已禁用）—— 没有我们自己的 block/grid
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.302 ms   450.2 GFLOP/s = FP32 峰值的 0.55%
+（cuBLAS 内部实现未知，不记三本账 —— 它在这里的角色是分母）
+
+--- round 3 · decode-b1 · k1 · ITERS=3 ---
+$ ./sgemm_all k1 1 18944 3584 3
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k1] 矩阵 1×18944×3584   TILE 32   block 32×32   grid 1×592
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 1.068 ms   127.1 GFLOP/s = FP32 峰值的 0.15%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 50.5%
+请求账: 内存请求 33 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 162.36 周期/warp圈 → 每条 load 81.18 周期   模型预测 3.78
+
+--- round 3 · decode-b1 · k2 · ITERS=5 ---
+$ ./sgemm_all k2 1 18944 3584 5
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k2] 矩阵 1×18944×3584   TILE 32   block 32×32   grid 592×1
+shared/block = 0 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.479 ms   283.7 GFLOP/s = FP32 峰值的 0.34%
+字节账: 算术强度 0.250 FLOP/byte → roofline 上限 252 GFLOP/s，达成率 112.6%
+请求账: 内存请求 2 个/FMA（k1 的 A 不合并 → 一条 LDG 展开成 32 个请求）
+条数账: load/FMA 2.000（32 路 0.000 + 广播 0.000 + 全局 2.000）
+        节拍 72.78 周期/warp圈 → 每条 load 36.39 周期   模型预测 3.78
+
+--- round 3 · decode-b1 · k3 · ITERS=11 ---
+$ ./sgemm_all k3 1 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3] 矩阵 1×18944×3584   TILE 32   block 32×32   grid 592×1
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.855 ms   158.8 GFLOP/s = FP32 峰值的 0.19%
+字节账: 算术强度 7.964 FLOP/byte → roofline 上限 8029 GFLOP/s，达成率 2.0%
+条数账: load/FMA 2.062（32 路 1.000 + 广播 1.000 + 全局 0.062）
+        节拍 130.03 周期/warp圈 → 每条 load 63.04 周期   模型预测 3.26
+
+--- round 3 · decode-b1 · k3c · ITERS=11 ---
+$ ./sgemm_all k3c 1 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3c] 矩阵 1×18944×3584   TILE 32   block 32×32   grid 148×1
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 1.309 ms   103.7 GFLOP/s = FP32 峰值的 0.13%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 0.8%
+条数账: load/FMA 2.039（32 路 1.000 + 广播 1.000 + 全局 0.039）
+        节拍 199.03 周期/warp圈 → 每条 load 97.61 周期   模型预测 3.21
+
+--- round 3 · decode-b1 · k4 · ITERS=11 ---
+$ ./sgemm_all k4 1 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k4] 矩阵 1×18944×3584   TILE 32   block 32×4   grid 592×1
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 9 block × 128 线程 = 1152 / 1536 = 75.0%
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.301 ms   451.2 GFLOP/s = FP32 峰值的 0.55%
+字节账: 算术强度 7.964 FLOP/byte → roofline 上限 8029 GFLOP/s，达成率 5.6%
+条数账: load/FMA 1.188（32 路 0.125 + 广播 1.000 + 全局 0.062）
+        节拍 45.75 周期/warp圈 → 每条 load 38.53 周期   模型预测 0.97
+
+--- round 3 · decode-b1 · k5 · ITERS=11 ---
+$ ./sgemm_all k5 1 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k5] 矩阵 1×18944×3584   TILE 32   block 32×4   grid 148×1
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.334 ms   407.0 GFLOP/s = FP32 峰值的 0.49%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 3.2%
+条数账: load/FMA 0.414（32 路 0.125 + 广播 0.250 + 全局 0.039）
+        节拍 50.73 周期/warp圈 → 每条 load 122.51 周期   模型预测 0.53
+
+--- round 3 · decode-b1 · k6 · ITERS=11 ---
+$ ./sgemm_all k6 1 18944 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k6] 矩阵 1×18944×3584   TILE 32   block 32×4   grid 148×1
+shared/block = 20480 B（每 SM 上限 102400 B）　occupancy: 4 block × 128 线程 = 512 / 1536 = 33.3%
+footprint = A+B+C = 271.7 MB（L2 75.5 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.319 ms   426.3 GFLOP/s = FP32 峰值的 0.52%
+字节账: 算术强度 12.709 FLOP/byte → roofline 上限 12812 GFLOP/s，达成率 3.3%
+条数账: load/FMA 0.104（32 路 0.031 + 广播 0.062 + 全局 0.010）
+        节拍 48.43 周期/warp圈 → 每条 load 467.85 周期   模型预测 0.13（k6 是 128 位 load，单价未标定，这个数只当下界）
+
+=============================================================
+ 完成 → shapes_20260924_180619.txt
+
+ 重点看三件事：
+   ① prefill 的 GFLOP/s 是不是接近方阵（都是算力受限，应该接近）
+   ② decode-b32 上 K4/K5/K6 的差距是不是缩小了
+      （方阵上 K6/K4 = 1.96x；如果 decode 上明显变小，
+        说明我们优化的'条数账'在带宽墙面前不起作用）
+   ③ decode-b1 和 decode-b32 的耗时是不是接近
+      （理论下限只差 0.7%，实测若也接近，就坐实了'权重读取钉死一切'）
+=============================================================

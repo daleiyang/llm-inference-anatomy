@@ -20,6 +20,13 @@ int main() {
         return 1;
     }
 
+    // CUDA 13 起 cudaDeviceProp 里删掉了 clockRate / memoryClockRate 两个字段
+    // （12.x 就已标记 deprecated）。改用 cudaDeviceGetAttribute 查，单位同样是 kHz，
+    // 这条路径在老版本 CUDA 上一样能编译。
+    int smClockKHz = 0, memClockKHz = 0;
+    cudaDeviceGetAttribute(&smClockKHz,  cudaDevAttrClockRate,       dev);
+    cudaDeviceGetAttribute(&memClockKHz, cudaDevAttrMemoryClockRate, dev);
+
     printf("=== 设备 ===\n");
     printf("名称                  %s (sm_%d%d)\n", p.name, p.major, p.minor);
     printf("SM 数量               %d\n", p.multiProcessorCount);
@@ -40,18 +47,18 @@ int main() {
     printf("全局显存              %.1f GB\n", p.totalGlobalMem / 1073741824.0);
 
     printf("\n=== 时钟与带宽 ===\n");
-    printf("显存时钟              %.2f GHz\n", p.memoryClockRate / 1e6);
+    printf("显存时钟              %.2f GHz\n", memClockKHz / 1e6);
     printf("显存位宽              %d bit\n", p.memoryBusWidth);
-    double bw = 2.0 * p.memoryClockRate * (p.memoryBusWidth / 8) / 1.0e6;   // GB/s
+    double bw = 2.0 * memClockKHz * (p.memoryBusWidth / 8) / 1.0e6;   // GB/s
     printf("峰值带宽              %.0f GB/s\n", bw);
-    printf("SM 时钟(标称)         %.2f GHz\n", p.clockRate / 1e6);
+    printf("SM 时钟(标称)         %.2f GHz\n", smClockKHz / 1e6);
 
     // FP32 峰值：cudaDeviceProp 不直接给，按 SM 数 × 每 SM CUDA 核 × 2(FMA) × 时钟 估算。
     // 每 SM 的 CUDA 核数随架构不同：Ada/Ampere GA10x = 128，Volta/Turing = 64。
     int coresPerSM = (p.major == 8 || p.major == 9) ? 128 : 64;
-    double tflops = 2.0 * coresPerSM * p.multiProcessorCount * (p.clockRate / 1e6) / 1000.0;
+    double tflops = 2.0 * coresPerSM * p.multiProcessorCount * (smClockKHz / 1e6) / 1000.0;
     printf("FP32 峰值(估算)       %.1f TFLOP/s   [%d 核/SM × %d SM × 2 × %.2f GHz]\n",
-           tflops, coresPerSM, p.multiProcessorCount, p.clockRate / 1e6);
+           tflops, coresPerSM, p.multiProcessorCount, smClockKHz / 1e6);
 
     printf("\n=== roofline 脊点（本阶段的指北针）===\n");
     printf("FP32 脊点             %.1f FLOP/byte   [%.1f TFLOP/s ÷ %.0f GB/s]\n",

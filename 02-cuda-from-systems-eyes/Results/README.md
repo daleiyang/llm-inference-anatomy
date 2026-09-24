@@ -2,16 +2,35 @@
 
 # Results —— 原始数据
 
-本仓库的规矩：**原始数据一条不删，结论必须可追溯。** 这一阶段会落在这里的东西：
+**一条没删。** 报告里的每一个数字都来自这里，没有跨批次拼接。
 
-| 文件 | 内容 | 谁产出 |
+## Round1 · 2026-09-24
+
+一次 `run_p0.sh` 的全部产物。同一次开机、同一份二进制、同一块卡。
+
+| 文件 | 是什么 | 大小 |
 |---|---|---|
-| `device.txt` | 设备自查输出，roofline 分母的唯一来源 | `src/devinfo.cu` |
-| `bench_4096.csv` | 主基准：七个 kernel @ 4096 的中位耗时与 GFLOP/s | `src/sgemm.cu` |
-| `bench_sweep.csv` | 尺寸扫描 1024/2048/4096/8192（看 72MB L2 的影响） | `src/sgemm.cu` |
-| `ncu/metrics.csv` | Nsight 六个关键指标逐 kernel 导出 | `ncu --csv` |
-| `ncu/prof_*.ncu-rep` | 全量采集，用于出官方 roofline 图 | `ncu --set full` |
+| `all_20260924_180114.txt` | 计时主表：8 kernel × 4 尺寸 × 3 轮，含编译日志、正确性、边界（4097/4100）、racecheck | 1555 行 |
+| `all_20260924_180114_clocks.csv` | 1 Hz 采样：SM 时钟 / 显存时钟 / 温度 / 功耗 / 利用率 | — |
+| `shapes_20260924_180619.txt` | 形状扫描：方阵 / prefill / decode-b32 / decode-b1 | — |
+| `sass_20260924_180113.txt` | 按 kernel 分类的静态指令计数 | — |
+| `sass_20260924_180113_raw.txt` | `cuobjdump -sass` 完整反汇编 | 8981 行 |
+| `ncu_20260924_180816.log` | **权限失败的现场**（`ERR_NVGPUCTRPERM`），原样保留 | — |
+| `fingerprint.txt` | 环境指纹：驱动、时钟、每个 kernel 的寄存器数、峰值口径 | — |
+| `csv/bench_*.csv` | 解析后的表 | — |
 
-CSV 表头：`kernel,N,ms_median,gflops`
+## 两份 CSV 的分工
 
-> 采集命令见 [`../Scripts/build-and-bench.md`](../Scripts/build-and-bench.md)。
+| | 内容 | 用途 |
+|---|---|---|
+| `bench_<stamp>.csv` | 每一轮每个 kernel 一行，不做任何聚合 | **证据**。"你这 3 轮抖了多少"的答案只在这里 |
+| `bench_<stamp>_median.csv` | 跨轮中位数，多一列 `ms_spread_pct` | **结论**。报告里所有表和图都引这一份 |
+
+> **解析器只做搬运，不做再计算** —— CSV 里每个数都能在原文里逐字找到。
+> 唯一的例外是中位表的中位数和 `ms_spread_pct`，那是聚合不是推导。
+
+## 一处提醒
+
+`sass_20260924_180113.txt` 里的统计表是**当天在本地用修正后的脚本重算的** ——
+当场跑出来那版因为一个贪婪正则，整张表都是 0（完整反汇编不受影响）。
+文件开头有标注。

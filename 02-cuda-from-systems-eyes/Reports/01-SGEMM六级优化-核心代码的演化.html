@@ -1,0 +1,1358 @@
+<meta charset="utf-8">
+<title>SGEMM 六级优化 · 核心代码的演化</title>
+
+<style>
+  :root{
+    --ground:#F5F7F6; --surface:#FFFFFF; --surface-2:#EDF1F0;
+    --ink:#131C1B; --ink-2:#455553; --ink-3:#6E807D;
+    --rule:#D6DFDD; --rule-soft:#E6EBEA;
+    --accent:#0D7A80; --accent-soft:rgba(13,122,128,.10);
+    --good:#2E7D4F; --warn:#B05A12; --crit:#A32F35;
+    --good-soft:rgba(46,125,79,.12); --warn-soft:rgba(176,90,18,.12); --crit-soft:rgba(163,47,53,.10);
+    --shadow:0 1px 2px rgba(19,28,27,.05), 0 8px 24px -16px rgba(19,28,27,.22);
+    --font-mono:ui-monospace,"Cascadia Mono","SF Mono",Menlo,Consolas,monospace;
+    --font-body:"Segoe UI",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+    --ground:#0D1312; --surface:#141C1B; --surface-2:#1B2524;
+    --ink:#E2EAE8; --ink-2:#A3B4B0; --ink-3:#7E8F8B;
+    --rule:#26332F; --rule-soft:#1E2A28;
+    --accent:#45B6BC; --accent-soft:rgba(69,182,188,.13);
+    --good:#58B87C; --warn:#DF9247; --crit:#E06A70;
+    --good-soft:rgba(88,184,124,.13); --warn-soft:rgba(223,146,71,.13); --crit-soft:rgba(224,106,112,.12);
+    --shadow:0 1px 2px rgba(0,0,0,.32), 0 10px 28px -18px rgba(0,0,0,.7);
+  }}
+  :root[data-theme="dark"]{
+    --ground:#0D1312; --surface:#141C1B; --surface-2:#1B2524;
+    --ink:#E2EAE8; --ink-2:#A3B4B0; --ink-3:#7E8F8B;
+    --rule:#26332F; --rule-soft:#1E2A28;
+    --accent:#45B6BC; --accent-soft:rgba(69,182,188,.13);
+    --good:#58B87C; --warn:#DF9247; --crit:#E06A70;
+    --good-soft:rgba(88,184,124,.13); --warn-soft:rgba(223,146,71,.13); --crit-soft:rgba(224,106,112,.12);
+    --shadow:0 1px 2px rgba(0,0,0,.32), 0 10px 28px -18px rgba(0,0,0,.7);
+  }
+  *{box-sizing:border-box}
+  body{background:var(--ground); color:var(--ink); font-family:var(--font-body);
+    font-size:16px; line-height:1.7; margin:0; padding:0 20px 96px; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:940px; margin:0 auto}
+  .prose{max-width:70ch}
+  header{padding:56px 0 32px; border-bottom:1px solid var(--rule)}
+  .eyebrow{font-family:var(--font-mono); font-size:11px; font-weight:600; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--accent); display:flex; align-items:center; gap:10px; margin:0 0 18px}
+  .eyebrow::after{content:""; flex:1; height:1px; background:var(--rule)}
+  h1{font-size:clamp(28px,4.4vw,40px); line-height:1.18; font-weight:700; letter-spacing:-.018em; margin:0 0 14px}
+  .standfirst{font-size:17px; color:var(--ink-2); margin:0; max-width:62ch}
+  section{padding:52px 0 0}
+  h2{font-size:24px; font-weight:700; letter-spacing:-.012em; margin:0 0 10px}
+  h2 .num{font-family:var(--font-mono); font-size:12px; font-weight:600; color:var(--accent);
+    letter-spacing:.1em; display:block; margin-bottom:7px}
+  h3{font-size:17px; font-weight:650; margin:32px 0 8px}
+  h4{font-size:15.5px; font-weight:650; margin:30px 0 6px; color:var(--ink)}
+  p{margin:0 0 14px}
+  .lede{color:var(--ink-2); margin-bottom:24px}
+  strong{font-weight:650}
+  code{font-family:var(--font-mono); font-size:.88em; background:var(--surface-2); padding:1px 5px;
+    border-radius:3px; border:1px solid var(--rule-soft)}
+  pre{background:var(--surface-2); border:1px solid var(--rule); border-radius:4px; padding:14px 16px;
+    overflow-x:auto; margin:14px 0 0; font-family:var(--font-mono); font-size:12.5px; line-height:1.65}
+  /* ---- 汇总表 / 图（make_report.py 生成的片段要用）---- */
+  caption { caption-side:top; text-align:left; padding:11px 13px 9px; font-size:12px;
+    color:var(--ink-3); border-bottom:1px solid var(--rule-soft); background:var(--surface-2) }
+  th .sub, td .sub { display:block; font-weight:400; text-transform:none; letter-spacing:0;
+    font-size:10.5px; color:var(--ink-3) }
+  td .bad { color:var(--crit); font-weight:700 }
+  .tag { display:inline-block; font-family:var(--font-mono); font-size:10px; font-weight:700;
+    letter-spacing:.08em; padding:2px 7px; border-radius:3px; white-space:nowrap }
+  .tag.good { color:var(--good); background:var(--good-soft) }
+  .tag.warn { color:var(--warn); background:var(--warn-soft) }
+  .tag.crit { color:var(--crit); background:var(--crit-soft) }
+  svg { margin:22px 0 4px }
+  pre .c{color:var(--ink-3)} pre .a{color:var(--accent); font-weight:600} pre .w{color:var(--warn); font-weight:600}
+  pre .x{color:var(--crit); font-weight:600}
+  /* ---- 插图 ---- */
+  .fig{margin:20px 0 0; padding:16px 18px 10px; background:var(--surface);
+    border:1px solid var(--rule); border-radius:4px; box-shadow:var(--shadow); overflow-x:auto}
+  .fig svg{display:block; width:100%; min-width:640px; height:auto; color:var(--ink)}
+  .fig .cap{margin:8px 0 0; font-size:13px; color:var(--ink-3); line-height:1.6}
+  .legend{display:flex; flex-wrap:wrap; gap:6px 18px; margin:10px 0 0; font-size:13px; color:var(--ink-2)}
+  .legend i{display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px}
+  .tw{overflow-x:auto; margin:20px 0 0; border:1px solid var(--rule); border-radius:4px; background:var(--surface)}
+  table{border-collapse:collapse; width:100%; font-size:14px; min-width:640px}
+  th,td{padding:9px 13px; text-align:left; vertical-align:top; border-bottom:1px solid var(--rule-soft)}
+  th{font-size:10.5px; font-weight:600; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--ink-3); background:var(--surface-2)}
+  tbody tr:last-child td{border-bottom:0}
+  td.en{font-family:var(--font-mono); font-size:12.5px; white-space:nowrap; color:var(--accent); font-weight:600}
+  td.cn{white-space:nowrap; font-weight:650}
+  caption{caption-side:bottom; text-align:left; padding:10px 13px; font-size:13px;
+    color:var(--ink-3); border-top:1px solid var(--rule-soft)}
+  .callout{border:1px solid var(--rule); border-left:3px solid var(--accent);
+    background:var(--surface); border-radius:4px; padding:16px 20px; margin:22px 0 0; box-shadow:var(--shadow)}
+  .callout.link{border-left-color:var(--good); background:var(--good-soft)}
+  .callout.warn{border-left-color:var(--warn); background:var(--warn-soft)}
+  .callout.crit{border-left-color:var(--crit); background:var(--crit-soft)}
+  .callout .k{font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.13em;
+    text-transform:uppercase; margin:0 0 8px; color:var(--accent)}
+  .callout.link .k{color:var(--good)} .callout.warn .k{color:var(--warn)} .callout.crit .k{color:var(--crit)}
+  .callout p{margin:0; font-size:14.5px; color:var(--ink-2)}
+  .callout p+p{margin-top:9px}
+  ul.pts{list-style:none; padding:0; margin:14px 0 0; display:flex; flex-direction:column; gap:11px}
+  ul.pts li{padding-left:19px; position:relative; color:var(--ink-2); max-width:70ch}
+  ul.pts li::before{content:""; position:absolute; left:0; top:.72em; width:7px; height:2px;
+    background:var(--accent); border-radius:1px}
+  ul.pts li strong{color:var(--ink)}
+  .sec{background:var(--surface); border:1px solid var(--rule); border-radius:4px;
+    padding:20px 22px; margin:20px 0 0; box-shadow:var(--shadow)}
+  .sec h3{margin:0 0 4px; font-size:18px}
+  .sec .orig{font-family:var(--font-mono); font-size:12.5px; color:var(--ink-3); margin:0 0 14px}
+  .badge{display:inline-block; font-family:var(--font-mono); font-size:10px; font-weight:700;
+    letter-spacing:.1em; padding:2px 8px; border-radius:3px; margin-left:8px; vertical-align:middle}
+  .b-deep{background:var(--crit-soft); color:var(--crit)}
+  .b-mid{background:var(--warn-soft); color:var(--warn)}
+  .b-skim{background:var(--surface-2); color:var(--ink-3)}
+  .b-code{background:var(--good-soft); color:var(--good)}
+  footer{margin-top:64px; padding-top:22px; border-top:1px solid var(--rule);
+    font-family:var(--font-mono); font-size:11.5px; color:var(--ink-3); display:flex; flex-wrap:wrap; gap:6px 20px}
+
+  /* ---- 目录 ---- */
+  .toc{margin:34px 0 4px; padding:22px 24px; background:var(--surface);
+    border:1px solid var(--rule); border-radius:4px; box-shadow:var(--shadow); scroll-margin-top:16px}
+  .toc .hd{font-family:var(--font-mono); font-size:10.5px; font-weight:600; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--accent); margin:0 0 16px}
+  .toc .grid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px 36px}
+  @media (max-width:760px){ .toc .grid{grid-template-columns:1fr} }
+  .toc .grp{break-inside:avoid}
+  .toc a{text-decoration:none}
+  .toc a:hover{color:var(--accent); text-decoration:underline}
+  .toc .l1{display:block; color:var(--ink); font-weight:650; font-size:15px;
+    margin:0 0 7px; padding-bottom:6px; border-bottom:1px solid var(--rule-soft); scroll-margin-top:16px}
+  .toc .l1 .n{font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.1em;
+    color:var(--accent); margin-right:9px}
+  .toc ol{list-style:none; margin:0; padding:0}
+  .toc li{margin:4px 0; font-size:13.5px; line-height:1.5; scroll-margin-top:16px}
+  .toc li a{color:var(--ink-2)}
+  .toc .badge{font-size:9px; padding:1px 6px; margin-left:6px}
+  .toc code{font-size:.85em; background:none; border:0; padding:0; color:inherit}
+  /* ---- 标题旁的返回目录链接 ---- */
+  h2,h3,h4{scroll-margin-top:18px}
+  .up{font-family:var(--font-mono); font-size:12px; font-weight:600; color:var(--ink-3);
+    text-decoration:none; margin-left:11px; opacity:.4; vertical-align:middle;
+    transition:opacity .15s ease, color .15s ease}
+  h2:hover .up, h3:hover .up, h4:hover .up{opacity:1}
+  .up:hover{color:var(--accent)}
+  @media print{ .up{display:none} }
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">02 · CUDA from a Systems Engineer’s Eyes · 报告 01</p>
+  <h1>SGEMM 六级优化：核心代码的演化</h1>
+  <p class="lede prose">
+    <strong>同一块 RTX 4090、同一个可执行文件、同一次开机，
+    把一个 FP32 矩阵乘从 naive 一路改到 cuBLAS 的 71.5%。</strong>
+    <b>这份报告只讲代码：每一级改了哪一行、为什么那样改、原理图长什么样。</b>
+    <span style="color:var(--ink-3)">每一级严格只引入一个新概念，
+    所以"这一步的收益归谁"没有含糊的余地。</span>
+    <span style="color:var(--crit);font-weight:650">最值钱的发现是：
+    收益最大的那两步（8.209× 和 3.359×），算术强度一个字都没变。</span>
+  </p>
+</header>
+
+<nav class="toc" id="toc">
+  <p class="hd">本页导航 · 点标题跳转，标题旁的 ↑ 回到这里</p>
+  <div class="grid">
+    <div class="grp">
+      <a class="l1" id="t1" href="#s1"><span class="n">读法</span>三本账，和一张总表</a>
+      <ol>
+        <li id="t1-1"><a href="#s1-1">一、为什么是三本账</a></li>
+        <li id="t1-2"><a href="#s1-2">二、六级总表</a></li>
+      </ol>
+    </div>
+    <div class="grp">
+      <a class="l1" id="t2" href="#s2"><span class="n">K1</span>基线：索引故意写反</a>
+      <ol>
+        <li id="t2-1"><a href="#s2-1">一、代码</a></li>
+        <li id="t2-2"><a href="#s2-2">二、错在哪一个字</a></li>
+      </ol>
+    </div>
+    <div class="grp">
+      <a class="l1" id="t3" href="#s3"><span class="n">K2</span>把索引换回来</a>
+      <ol>
+        <li id="t3-1"><a href="#s3-1">一、代码</a></li>
+        <li id="t3-2"><a href="#s3-2">二、warp 在 C 上的形状</a></li>
+        <li id="t3-3"><a href="#s3-3">三、8 倍里只有 2.4 倍是"合并"</a></li>
+      </ol>
+    </div>
+    <div class="grp">
+      <a class="l1" id="t4" href="#s4"><span class="n">K3</span>shared 分块</a>
+      <ol>
+        <li id="t4-1"><a href="#s4-1">一、代码</a></li>
+        <li id="t4-2"><a href="#s4-2">二、两块 tile 怎么滑</a></li>
+      </ol>
+    </div>
+    <div class="grp">
+      <a class="l1" id="t5" href="#s5"><span class="n">K3c</span>书上的线程粗化</a>
+      <ol>
+        <li id="t5-1"><a href="#s5-1">一、代码</a></li>
+        <li id="t5-2"><a href="#s5-2">二、省的是哪一块</a></li>
+      </ol>
+    </div>
+    <div class="grp">
+      <a class="l1" id="t6" href="#s6"><span class="n">K4</span>1D 寄存器分块</a>
+      <ol>
+        <li id="t6-1"><a href="#s6-1">一、代码</a></li>
+        <li id="t6-2"><a href="#s6-2">二、读一次用 8 次</a></li>
+        <li id="t6-3"><a href="#s6-3">三、两种 shared load 差 5 倍</a></li>
+      </ol>
+    </div>
+    <div class="grp">
+      <a class="l1" id="t7" href="#s7"><span class="n">K5</span>2D 寄存器分块</a>
+      <ol>
+        <li id="t7-1"><a href="#s7-1">一、代码</a></li>
+        <li id="t7-2"><a href="#s7-2">二、8 × 4 = 32 个输出</a></li>
+        <li id="t7-3"><a href="#s7-3">三、占用率降，速度升</a></li>
+      </ol>
+    </div>
+    <div class="grp">
+      <a class="l1" id="t8" href="#s8"><span class="n">K6</span>float4：4 条并 1 条</a>
+      <ol>
+        <li id="t8-1"><a href="#s8-1">一、代码</a></li>
+        <li id="t8-2"><a href="#s8-2">二、12 条变 3 条</a></li>
+        <li id="t8-3"><a href="#s8-3">三、A 为什么必须转置存</a></li>
+        <li id="t8-4"><a href="#s8-4">四、SASS 验证</a></li>
+      </ol>
+    </div>
+    <div class="grp">
+      <a class="l1" id="t9" href="#s9"><span class="n">全景</span>六级并排看一次</a>
+      <ol>
+        <li id="t9-1"><a href="#s9-1">一、每一步动了哪本账</a></li>
+        <li id="t9-2"><a href="#s9-2">二、一句话版本</a></li>
+      </ol>
+    </div>
+    <div class="grp">
+      <a class="l1" id="t10" href="#s10"><span class="n">延伸</span>完整代码与实测数据</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============ §1 读法 ============ -->
+<section>
+<h2 id="s1"><span class="num">读法</span>三本账，和一张总表<a class="up" href="#t1" title="回到目录">↑</a></h2>
+  <p class="lede prose">
+    <strong>这份报告只讲代码怎么一步步变成那样，以及每一步的原理。</strong>
+    <b>数字从哪来、怎么量、八个指标各自怎么算，在
+    <a href="02-SGEMM实测与三本账.html">第 02 份报告</a>里。</b>
+  </p>
+
+  <div class="sec">
+    <h3 id="s1-1">一、为什么是三本账<a class="up" href="#t1-1" title="回到目录">↑</a></h3>
+    <p class="prose">
+      <b>教科书只给一本账：算术强度 → roofline。</b>
+      <span style="color:var(--crit);font-weight:650">而实测下来，这本账在七个 kernel 里失效五次 ——
+      达成率最高到过 2113.5%。</span>
+      <span style="color:var(--ink-3)">一个"达成率 2113.5%"的 kernel，说明它根本没在带宽墙上：
+      那些字节绝大部分命中了 4090 的 75.5 MB L2，压根没走到显存。</span>
+    </p>
+    <div class="tw"><table>
+      <thead><tr><th>账</th><th>量什么</th><th>什么时候它才是墙</th><th>这条链里管用几次</th></tr></thead>
+      <tbody>
+        <tr><td class="cn"><b>字节账</b></td><td>算术强度 → roofline 上限</td>
+            <td>DRAM 真的饱和时</td>
+            <td><span class="tag crit">七次里失效五次</span></td></tr>
+        <tr><td class="cn"><b>请求账</b></td><td>一条指令触发几个内存事务</td>
+            <td>访存不合并时</td>
+            <td><span class="tag warn">只在 K1→K2 成立一次</span></td></tr>
+        <tr><td class="cn"><b>条数账</b></td><td>指令条数 × 分类单价</td>
+            <td>前两者都不是墙时</td>
+            <td><span class="tag good">K3 之后全靠它</span></td></tr>
+      </tbody>
+      <caption><b>账本没有对错，只有适用区间。</b>
+        <span style="color:var(--ink-3)">这条优化链最值钱的一点，是它把三本账各自的适用边界都撞了一遍 ——
+        每一级恰好只动其中一本，于是收益归谁所有没有含糊的余地。</span></caption>
+    </table></div>
+  </div>
+
+  <div class="sec">
+    <h3 id="s1-2">二、六级总表<a class="up" href="#t1-2" title="回到目录">↑</a></h3>
+  <div class="tw"><table>
+    <caption>六级 · 每一级只引入一个概念 · 实测取 2026-09-24 同批 N=4096</caption>
+    <thead><tr><th>级</th><th>引入的概念</th><th>动了哪本账</th>
+      <th>算术强度</th><th>load/FMA</th><th>相邻提速</th><th>占 cuBLAS</th></tr></thead>
+    <tbody>
+      <tr><td class="cn"><b>K1</b> naive</td><td>一线程一输出，索引映射写反</td><td><span class="tag crit">基线</span></td><td class="en">0.250</td><td class="en">2.000</td><td class="en">基准</td><td class="en">1.13%</td></tr>
+      <tr><td class="cn"><b>K2</b> 合并</td><td>把 row/col 换回来，其余一字不改</td><td><span class="tag good">请求账</span></td><td class="en">0.250 <span style="color:var(--ink-3)">不变</span></td><td class="en">2.000 <span style="color:var(--ink-3)">不变</span></td><td class="en"> <b>8.21×</b></td><td class="en">9.30%</td></tr>
+      <tr><td class="cn"><b>K3</b> shared 分块</td><td>片上暂存，一块一块搬</td><td><span class="tag warn">字节账</span></td><td class="en">7.969 <b>↑32×</b></td><td class="en">2.062</td><td class="en">1.16×</td><td class="en">10.80%</td></tr>
+      <tr><td class="cn"><b>K3c</b> 书上的粗化</td><td>Fig. 6.13：一线程 4 个输出，复用 M tile</td><td><span class="tag warn">字节账</span></td><td class="en">12.720 <b>↑1.6×</b></td><td class="en">2.039</td><td class="en">1.08×</td><td class="en">11.69%</td></tr>
+      <tr><td class="cn"><b>K4</b> 1D 寄存器分块</td><td>一线程 8 行，N 元素进寄存器用 8 次</td><td><span class="tag good">条数账</span></td><td class="en">7.969 <span style="color:var(--crit);font-weight:650">和 K3 相同</span></td><td class="en">1.188 <b>↓</b></td><td class="en"> <b>3.10×</b></td><td class="en">36.29%</td></tr>
+      <tr><td class="cn"><b>K5</b> 2D 寄存器分块</td><td>8 行 × 4 列 = 32 个输出，两个方向一起复用</td><td><span class="tag good">条数账</span>+<span class="tag warn">字节账</span></td><td class="en">12.720</td><td class="en">0.414 <b>↓</b></td><td class="en">1.66×</td><td class="en">60.28%</td></tr>
+      <tr><td class="cn"><b>K6</b> float4</td><td>128 位访存，4 条并 1 条</td><td><span class="tag good">条数账</span></td><td class="en">12.720 <span style="color:var(--ink-3)">不变</span></td><td class="en">0.104 <b>↓</b></td><td class="en">1.19×</td><td class="en"><b>71.50%</b></td></tr>
+    </tbody>
+  </table></div>
+    <div class="callout">
+      <p class="k">两处最该停下来看的地方</p>
+      <p><b>① K2 的算术强度和 load/FMA 都和 K1 一模一样，却快了 8.209 倍。</b>
+        <span style="color:var(--ink-3)">两本账都说"没变"，时间却变了 —— 这就是第三本账（请求账）诞生的地方。</span></p>
+      <p style="margin-bottom:0"><b>② K4 的算术强度和 K3 逐字相同（7.969），却是整条链上最大的一步（3.359×）。</b>
+        <span style="color:var(--crit);font-weight:650">而算术强度真正涨了的 K3c（7.969 → 12.720），
+        只换来 8% 的提速。</span>
+        <span style="color:var(--ink-3)">教科书那条"提高算术强度就能更快"的因果链，在这里断得很干净。</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ §2 K1 ============ -->
+<section>
+<h2 id="s2"><span class="num">K1</span>基线：一线程一输出，索引故意写反<a class="up" href="#t2" title="回到目录">↑</a></h2>
+  <div class="sec">
+    <h3 id="s2-1">一、代码<a class="up" href="#t2-1" title="回到目录">↑</a></h3>
+    <pre>// ---------------------------------------------------------------------------
+__global__ void sgemm_k1(int M, int N, int K, float alpha,
+                         const float *A, const float *B, float beta, float *C) {
+    // 这两行是 CUDA 里最常见的一句话："我是谁"。
+    // blockIdx 是我这个 block 在 grid 里的编号，blockDim 是 block 的宽度，
+    // threadIdx 是我在 block 内的编号 —— 三者拼出全局唯一的坐标。
+    const int x = blockIdx.x * blockDim.x + threadIdx.x;   // 行（M 方向）
+    const int y = blockIdx.y * blockDim.y + threadIdx.y;   // 列（N 方向）
+
+    if (x &lt; M &amp;&amp; y &lt; N) {
+        float acc = 0.0f;
+        for (int i = 0; i &lt; K; ++i)
+            acc += A[x * K + i] * B[i * N + y];            // A 走一行，B 跨一列
+        C[x * N + y] = alpha * acc + beta * C[x * N + y];
+    }
+}</pre>
+  </div>
+  <div class="sec">
+    <h3 id="s2-2">二、错在哪一个字<a class="up" href="#t2-2" title="回到目录">↑</a></h3>
+    <p class="prose">
+      <b>算法完全正确，结果也完全正确。唯一的问题是 <code>row</code> 和 <code>col</code> 的分工。</b>
+      <span style="color:var(--ink-3)">同一个 warp 里 <code>threadIdx.x</code> 连号、<code>threadIdx.y</code> 相同。
+      K1 把 <code>threadIdx.x</code> 给了<u>行</u>，于是 32 个线程落在 A 的 32 个<u>不同行</u>上 ——
+      地址间隔 K 个 float，落在 32 个不同的 128 字节段里。</span>
+    </p>
+    <figure class="fig">
+    <svg viewBox="0 0 720 400" role="img" aria-label="M 按行连续、N 按列跳跃的内存访问对比">
+      <g font-family="var(--font-mono)" font-size="11">
+        <!-- M 矩阵 -->
+        <text x="40" y="24" font-family="var(--font-body)" font-size="12.5"
+          font-weight="650" fill="var(--good)">M：取第 0 行 → 下标连续</text>
+        <g stroke="var(--rule)" stroke-width="1" fill="none">
+          <rect x="40" y="34" width="136" height="136"/>
+          <line x1="40" y1="68" x2="176" y2="68"/><line x1="40" y1="102" x2="176" y2="102"/>
+          <line x1="40" y1="136" x2="176" y2="136"/>
+          <line x1="74" y1="34" x2="74" y2="170"/><line x1="108" y1="34" x2="108" y2="170"/>
+          <line x1="142" y1="34" x2="142" y2="170"/>
+        </g>
+        <rect x="40" y="34" width="136" height="34" fill="var(--good-soft)"/>
+        <g fill="var(--ink-2)" text-anchor="middle">
+          <text x="57" y="56" fill="var(--good)" font-weight="700">0</text>
+          <text x="91" y="56" fill="var(--good)" font-weight="700">1</text>
+          <text x="125" y="56" fill="var(--good)" font-weight="700">2</text>
+          <text x="159" y="56" fill="var(--good)" font-weight="700">3</text>
+          <text x="57" y="90">4</text><text x="91" y="90">5</text>
+          <text x="125" y="90">6</text><text x="159" y="90">7</text>
+          <text x="57" y="124">8</text><text x="91" y="124">9</text>
+          <text x="125" y="124">10</text><text x="159" y="124">11</text>
+          <text x="57" y="158">12</text><text x="91" y="158">13</text>
+          <text x="125" y="158">14</text><text x="159" y="158">15</text>
+        </g>
+        <!-- N 矩阵 -->
+        <text x="260" y="24" font-family="var(--font-body)" font-size="12.5"
+          font-weight="650" fill="var(--crit)">N：取第 0 列 → 每次跳 4</text>
+        <g stroke="var(--rule)" stroke-width="1" fill="none">
+          <rect x="260" y="34" width="136" height="136"/>
+          <line x1="260" y1="68" x2="396" y2="68"/><line x1="260" y1="102" x2="396" y2="102"/>
+          <line x1="260" y1="136" x2="396" y2="136"/>
+          <line x1="294" y1="34" x2="294" y2="170"/><line x1="328" y1="34" x2="328" y2="170"/>
+          <line x1="362" y1="34" x2="362" y2="170"/>
+        </g>
+        <rect x="260" y="34" width="34" height="136" fill="var(--crit-soft)"/>
+        <g fill="var(--ink-2)" text-anchor="middle">
+          <text x="277" y="56" fill="var(--crit)" font-weight="700">0</text>
+          <text x="311" y="56">1</text><text x="345" y="56">2</text><text x="379" y="56">3</text>
+          <text x="277" y="90" fill="var(--crit)" font-weight="700">4</text>
+          <text x="311" y="90">5</text><text x="345" y="90">6</text><text x="379" y="90">7</text>
+          <text x="277" y="124" fill="var(--crit)" font-weight="700">8</text>
+          <text x="311" y="124">9</text><text x="345" y="124">10</text><text x="379" y="124">11</text>
+          <text x="277" y="158" fill="var(--crit)" font-weight="700">12</text>
+          <text x="311" y="158">13</text><text x="345" y="158">14</text><text x="379" y="158">15</text>
+        </g>
+        <!-- 说明 -->
+        <text x="440" y="70" font-family="var(--font-body)" font-size="12" fill="var(--ink-2)">同一个内积循环：</text>
+        <text x="440" y="94" font-size="11.5" fill="var(--good)" font-weight="700">M 走 0→1→2→3　步长 1</text>
+        <text x="440" y="116" font-size="11.5" fill="var(--crit)" font-weight="700">N 走 0→4→8→12　步长 4</text>
+        <text x="440" y="146" font-family="var(--font-body)" font-size="11.5" fill="var(--ink-3)">4×4 里跳 4，</text>
+        <text x="440" y="164" font-family="var(--font-body)" font-size="11.5" fill="var(--ink-3)">4096×4096 里跳 4096</text>
+      </g>
+      <!-- 内存条 -->
+      <g font-family="var(--font-mono)" font-size="10.5">
+        <text x="40" y="216" font-family="var(--font-body)" font-size="12.5"
+          font-weight="650" fill="var(--ink-2)">内存里其实是一条直线（row-major）</text>
+        <g>
+          <text x="40" y="248" font-size="11" fill="var(--good)" font-weight="700">M 第 0 行</text>
+          <g stroke="var(--rule)" fill="none" stroke-width="1">
+            <rect x="112" y="232" width="576" height="24"/>
+          </g>
+          <rect x="112" y="232" width="144" height="24" fill="var(--good-soft)"/>
+          <g stroke="var(--rule)" stroke-width="1">
+            <line x1="148" y1="232" x2="148" y2="256"/><line x1="184" y1="232" x2="184" y2="256"/>
+            <line x1="220" y1="232" x2="220" y2="256"/><line x1="256" y1="232" x2="256" y2="256"/>
+            <line x1="292" y1="232" x2="292" y2="256"/><line x1="328" y1="232" x2="328" y2="256"/>
+            <line x1="364" y1="232" x2="364" y2="256"/><line x1="400" y1="232" x2="400" y2="256"/>
+            <line x1="436" y1="232" x2="436" y2="256"/><line x1="472" y1="232" x2="472" y2="256"/>
+            <line x1="508" y1="232" x2="508" y2="256"/><line x1="544" y1="232" x2="544" y2="256"/>
+            <line x1="580" y1="232" x2="580" y2="256"/><line x1="616" y1="232" x2="616" y2="256"/>
+            <line x1="652" y1="232" x2="652" y2="256"/>
+          </g>
+          <g text-anchor="middle" fill="var(--ink-3)">
+            <text x="130" y="249" fill="var(--good)" font-weight="700">0</text>
+            <text x="166" y="249" fill="var(--good)" font-weight="700">1</text>
+            <text x="202" y="249" fill="var(--good)" font-weight="700">2</text>
+            <text x="238" y="249" fill="var(--good)" font-weight="700">3</text>
+            <text x="274" y="249">4</text><text x="310" y="249">5</text>
+            <text x="346" y="249">6</text><text x="382" y="249">7</text>
+            <text x="418" y="249">8</text><text x="454" y="249">9</text>
+            <text x="490" y="249">10</text><text x="526" y="249">11</text>
+            <text x="562" y="249">12</text><text x="598" y="249">13</text>
+            <text x="634" y="249">14</text><text x="670" y="249">15</text>
+          </g>
+        </g>
+        <g>
+          <text x="40" y="316" font-size="11" fill="var(--crit)" font-weight="700">N 第 0 列</text>
+          <g stroke="var(--rule)" fill="none" stroke-width="1">
+            <rect x="112" y="300" width="576" height="24"/>
+          </g>
+          <rect x="112" y="300" width="36" height="24" fill="var(--crit-soft)"/>
+          <rect x="256" y="300" width="36" height="24" fill="var(--crit-soft)"/>
+          <rect x="400" y="300" width="36" height="24" fill="var(--crit-soft)"/>
+          <rect x="544" y="300" width="36" height="24" fill="var(--crit-soft)"/>
+          <g stroke="var(--rule)" stroke-width="1">
+            <line x1="148" y1="300" x2="148" y2="324"/><line x1="184" y1="300" x2="184" y2="324"/>
+            <line x1="220" y1="300" x2="220" y2="324"/><line x1="256" y1="300" x2="256" y2="324"/>
+            <line x1="292" y1="300" x2="292" y2="324"/><line x1="328" y1="300" x2="328" y2="324"/>
+            <line x1="364" y1="300" x2="364" y2="324"/><line x1="400" y1="300" x2="400" y2="324"/>
+            <line x1="436" y1="300" x2="436" y2="324"/><line x1="472" y1="300" x2="472" y2="324"/>
+            <line x1="508" y1="300" x2="508" y2="324"/><line x1="544" y1="300" x2="544" y2="324"/>
+            <line x1="580" y1="300" x2="580" y2="324"/><line x1="616" y1="300" x2="616" y2="324"/>
+            <line x1="652" y1="300" x2="652" y2="324"/>
+          </g>
+          <g text-anchor="middle" fill="var(--ink-3)">
+            <text x="130" y="317" fill="var(--crit)" font-weight="700">0</text>
+            <text x="166" y="317">1</text><text x="202" y="317">2</text><text x="238" y="317">3</text>
+            <text x="274" y="317" fill="var(--crit)" font-weight="700">4</text>
+            <text x="310" y="317">5</text><text x="346" y="317">6</text><text x="382" y="317">7</text>
+            <text x="418" y="317" fill="var(--crit)" font-weight="700">8</text>
+            <text x="454" y="317">9</text><text x="490" y="317">10</text><text x="526" y="317">11</text>
+            <text x="562" y="317" fill="var(--crit)" font-weight="700">12</text>
+            <text x="598" y="317">13</text><text x="634" y="317">14</text><text x="670" y="317">15</text>
+          </g>
+        </g>
+        <text x="112" y="356" font-family="var(--font-body)" font-size="11.5" fill="var(--ink-3)">
+          绿色是一整块连续的；红色被整整三格分隔 —— 同一个循环里，两个操作数的访存模式完全不同</text>
+      </g>
+    </svg>
+    <figcaption class="cap">
+      矩阵格子里写的是<b>它在一维内存里的下标</b>（<code>row*4+col</code>），不是元素的值。
+    </figcaption>
+  </figure>
+    <div class="callout crit">
+      <p class="k">一条 LDG 被拆成 32 个请求</p>
+      <pre>请求账：每个 FMA 33 个内存请求
+        A 的那条 load  →  32 个请求（32 个线程各落一段）
+        B 的那条 load  →   1 个请求（32 个线程落同一段，合并）
+                          ----
+                          33
+
+<span class="c">// 而字节账完全看不到这件事：它只数"逻辑上要读多少字节"，</span>
+<span class="c">// 不管这些字节是一次取回来的，还是分 32 次、每次浪费 124 字节取回来的。</span></pre>
+      <p style="margin-bottom:0"><b>实测 211.911 ms，只有 cuBLAS 的 1.13%。</b>
+        <span style="color:var(--ink-3)">这是整条链的起点。</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ §3 K2 ============ -->
+<section>
+<h2 id="s3"><span class="num">K2</span>把索引换回来，其余一字不改<a class="up" href="#t3" title="回到目录">↑</a></h2>
+  <div class="sec">
+    <h3 id="s3-1">一、代码<a class="up" href="#t3-1" title="回到目录">↑</a></h3>
+    <pre>// ---------------------------------------------------------------------------
+__global__ void sgemm_k2(int M, int N, int K, float alpha,
+                         const float *A, const float *B, float beta, float *C) {
+    const int y = blockIdx.x * blockDim.x + threadIdx.x;   // 列（N 方向）
+    const int x = blockIdx.y * blockDim.y + threadIdx.y;   // 行（M 方向）
+
+    if (x &lt; M &amp;&amp; y &lt; N) {
+        float acc = 0.0f;
+        for (int i = 0; i &lt; K; ++i)
+            acc += A[x * K + i] * B[i * N + y];
+        C[x * N + y] = alpha * acc + beta * C[x * N + y];
+    }
+}</pre>
+    <div class="callout link">
+      <p class="k">和 K1 逐字对比，只差两行</p>
+      <pre>K1:  int row = blockIdx.x * blockDim.x + <span class="x">threadIdx.x</span>;
+     int col = blockIdx.y * blockDim.y + <span class="x">threadIdx.y</span>;
+
+K2:  int row = blockIdx.y * blockDim.y + <span class="a">threadIdx.y</span>;
+     int col = blockIdx.x * blockDim.x + <span class="a">threadIdx.x</span>;</pre>
+    </div>
+  </div>
+  <div class="sec">
+    <h3 id="s3-2">二、warp 在 C 上的形状变了<a class="up" href="#t3-2" title="回到目录">↑</a></h3>
+    <figure class="fig">
+    <svg viewBox="0 0 720 430" role="img" aria-label="K1 与 K2 中一个 warp 在 C 矩阵上的形状，以及对应的内存地址落点">
+      <g font-family="var(--font-mono)" font-size="11">
+        <!-- ===== K1 ===== -->
+        <text x="40" y="22" font-family="var(--font-body)" font-size="12.5"
+          font-weight="650" fill="var(--crit)">K1：threadIdx.x → 行</text>
+        <g stroke="var(--rule)" stroke-width="1" fill="none">
+          <rect x="40" y="34" width="136" height="136"/>
+          <line x1="57" y1="34" x2="57" y2="170"/><line x1="74" y1="34" x2="74" y2="170"/>
+          <line x1="91" y1="34" x2="91" y2="170"/><line x1="108" y1="34" x2="108" y2="170"/>
+          <line x1="125" y1="34" x2="125" y2="170"/><line x1="142" y1="34" x2="142" y2="170"/>
+          <line x1="159" y1="34" x2="159" y2="170"/>
+          <line x1="40" y1="51" x2="176" y2="51"/><line x1="40" y1="68" x2="176" y2="68"/>
+          <line x1="40" y1="85" x2="176" y2="85"/><line x1="40" y1="102" x2="176" y2="102"/>
+          <line x1="40" y1="119" x2="176" y2="119"/><line x1="40" y1="136" x2="176" y2="136"/>
+          <line x1="40" y1="153" x2="176" y2="153"/>
+        </g>
+        <rect x="74" y="34" width="17" height="136" fill="var(--crit-soft)"/>
+        <rect x="74" y="34" width="17" height="136" fill="none"
+          stroke="var(--crit)" stroke-width="2"/>
+        <text x="40" y="190" font-size="10.5" fill="var(--ink-3)">C 矩阵（行主序）</text>
+        <text x="40" y="206" font-size="11" fill="var(--crit)" font-weight="700">一个 warp = 一竖条</text>
+        <text x="40" y="220" font-size="10.5" fill="var(--ink-3)">32 个不同的行，同一列</text>
+
+        <!-- ===== K2 ===== -->
+        <text x="400" y="22" font-family="var(--font-body)" font-size="12.5"
+          font-weight="650" fill="var(--good)">K2：threadIdx.x → 列</text>
+        <g stroke="var(--rule)" stroke-width="1" fill="none">
+          <rect x="400" y="34" width="136" height="136"/>
+          <line x1="417" y1="34" x2="417" y2="170"/><line x1="434" y1="34" x2="434" y2="170"/>
+          <line x1="451" y1="34" x2="451" y2="170"/><line x1="468" y1="34" x2="468" y2="170"/>
+          <line x1="485" y1="34" x2="485" y2="170"/><line x1="502" y1="34" x2="502" y2="170"/>
+          <line x1="519" y1="34" x2="519" y2="170"/>
+          <line x1="400" y1="51" x2="536" y2="51"/><line x1="400" y1="68" x2="536" y2="68"/>
+          <line x1="400" y1="85" x2="536" y2="85"/><line x1="400" y1="102" x2="536" y2="102"/>
+          <line x1="400" y1="119" x2="536" y2="119"/><line x1="400" y1="136" x2="536" y2="136"/>
+          <line x1="400" y1="153" x2="536" y2="153"/>
+        </g>
+        <rect x="400" y="68" width="136" height="17" fill="var(--good-soft)"/>
+        <rect x="400" y="68" width="136" height="17" fill="none"
+          stroke="var(--good)" stroke-width="2"/>
+        <text x="400" y="190" font-size="10.5" fill="var(--ink-3)">C 矩阵（行主序）</text>
+        <text x="400" y="206" font-size="11" fill="var(--good)" font-weight="700">一个 warp = 一横条</text>
+        <text x="400" y="220" font-size="10.5" fill="var(--ink-3)">同一行，32 个连续的列</text>
+
+        <!-- ===== 内存直线 ===== -->
+        <text x="40" y="262" font-family="var(--font-body)" font-size="12.5"
+          font-weight="650" fill="var(--ink-2)">这 32 个线程要的数据，落在内存这条直线上：</text>
+        <text x="40" y="278" font-size="10.5" fill="var(--ink-3)">每个大格 = 一条 128 B 的 cache line</text>
+
+        <!-- K1 bar -->
+        <text x="40" y="308" font-size="11" fill="var(--crit)" font-weight="700">K1 读 A</text>
+        <g stroke="var(--rule)" stroke-width="1" fill="none">
+          <rect x="120" y="292" width="560" height="26"/>
+          <line x1="190" y1="292" x2="190" y2="318"/><line x1="260" y1="292" x2="260" y2="318"/>
+          <line x1="330" y1="292" x2="330" y2="318"/><line x1="400" y1="292" x2="400" y2="318"/>
+          <line x1="470" y1="292" x2="470" y2="318"/><line x1="540" y1="292" x2="540" y2="318"/>
+          <line x1="610" y1="292" x2="610" y2="318"/>
+        </g>
+        <g fill="var(--crit)">
+          <rect x="126" y="296" width="8" height="18"/><rect x="196" y="296" width="8" height="18"/>
+          <rect x="266" y="296" width="8" height="18"/><rect x="336" y="296" width="8" height="18"/>
+          <rect x="406" y="296" width="8" height="18"/><rect x="476" y="296" width="8" height="18"/>
+          <rect x="546" y="296" width="8" height="18"/><rect x="616" y="296" width="8" height="18"/>
+        </g>
+        <text x="120" y="336" font-size="10.5" fill="var(--crit)" font-weight="700">
+          每条 line 只用了 4 B → 32 条 line 全要取回来</text>
+
+        <!-- K2 bar -->
+        <text x="40" y="378" font-size="11" fill="var(--good)" font-weight="700">K2 读 B</text>
+        <g stroke="var(--rule)" stroke-width="1" fill="none">
+          <rect x="120" y="362" width="560" height="26"/>
+          <line x1="190" y1="362" x2="190" y2="388"/><line x1="260" y1="362" x2="260" y2="388"/>
+          <line x1="330" y1="362" x2="330" y2="388"/><line x1="400" y1="362" x2="400" y2="388"/>
+          <line x1="470" y1="362" x2="470" y2="388"/><line x1="540" y1="362" x2="540" y2="388"/>
+          <line x1="610" y1="362" x2="610" y2="388"/>
+        </g>
+        <rect x="122" y="366" width="66" height="18" fill="var(--good)"/>
+        <text x="120" y="406" font-size="10.5" fill="var(--good)" font-weight="700">
+          32 个 float 挨在一起 = 128 B → 正好 1 条 line，全用上</text>
+      </g>
+    </svg>
+    <figcaption class="cap"><strong>同一段循环体，只因为 <code>threadIdx.x</code> 被赋给了不同的变量，
+      一个 warp 的 32 个地址就从"撒在近 500 KB 里"变成"挤在 128 B 里"。</strong>
+      <b>代码没变，形状变了。</b></figcaption>
+  </figure>
+  </div>
+  <div class="sec">
+    <h3 id="s3-3">三、这一步的 8.209 倍里，只有 2.392 倍是"合并"<a class="up" href="#t3-3" title="回到目录">↑</a></h3>
+    <div class="callout crit">
+      <p class="k">边界测试意外抓到的东西</p>
+      <pre>            N=4096（2 的幂）    N=4097（打破对齐）
+K1           211.911 ms          63.675 ms     <span class="a">← 快了 3.33 倍</span>
+K2            25.815 ms           26.615 ms     <span class="c">← 只慢 3%</span>
+K1/K2          <span class="w">8.209×</span>             <span class="a">2.392×</span>
+
+<span class="c">// 4097 上两者都不受跨度冲突影响，剩下的 2.392× 才是"不合并"本身的代价。</span>
+<span class="c">// 于是 8.209 ÷ 2.392 = 3.43 就是 2 的幂跨度的额外惩罚。</span>
+<span class="a">// 回乘检验：2.392 × 3.43 = 8.209，和实测逐位相同。</span></pre>
+      <p style="margin-bottom:0"><b>N=4096 时 A 的行跨度恰好 16384 字节 —— 2 的幂。</b>
+        <span style="color:var(--ink-3)">warp 里 32 个线程的地址全部映射到同一批 L2 set / DRAM bank 上，
+        在"不合并"之上又叠了一层冲突。N=4097 把对齐打破，这一层就消失了。</span>
+        <span style="color:var(--crit);font-weight:650">对照组：同一个 4096→4097，其余 kernel 只慢 2.8%–7.1%，
+        cuBLAS 慢 15.7% —— 说明不是"4097 让谁都变快"，是只有 K1 被单独惩罚了。</span></p>
+    </div>
+    <p class="prose">
+      <b>所以"合并访存是性价比最高的一步"这句话要加个注：</b>
+      <span style="color:var(--ink-3)">那 8.209 倍里只有 2.392 倍是合并本身，
+      另外 3.43 倍是顺带治好的跨度冲突。</span>
+      <b>这是书里和多数教程都没提的。</b>
+    </p>
+  </div>
+</section>
+
+<!-- ============ §4 K3 ============ -->
+<section>
+<h2 id="s4"><span class="num">K3</span>shared 分块：第一次动字节账<a class="up" href="#t4" title="回到目录">↑</a></h2>
+  <div class="sec">
+    <h3 id="s4-1">一、代码<a class="up" href="#t4-1" title="回到目录">↑</a></h3>
+    <pre>// ---------------------------------------------------------------------------
+__global__ void sgemm_k3(int M, int N, int K, float alpha,
+                         const float *A, const float *B, float beta, float *C) {
+    __shared__ float Mds[TILE][TILE];
+    __shared__ float Nds[TILE][TILE];
+
+    const int tx = threadIdx.x, ty = threadIdx.y;
+    const int Col = blockIdx.x * TILE + tx;
+    const int Row = blockIdx.y * TILE + ty;
+
+    float acc = 0.0f;
+
+    for (int ph = 0; ph &lt; (K + TILE - 1) / TILE; ++ph) {
+        const int aCol = ph * TILE + tx;
+        const int bRow = ph * TILE + ty;
+
+        Mds[ty][tx] = (Row &lt; M &amp;&amp; aCol &lt; K) ? A[Row * K + aCol] : 0.0f;
+        Nds[ty][tx] = (bRow &lt; K &amp;&amp; Col &lt; N) ? B[bRow * N + Col] : 0.0f;
+
+        __syncthreads();
+
+        #pragma unroll
+        for (int k = 0; k &lt; TILE; ++k)
+            acc += Mds[ty][k] * Nds[k][tx];
+
+        __syncthreads();
+    }
+
+    if (Row &lt; M &amp;&amp; Col &lt; N)
+        C[Row * N + Col] = alpha * acc + beta * C[Row * N + Col];
+}</pre>
+  </div>
+  <div class="sec">
+    <h3 id="s4-2">二、两块 tile 一个向右滑、一个向下滑<a class="up" href="#t4-2" title="回到目录">↑</a></h3>
+    <figure class="fig">
+    <svg viewBox="0 0 720 330" role="img" aria-label="分块矩阵乘中 A 的块向右滑动、B 的块向下滑动">
+      <g font-family="var(--font-mono)" font-size="10.5">
+        <!-- B / N 在右上 -->
+        <text x="400" y="24" font-family="var(--font-body)" font-size="12.5"
+          font-weight="650" fill="var(--accent)">B（4096×4096）</text>
+        <rect x="400" y="32" width="220" height="120" fill="none" stroke="var(--rule)"/>
+        <rect x="460" y="32" width="30" height="120" fill="var(--accent-soft)"/>
+        <g fill="none" stroke="var(--accent)" stroke-width="1.6">
+          <rect x="460" y="36" width="30" height="26"/>
+          <rect x="460" y="66" width="30" height="26"/>
+          <rect x="460" y="120" width="30" height="26"/>
+        </g>
+        <text x="500" y="53" fill="var(--accent)" font-weight="700">ph = 0</text>
+        <text x="500" y="83" fill="var(--accent)" font-weight="700">ph = 1</text>
+        <text x="500" y="108" fill="var(--ink-3)">⋮</text>
+        <text x="500" y="137" fill="var(--accent)" font-weight="700">ph = 127</text>
+        <g stroke="var(--accent)" stroke-width="1.2" fill="none" marker-end="url(#a5)">
+          <line x1="447" y1="40" x2="447" y2="142"/>
+        </g>
+        <text x="628" y="90" fill="var(--ink-3)">↑ 第 64–95 列</text>
+
+        <!-- A / M 在左下 -->
+        <text x="60" y="180" font-family="var(--font-body)" font-size="12.5"
+          font-weight="650" fill="var(--crit)">A（4096×4096）</text>
+        <rect x="60" y="190" width="280" height="120" fill="none" stroke="var(--rule)"/>
+        <rect x="60" y="228" width="280" height="30" fill="var(--crit-soft)"/>
+        <g fill="none" stroke="var(--crit)" stroke-width="1.6">
+          <rect x="64" y="228" width="26" height="30"/>
+          <rect x="94" y="228" width="26" height="30"/>
+          <rect x="306" y="228" width="26" height="30"/>
+        </g>
+        <text x="62" y="222" fill="var(--crit)" font-weight="700">ph=0</text>
+        <text x="92" y="222" fill="var(--crit)" font-weight="700">ph=1</text>
+        <text x="180" y="247" fill="var(--ink-3)">⋯</text>
+        <text x="292" y="222" fill="var(--crit)" font-weight="700">ph=127</text>
+        <g stroke="var(--crit)" stroke-width="1.2" fill="none" marker-end="url(#c5)">
+          <line x1="126" y1="268" x2="300" y2="268"/>
+        </g>
+        <text x="60" y="290" fill="var(--ink-3)">↑ 第 96–127 行</text>
+
+        <!-- C / P 在右下 -->
+        <text x="400" y="180" font-family="var(--font-body)" font-size="12.5"
+          font-weight="650" fill="var(--good)">C（输出）</text>
+        <rect x="400" y="190" width="220" height="120" fill="none" stroke="var(--rule)"/>
+        <rect x="460" y="228" width="30" height="30" fill="var(--good-soft)"/>
+        <rect x="460" y="228" width="30" height="30" fill="none"
+          stroke="var(--good)" stroke-width="2"/>
+        <text x="500" y="240" fill="var(--good)" font-weight="700">block(2,3) 的</text>
+        <text x="500" y="252" fill="var(--good)" font-weight="700">32×32 输出块</text>
+        <text x="400" y="290" fill="var(--ink-3)">行 96–127 × 列 64–95</text>
+      </g>
+      <defs>
+        <marker id="a5" viewBox="0 0 10 10" refX="9" refY="5"
+          markerWidth="5" markerHeight="5" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent)"/>
+        </marker>
+        <marker id="c5" viewBox="0 0 10 10" refX="9" refY="5"
+          markerWidth="5" markerHeight="5" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--crit)"/>
+        </marker>
+      </defs>
+    </svg>
+    <figcaption class="cap"><strong>一个 block 的 128 个阶段</strong>：
+      <b>A 上的方块沿着自己那条行带<span style="color:var(--crit)">向右滑</span>，
+      B 上的方块沿着自己那条列带<span style="color:var(--accent)">向下滑</span></b>，
+      每滑一格就是一个阶段。
+      <span style="color:var(--ink-3)">两个方块每次都被搬进 shared memory，
+      供 block 里 1024 个线程共同使用。</span></figcaption>
+  </figure>
+    <p class="prose">
+      <b>算术强度从 0.250 涨到 7.969，整整 32 倍</b>
+      <span style="color:var(--ink-3)">—— 因为 32×32 的 tile 里，每个搬进来的元素被 32 个线程用了 32 次。</span>
+    </p>
+    <div class="callout warn">
+      <p class="k">但实测只快了 1.162×</p>
+      <p><b>字节账涨 32 倍，时间只省 14%。为什么？</b></p>
+      <pre>K2 的 roofline 达成率 = <span class="x">2113.5%</span>
+
+<span class="c">// 达成率超过 100% 二十倍，说明 K2 根本没在带宽墙上 ——</span>
+<span class="c">// 它那些"逻辑上要读的字节"绝大部分命中 L2，没走到 DRAM。</span>
+<span class="a">// 一个不受带宽限制的 kernel，你把它的 DRAM 算术强度提高 32 倍，换不来时间。</span></pre>
+      <p><b>那这 14% 从哪来的？用条数账算（三个单价的标定见报告 02 · §3）：</b></p>
+      <pre>K2 = 2.000 条 LDG × 1.94 周期                       = 3.88 周期
+K3 = 1 条 32 路 LDS × 2.69
+   + 1 条广播 LDS × 0.53
+   + 0.062 条 LDG × 1.94                            = 3.34 周期
+
+预测 3.88 ÷ 3.34 = 1.162×        实测 1.162×   <span class="a">✓</span></pre>
+      <p style="margin-bottom:0"><b>K3 的 shared 分块在这台卡上不是靠省带宽赢的</b><span style="color:var(--ink-3)">，
+        是靠把 2 条全局 load（每条 1.94 周期）换成 1 条 32 路 + 1 条广播 shared load
+        （2.69 + 0.53）赢的。</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ §5 K3c ============ -->
+<section>
+<h2 id="s5"><span class="num">K3c</span>书上的线程粗化（Fig. 6.13）<a class="up" href="#t5" title="回到目录">↑</a></h2>
+  <div class="sec">
+    <h3 id="s5-1">一、代码<a class="up" href="#t5-1" title="回到目录">↑</a></h3>
+    <pre>// ---------------------------------------------------------------------------
+__global__ void sgemm_k3c(int M, int N, int K, float alpha,
+                          const float *A, const float *B, float beta, float *C) {
+    __shared__ float Mds[TILE][TILE];
+    __shared__ float Nds[TILE][TILE];
+
+    const int tx = threadIdx.x, ty = threadIdx.y;
+    const int Row      = blockIdx.y * TILE + ty;
+    const int colStart = blockIdx.x * TILE * COARSE + tx;     // Fig. 6.13 第 13 行
+
+    float p0 = 0.0f, p1 = 0.0f, p2 = 0.0f, p3 = 0.0f;         // 代替 Pvalue[4]
+
+    for (int ph = 0; ph &lt; (K + TILE - 1) / TILE; ++ph) {
+        const int aCol = ph * TILE + tx;
+        const int bRow = ph * TILE + ty;
+
+        // ---- M tile：每阶段只搬一次 —— 粗化省下的就是这里 ----
+        Mds[ty][tx] = (Row &lt; M &amp;&amp; aCol &lt; K) ? A[Row * K + aCol] : 0.0f;
+
+        for (int c = 0; c &lt; COARSE; ++c) {                     // 粗化循环
+            const int col = colStart + c * TILE;
+
+            // ---- N tile：随列变，每个 c 各搬一次 ----
+            Nds[ty][tx] = (bRow &lt; K &amp;&amp; col &lt; N) ? B[bRow * N + col] : 0.0f;
+
+            __syncthreads();                                   // ① 写后读
+
+            float acc = 0.0f;
+            #pragma unroll
+            for (int k = 0; k &lt; TILE; ++k)
+                acc += Mds[ty][k] * Nds[k][tx];                // 内层和 K3 一字不差
+
+            __syncthreads();                                   // ② 读后写
+
+            // 寄存器轮转：p0 加上本轮结果后排到队尾
+            const float t = p0 + acc;
+            p0 = p1; p1 = p2; p2 = p3; p3 = t;
+        }
+    }
+
+    if (Row &lt; M) {
+        const int c0 = colStart, c1 = c0 + TILE, c2 = c1 + TILE, c3 = c2 + TILE;
+        if (c0 &lt; N) C[Row * N + c0] = alpha * p0 + beta * C[Row * N + c0];
+        if (c1 &lt; N) C[Row * N + c1] = alpha * p1 + beta * C[Row * N + c1];
+        if (c2 &lt; N) C[Row * N + c2] = alpha * p2 + beta * C[Row * N + c2];
+        if (c3 &lt; N) C[Row * N + c3] = alpha * p3 + beta * C[Row * N + c3];
+    }
+}</pre>
+  </div>
+  <div class="sec">
+    <h3 id="s5-2">二、省的是哪一块<a class="up" href="#t5-2" title="回到目录">↑</a></h3>
+    <figure class="fig">
+    <svg viewBox="0 0 720 330" role="img" aria-label="分块矩阵乘中 A 的块向右滑动、B 的块向下滑动">
+      <g font-family="var(--font-mono)" font-size="10.5">
+        <!-- B / N 在右上 -->
+        <text x="400" y="24" font-family="var(--font-body)" font-size="12.5"
+          font-weight="650" fill="var(--accent)">B（4096×4096）</text>
+        <rect x="400" y="32" width="220" height="120" fill="none" stroke="var(--rule)"/>
+        <rect x="460" y="32" width="30" height="120" fill="var(--accent-soft)"/>
+        <g fill="none" stroke="var(--accent)" stroke-width="1.6">
+          <rect x="460" y="36" width="30" height="26"/>
+          <rect x="460" y="66" width="30" height="26"/>
+          <rect x="460" y="120" width="30" height="26"/>
+        </g>
+        <text x="500" y="53" fill="var(--accent)" font-weight="700">ph = 0</text>
+        <text x="500" y="83" fill="var(--accent)" font-weight="700">ph = 1</text>
+        <text x="500" y="108" fill="var(--ink-3)">⋮</text>
+        <text x="500" y="137" fill="var(--accent)" font-weight="700">ph = 127</text>
+        <g stroke="var(--accent)" stroke-width="1.2" fill="none" marker-end="url(#a5)">
+          <line x1="447" y1="40" x2="447" y2="142"/>
+        </g>
+        <text x="628" y="90" fill="var(--ink-3)">↑ 第 64–95 列</text>
+
+        <!-- A / M 在左下 -->
+        <text x="60" y="180" font-family="var(--font-body)" font-size="12.5"
+          font-weight="650" fill="var(--crit)">A（4096×4096）</text>
+        <rect x="60" y="190" width="280" height="120" fill="none" stroke="var(--rule)"/>
+        <rect x="60" y="228" width="280" height="30" fill="var(--crit-soft)"/>
+        <g fill="none" stroke="var(--crit)" stroke-width="1.6">
+          <rect x="64" y="228" width="26" height="30"/>
+          <rect x="94" y="228" width="26" height="30"/>
+          <rect x="306" y="228" width="26" height="30"/>
+        </g>
+        <text x="62" y="222" fill="var(--crit)" font-weight="700">ph=0</text>
+        <text x="92" y="222" fill="var(--crit)" font-weight="700">ph=1</text>
+        <text x="180" y="247" fill="var(--ink-3)">⋯</text>
+        <text x="292" y="222" fill="var(--crit)" font-weight="700">ph=127</text>
+        <g stroke="var(--crit)" stroke-width="1.2" fill="none" marker-end="url(#c5)">
+          <line x1="126" y1="268" x2="300" y2="268"/>
+        </g>
+        <text x="60" y="290" fill="var(--ink-3)">↑ 第 96–127 行</text>
+
+        <!-- C / P 在右下 -->
+        <text x="400" y="180" font-family="var(--font-body)" font-size="12.5"
+          font-weight="650" fill="var(--good)">C（输出）</text>
+        <rect x="400" y="190" width="220" height="120" fill="none" stroke="var(--rule)"/>
+        <rect x="460" y="228" width="30" height="30" fill="var(--good-soft)"/>
+        <rect x="460" y="228" width="30" height="30" fill="none"
+          stroke="var(--good)" stroke-width="2"/>
+        <text x="500" y="240" fill="var(--good)" font-weight="700">block(2,3) 的</text>
+        <text x="500" y="252" fill="var(--good)" font-weight="700">32×32 输出块</text>
+        <text x="400" y="290" fill="var(--ink-3)">行 96–127 × 列 64–95</text>
+      </g>
+      <defs>
+        <marker id="a5" viewBox="0 0 10 10" refX="9" refY="5"
+          markerWidth="5" markerHeight="5" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent)"/>
+        </marker>
+        <marker id="c5" viewBox="0 0 10 10" refX="9" refY="5"
+          markerWidth="5" markerHeight="5" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--crit)"/>
+        </marker>
+      </defs>
+    </svg>
+    <figcaption class="cap"><strong>一个 block 的 128 个阶段</strong>：
+      <b>A 上的方块沿着自己那条行带<span style="color:var(--crit)">向右滑</span>，
+      B 上的方块沿着自己那条列带<span style="color:var(--accent)">向下滑</span></b>，
+      每滑一格就是一个阶段。
+      <span style="color:var(--ink-3)">两个方块每次都被搬进 shared memory，
+      供 block 里 1024 个线程共同使用。</span></figcaption>
+  </figure>C
+    <p class="prose">
+      <b>粗化前，同一行的 4 个输出 tile 由 4 个 block 算，每个 block 都把同一块 M tile 搬一遍 —— 共搬 4 次。</b>
+      <span style="color:var(--ink-3)">粗化后一个 block 全包了，M tile 只搬一次。
+      算术强度 7.969 → 12.720，涨 1.6 倍。</span>
+    </p>
+    <div class="callout warn">
+      <p class="k">又是同一个剧本</p>
+      <p style="margin-bottom:0"><b>字节账涨 1.6 倍，实测只快 1.082×。</b>
+        <span style="color:var(--ink-3)">条数账同样几乎没动（2.062 → 2.039）——
+        它省的是"搬进 shared"那一侧，而内层循环里每个 FMA 仍然要发
+        1 条 32 路 + 1 条广播，一条都没少。</span>
+        <span style="color:var(--crit);font-weight:650">
+        K3 → K3c 是整条链上唯一一次"只动字节账"的干净实验，结果是 8%。</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ §6 K4 ============ -->
+<section>
+<h2 id="s6"><span class="num">K4</span>1D 寄存器分块：整条链上最大的一步<a class="up" href="#t6" title="回到目录">↑</a></h2>
+  <div class="sec">
+    <h3 id="s6-1">一、代码<a class="up" href="#t6-1" title="回到目录">↑</a></h3>
+    <pre>// ---------------------------------------------------------------------------
+__global__ void sgemm_k4(int M, int N, int K, float alpha,
+                         const float *A, const float *B, float beta, float *C) {
+    __shared__ float Mds[TILE][TILE];
+    __shared__ float Nds[TILE][TILE];
+
+    const int tx = threadIdx.x, ty = threadIdx.y;
+    const int Col  = blockIdx.x * TILE + tx;                  // 列：tx 连续
+    const int i0   = ty * CF;                                 // tile 内第 i0..i0+7 行归我
+    const int Row0 = blockIdx.y * TILE + i0;                  // 全局第 Row0..Row0+7 行
+
+    float a0 = 0.0f, a1 = 0.0f, a2 = 0.0f, a3 = 0.0f,
+          a4 = 0.0f, a5 = 0.0f, a6 = 0.0f, a7 = 0.0f;
+
+    for (int ph = 0; ph &lt; (K + TILE - 1) / TILE; ++ph) {
+        const int aCol = ph * TILE + tx;
+
+        // ---- 协同加载：128 个线程 × 每人 16 格 = 两块 32×32 的 tile ----
+        for (int r = 0; r &lt; CF; ++r) {
+            const int row  = Row0 + r;
+            const int bRow = ph * TILE + i0 + r;
+            Mds[i0 + r][tx] = (row  &lt; M &amp;&amp; aCol &lt; K) ? A[row  * K + aCol] : 0.0f;
+            Nds[i0 + r][tx] = (bRow &lt; K &amp;&amp; Col  &lt; N) ? B[bRow * N + Col ] : 0.0f;
+        }
+
+        __syncthreads();                                      // ① 写后读
+
+        // ---- 内层：1 个 N 进寄存器，用 8 次 ----
+        for (int k = 0; k &lt; TILE; ++k) {
+            const float n = Nds[k][tx];
+            a0 += Mds[i0    ][k] * n;
+            a1 += Mds[i0 + 1][k] * n;
+            a2 += Mds[i0 + 2][k] * n;
+            a3 += Mds[i0 + 3][k] * n;
+            a4 += Mds[i0 + 4][k] * n;
+            a5 += Mds[i0 + 5][k] * n;
+            a6 += Mds[i0 + 6][k] * n;
+            a7 += Mds[i0 + 7][k] * n;
+        }
+
+        __syncthreads();                                      // ② 读后写
+    }
+
+    if (Col &lt; N) {
+        if (Row0     &lt; M) C[(Row0    ) * N + Col] = alpha * a0 + beta * C[(Row0    ) * N + Col];
+        if (Row0 + 1 &lt; M) C[(Row0 + 1) * N + Col] = alpha * a1 + beta * C[(Row0 + 1) * N + Col];
+        if (Row0 + 2 &lt; M) C[(Row0 + 2) * N + Col] = alpha * a2 + beta * C[(Row0 + 2) * N + Col];
+        if (Row0 + 3 &lt; M) C[(Row0 + 3) * N + Col] = alpha * a3 + beta * C[(Row0 + 3) * N + Col];
+        if (Row0 + 4 &lt; M) C[(Row0 + 4) * N + Col] = alpha * a4 + beta * C[(Row0 + 4) * N + Col];
+        if (Row0 + 5 &lt; M) C[(Row0 + 5) * N + Col] = alpha * a5 + beta * C[(Row0 + 5) * N + Col];
+        if (Row0 + 6 &lt; M) C[(Row0 + 6) * N + Col] = alpha * a6 + beta * C[(Row0 + 6) * N + Col];
+        if (Row0 + 7 &lt; M) C[(Row0 + 7) * N + Col] = alpha * a7 + beta * C[(Row0 + 7) * N + Col];
+    }
+}</pre>
+  </div>
+  <div class="sec">
+    <h3 id="s6-2">二、一个元素读一次，用 8 次<a class="up" href="#t6-2" title="回到目录">↑</a></h3>
+    <figure class="fig">
+    <svg viewBox="0 0 860 268" role="img" aria-label="同一列上的 8 个输出，各自要用 A 的不同一行，但共用 B 的同一列。所以 B 的那个元素可以读一次进寄存器，用 8 次；A 的 8 个元素省不掉。"><g font-size="12" fill="currentColor"><text x="92" y="40" text-anchor="middle" font-weight="700">C 的一列 8 个输出</text><text x="332" y="40" text-anchor="middle" font-weight="700" style="fill:var(--warn)">A：8 行，各不相同</text><text x="545" y="40" text-anchor="middle" font-weight="700" style="fill:var(--accent)">B：同一列</text><rect x="42" y="52" width="100" height="20" rx="2" fill="none" stroke="currentColor"/><text x="92" y="66" text-anchor="middle" font-size="11">C(Row0+0, Col)</text><rect x="192" y="52" width="280" height="20" rx="2" style="fill:var(--warn-soft); stroke:var(--warn)"/><text x="332" y="66" text-anchor="middle" font-size="11">A 的第 Row0+0 行</text><rect x="42" y="74" width="100" height="20" rx="2" fill="none" stroke="currentColor"/><text x="92" y="88" text-anchor="middle" font-size="11">C(Row0+1, Col)</text><rect x="192" y="74" width="280" height="20" rx="2" style="fill:var(--warn-soft); stroke:var(--warn)"/><text x="332" y="88" text-anchor="middle" font-size="11">A 的第 Row0+1 行</text><rect x="42" y="96" width="100" height="20" rx="2" fill="none" stroke="currentColor"/><text x="92" y="110" text-anchor="middle" font-size="11">C(Row0+2, Col)</text><rect x="192" y="96" width="280" height="20" rx="2" style="fill:var(--warn-soft); stroke:var(--warn)"/><text x="332" y="110" text-anchor="middle" font-size="11">A 的第 Row0+2 行</text><rect x="42" y="118" width="100" height="20" rx="2" fill="none" stroke="currentColor"/><text x="92" y="132" text-anchor="middle" font-size="11">C(Row0+3, Col)</text><rect x="192" y="118" width="280" height="20" rx="2" style="fill:var(--warn-soft); stroke:var(--warn)"/><text x="332" y="132" text-anchor="middle" font-size="11">A 的第 Row0+3 行</text><rect x="42" y="140" width="100" height="20" rx="2" fill="none" stroke="currentColor"/><text x="92" y="154" text-anchor="middle" font-size="11">C(Row0+4, Col)</text><rect x="192" y="140" width="280" height="20" rx="2" style="fill:var(--warn-soft); stroke:var(--warn)"/><text x="332" y="154" text-anchor="middle" font-size="11">A 的第 Row0+4 行</text><rect x="42" y="162" width="100" height="20" rx="2" fill="none" stroke="currentColor"/><text x="92" y="176" text-anchor="middle" font-size="11">C(Row0+5, Col)</text><rect x="192" y="162" width="280" height="20" rx="2" style="fill:var(--warn-soft); stroke:var(--warn)"/><text x="332" y="176" text-anchor="middle" font-size="11">A 的第 Row0+5 行</text><rect x="42" y="184" width="100" height="20" rx="2" fill="none" stroke="currentColor"/><text x="92" y="198" text-anchor="middle" font-size="11">C(Row0+6, Col)</text><rect x="192" y="184" width="280" height="20" rx="2" style="fill:var(--warn-soft); stroke:var(--warn)"/><text x="332" y="198" text-anchor="middle" font-size="11">A 的第 Row0+6 行</text><rect x="42" y="206" width="100" height="20" rx="2" fill="none" stroke="currentColor"/><text x="92" y="220" text-anchor="middle" font-size="11">C(Row0+7, Col)</text><rect x="192" y="206" width="280" height="20" rx="2" style="fill:var(--warn-soft); stroke:var(--warn)"/><text x="332" y="220" text-anchor="middle" font-size="11">A 的第 Row0+7 行</text><text x="167" y="140" text-anchor="middle" font-size="16">=</text><text x="487" y="140" text-anchor="middle" font-size="16">×</text><rect x="505" y="52" width="80" height="196" rx="2" style="fill:var(--accent-soft); stroke:var(--accent)" stroke-width="1.6"/><text x="545" y="146" text-anchor="middle" font-size="11" style="fill:var(--accent)">B 的第 Col 列</text><text x="610" y="120" font-weight="700" style="fill:var(--accent)">8 个输出用的是同一列 B</text><text x="610" y="142" style="fill:var(--accent)">→ 读一次进寄存器 n，用 8 次</text><text x="610" y="176" font-weight="700" style="fill:var(--warn)">A 那 8 行各不相同</text><text x="610" y="198" style="fill:var(--warn)">→ 8 条 load 省不掉</text><text x="610" y="220" font-size="11" style="fill:var(--ink-3)">（但它们是廉价的广播，见图 K4-2）</text></g></svg>
+    <figcaption class="cap">
+      <strong>图 K4-1 · 把 8 个输出竖着排在同一列上，复用就出现了。</strong>
+      <code>C(Row0+r, Col) = Σₖ A(Row0+r, k) · B(k, Col)</code> —— <b>r 一变，A 换一行，B 那一列却不变</b>。
+      所以每一步 k 只需要取一次 B，就能喂 8 个乘加。
+    </figcaption>
+  </figure>
+    <p class="prose">
+      <b>同一列上的 8 个输出，各自要用 A 的不同一行，但共用 B 的同一列。</b>
+      <span style="color:var(--ink-3)">所以 B 的那个元素可以读一次进寄存器，用 8 次；A 的 8 个元素省不掉。</span>
+    </p>
+  </div>
+  <div class="sec">
+    <h3 id="s6-3">三、关键：两种 shared load 的单价差 5 倍<a class="up" href="#t6-3" title="回到目录">↑</a></h3>
+    <figure class="fig">
+    <svg viewBox="0 0 860 372" role="img" aria-label="同一条 shared load 指令，32 个线程各算各的地址。广播：所有线程算出同一个地址，硬件取一次 4 字节复制给全 warp，约 0.5 周期。32 路无冲突：每个线程一个地址，正好落在 32 个不同 bank，一拍取回 128 字节，约 2.54 周期。四路冲突：地址步长是 4，只用到 8 个 bank，每个 bank 排 4 个线程，要拆成 4 拍。"><g font-size="12" fill="currentColor"><defs><marker id="bcarr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--accent)"/></marker><marker id="bcarrw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--warn)"/></marker><marker id="bcarrc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--crit)"/></marker></defs><text x="20" y="24" font-weight="700">同一条 shared load 指令，32 个线程各算各的地址（图里只画 8 个 lane / 8 个 bank，其余同理）</text><text x="150" y="48" text-anchor="middle" font-size="11" style="fill:var(--ink-3)">warp 的 8 个 lane</text><text x="620" y="48" text-anchor="middle" font-size="11" style="fill:var(--ink-3)">shared memory 的 8 个 bank</text><text x="20" y="78" font-weight="700" style="fill:var(--accent)">广播</text><text x="20" y="96" font-size="10" style="fill:var(--ink-3)">Mds[ty][k]　下标里没有 tx</text><rect x="90" y="60" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="103" y="78" text-anchor="middle" font-size="10">T0</text><rect x="120" y="60" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="133" y="78" text-anchor="middle" font-size="10">T1</text><rect x="150" y="60" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="163" y="78" text-anchor="middle" font-size="10">T2</text><rect x="180" y="60" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="193" y="78" text-anchor="middle" font-size="10">T3</text><rect x="210" y="60" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="223" y="78" text-anchor="middle" font-size="10">T4</text><rect x="240" y="60" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="253" y="78" text-anchor="middle" font-size="10">T5</text><rect x="270" y="60" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="283" y="78" text-anchor="middle" font-size="10">T6</text><rect x="300" y="60" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="313" y="78" text-anchor="middle" font-size="10">T7</text><rect x="470" y="60" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="483" y="78" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">0</text><rect x="500" y="60" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="513" y="78" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">1</text><rect x="530" y="60" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="543" y="78" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">2</text><rect x="560" y="60" width="26" height="26" rx="3" style="fill:var(--accent-soft); stroke:var(--accent)" stroke-width="1.4"/><text x="573" y="78" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">3</text><rect x="590" y="60" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="603" y="78" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">4</text><rect x="620" y="60" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="633" y="78" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">5</text><rect x="650" y="60" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="663" y="78" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">6</text><rect x="680" y="60" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="693" y="78" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">7</text><line x1="103" y1="88" x2="573" y2="88" stroke-width="0.9" style="stroke:var(--accent)" opacity="0.75"/><line x1="573" y1="88" x2="573" y2="86" stroke-width="1.2" style="stroke:var(--accent)" marker-end="url(#bcarr)"/><line x1="133" y1="88" x2="573" y2="88" stroke-width="0.9" style="stroke:var(--accent)" opacity="0.75"/><line x1="573" y1="88" x2="573" y2="86" stroke-width="1.2" style="stroke:var(--accent)" marker-end="url(#bcarr)"/><line x1="163" y1="88" x2="573" y2="88" stroke-width="0.9" style="stroke:var(--accent)" opacity="0.75"/><line x1="573" y1="88" x2="573" y2="86" stroke-width="1.2" style="stroke:var(--accent)" marker-end="url(#bcarr)"/><line x1="193" y1="88" x2="573" y2="88" stroke-width="0.9" style="stroke:var(--accent)" opacity="0.75"/><line x1="573" y1="88" x2="573" y2="86" stroke-width="1.2" style="stroke:var(--accent)" marker-end="url(#bcarr)"/><line x1="223" y1="88" x2="573" y2="88" stroke-width="0.9" style="stroke:var(--accent)" opacity="0.75"/><line x1="573" y1="88" x2="573" y2="86" stroke-width="1.2" style="stroke:var(--accent)" marker-end="url(#bcarr)"/><line x1="253" y1="88" x2="573" y2="88" stroke-width="0.9" style="stroke:var(--accent)" opacity="0.75"/><line x1="573" y1="88" x2="573" y2="86" stroke-width="1.2" style="stroke:var(--accent)" marker-end="url(#bcarr)"/><line x1="283" y1="88" x2="573" y2="88" stroke-width="0.9" style="stroke:var(--accent)" opacity="0.75"/><line x1="573" y1="88" x2="573" y2="86" stroke-width="1.2" style="stroke:var(--accent)" marker-end="url(#bcarr)"/><line x1="313" y1="88" x2="573" y2="88" stroke-width="0.9" style="stroke:var(--accent)" opacity="0.75"/><line x1="573" y1="88" x2="573" y2="86" stroke-width="1.2" style="stroke:var(--accent)" marker-end="url(#bcarr)"/><text x="90" y="114" font-size="10" style="fill:var(--ink-3)">取一次 4 字节，复制给全 warp</text><text x="740" y="78" font-size="11" font-weight="700" style="fill:var(--accent)">≈ 0.50 周期</text><text x="20" y="188" font-weight="700" style="fill:var(--warn)">32 路</text><text x="20" y="206" font-size="10" style="fill:var(--ink-3)">Nds[k][tx]　tx 的系数是 1</text><rect x="90" y="170" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="103" y="188" text-anchor="middle" font-size="10">T0</text><rect x="120" y="170" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="133" y="188" text-anchor="middle" font-size="10">T1</text><rect x="150" y="170" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="163" y="188" text-anchor="middle" font-size="10">T2</text><rect x="180" y="170" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="193" y="188" text-anchor="middle" font-size="10">T3</text><rect x="210" y="170" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="223" y="188" text-anchor="middle" font-size="10">T4</text><rect x="240" y="170" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="253" y="188" text-anchor="middle" font-size="10">T5</text><rect x="270" y="170" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="283" y="188" text-anchor="middle" font-size="10">T6</text><rect x="300" y="170" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="313" y="188" text-anchor="middle" font-size="10">T7</text><rect x="470" y="170" width="26" height="26" rx="3" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="483" y="188" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">0</text><rect x="500" y="170" width="26" height="26" rx="3" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="513" y="188" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">1</text><rect x="530" y="170" width="26" height="26" rx="3" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="543" y="188" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">2</text><rect x="560" y="170" width="26" height="26" rx="3" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="573" y="188" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">3</text><rect x="590" y="170" width="26" height="26" rx="3" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="603" y="188" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">4</text><rect x="620" y="170" width="26" height="26" rx="3" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="633" y="188" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">5</text><rect x="650" y="170" width="26" height="26" rx="3" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="663" y="188" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">6</text><rect x="680" y="170" width="26" height="26" rx="3" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="693" y="188" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">7</text><line x1="103" y1="198" x2="483" y2="198" stroke-width="0.9" style="stroke:var(--warn)" opacity="0.75"/><line x1="483" y1="198" x2="483" y2="196" stroke-width="1.2" style="stroke:var(--warn)" marker-end="url(#bcarrw)"/><line x1="133" y1="198" x2="513" y2="198" stroke-width="0.9" style="stroke:var(--warn)" opacity="0.75"/><line x1="513" y1="198" x2="513" y2="196" stroke-width="1.2" style="stroke:var(--warn)" marker-end="url(#bcarrw)"/><line x1="163" y1="198" x2="543" y2="198" stroke-width="0.9" style="stroke:var(--warn)" opacity="0.75"/><line x1="543" y1="198" x2="543" y2="196" stroke-width="1.2" style="stroke:var(--warn)" marker-end="url(#bcarrw)"/><line x1="193" y1="198" x2="573" y2="198" stroke-width="0.9" style="stroke:var(--warn)" opacity="0.75"/><line x1="573" y1="198" x2="573" y2="196" stroke-width="1.2" style="stroke:var(--warn)" marker-end="url(#bcarrw)"/><line x1="223" y1="198" x2="603" y2="198" stroke-width="0.9" style="stroke:var(--warn)" opacity="0.75"/><line x1="603" y1="198" x2="603" y2="196" stroke-width="1.2" style="stroke:var(--warn)" marker-end="url(#bcarrw)"/><line x1="253" y1="198" x2="633" y2="198" stroke-width="0.9" style="stroke:var(--warn)" opacity="0.75"/><line x1="633" y1="198" x2="633" y2="196" stroke-width="1.2" style="stroke:var(--warn)" marker-end="url(#bcarrw)"/><line x1="283" y1="198" x2="663" y2="198" stroke-width="0.9" style="stroke:var(--warn)" opacity="0.75"/><line x1="663" y1="198" x2="663" y2="196" stroke-width="1.2" style="stroke:var(--warn)" marker-end="url(#bcarrw)"/><line x1="313" y1="198" x2="693" y2="198" stroke-width="0.9" style="stroke:var(--warn)" opacity="0.75"/><line x1="693" y1="198" x2="693" y2="196" stroke-width="1.2" style="stroke:var(--warn)" marker-end="url(#bcarrw)"/><text x="90" y="224" font-size="10" style="fill:var(--ink-3)">32 个 bank 各取一个字，凑 128 字节</text><text x="740" y="188" font-size="11" font-weight="700" style="fill:var(--warn)">≈ 2.54 周期</text><text x="20" y="298" font-weight="700" style="fill:var(--crit)">四路冲突</text><text x="20" y="316" font-size="10" style="fill:var(--ink-3)">Nds[k][tx*4]　tx 的系数是 4</text><rect x="90" y="280" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="103" y="298" text-anchor="middle" font-size="10">T0</text><rect x="120" y="280" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="133" y="298" text-anchor="middle" font-size="10">T1</text><rect x="150" y="280" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="163" y="298" text-anchor="middle" font-size="10">T2</text><rect x="180" y="280" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="193" y="298" text-anchor="middle" font-size="10">T3</text><rect x="210" y="280" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="223" y="298" text-anchor="middle" font-size="10">T4</text><rect x="240" y="280" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="253" y="298" text-anchor="middle" font-size="10">T5</text><rect x="270" y="280" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="283" y="298" text-anchor="middle" font-size="10">T6</text><rect x="300" y="280" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="313" y="298" text-anchor="middle" font-size="10">T7</text><rect x="470" y="280" width="26" height="26" rx="3" style="fill:var(--crit-soft); stroke:var(--crit)" stroke-width="1.4"/><text x="483" y="298" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">0</text><rect x="500" y="280" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="513" y="298" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">1</text><rect x="530" y="280" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="543" y="298" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">2</text><rect x="560" y="280" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="573" y="298" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">3</text><rect x="590" y="280" width="26" height="26" rx="3" style="fill:var(--crit-soft); stroke:var(--crit)" stroke-width="1.4"/><text x="603" y="298" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">4</text><rect x="620" y="280" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="633" y="298" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">5</text><rect x="650" y="280" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="663" y="298" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">6</text><rect x="680" y="280" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="693" y="298" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">7</text><line x1="103" y1="308" x2="483" y2="308" stroke-width="0.9" style="stroke:var(--crit)" opacity="0.75"/><line x1="483" y1="308" x2="483" y2="306" stroke-width="1.2" style="stroke:var(--crit)" marker-end="url(#bcarrc)"/><line x1="133" y1="308" x2="603" y2="308" stroke-width="0.9" style="stroke:var(--crit)" opacity="0.75"/><line x1="603" y1="308" x2="603" y2="306" stroke-width="1.2" style="stroke:var(--crit)" marker-end="url(#bcarrc)"/><line x1="163" y1="308" x2="483" y2="308" stroke-width="0.9" style="stroke:var(--crit)" opacity="0.75"/><line x1="483" y1="308" x2="483" y2="306" stroke-width="1.2" style="stroke:var(--crit)" marker-end="url(#bcarrc)"/><line x1="193" y1="308" x2="603" y2="308" stroke-width="0.9" style="stroke:var(--crit)" opacity="0.75"/><line x1="603" y1="308" x2="603" y2="306" stroke-width="1.2" style="stroke:var(--crit)" marker-end="url(#bcarrc)"/><line x1="223" y1="308" x2="483" y2="308" stroke-width="0.9" style="stroke:var(--crit)" opacity="0.75"/><line x1="483" y1="308" x2="483" y2="306" stroke-width="1.2" style="stroke:var(--crit)" marker-end="url(#bcarrc)"/><line x1="253" y1="308" x2="603" y2="308" stroke-width="0.9" style="stroke:var(--crit)" opacity="0.75"/><line x1="603" y1="308" x2="603" y2="306" stroke-width="1.2" style="stroke:var(--crit)" marker-end="url(#bcarrc)"/><line x1="283" y1="308" x2="483" y2="308" stroke-width="0.9" style="stroke:var(--crit)" opacity="0.75"/><line x1="483" y1="308" x2="483" y2="306" stroke-width="1.2" style="stroke:var(--crit)" marker-end="url(#bcarrc)"/><line x1="313" y1="308" x2="603" y2="308" stroke-width="0.9" style="stroke:var(--crit)" opacity="0.75"/><line x1="603" y1="308" x2="603" y2="306" stroke-width="1.2" style="stroke:var(--crit)" marker-end="url(#bcarrc)"/><text x="90" y="334" font-size="10" style="fill:var(--ink-3)">只用到 1/4 的 bank，每个排 4 个线程</text><text x="740" y="298" font-size="11" font-weight="700" style="fill:var(--crit)">拆成 4 拍</text><text x="20" y="366" font-size="10" style="fill:var(--ink-3)">bank 编号 = (字节地址 ÷ 4) mod 32　　一拍里每个 bank 只能服务一个地址 —— 除非大家读的是同一个地址（那就走广播）</text></g></svg>
+    <figcaption class="cap">
+      <strong>图 K4-2b · shared memory 按 4 字节交错分成 32 个 bank，<code>bank = (地址 ÷ 4) mod 32</code>。</strong>
+      一拍里每个 bank 只能服务一个地址 —— <b>除非 32 个线程读的是同一个地址，那条路叫广播</b>。
+    </figcaption>
+  </figure>
+    <div class="callout link">
+      <p class="k">一眼判定法</p>
+      <p style="margin-bottom:0"><b>看 shared 下标里 <code>tx</code> 前面乘了什么：</b>
+        <span style="color:var(--ink-3)">没有 <code>tx</code> → 广播，硬件取一次复制给全 warp，
+        本批实测单价 <b>0.53</b> 周期；系数是 1 → 干净的 32 路，32 个 bank 各服务一个地址，
+        单价 <b>2.69</b> 周期；系数 ≥ 2 → 开始撞 bank，更贵。</span></p>
+    </div>
+    <pre>K3 每 8 个 FMA：8 条广播 + 8 条 32 路 = 8×0.53 + 8×2.69 = 25.8 周期
+K4 每 8 个 FMA：8 条广播 + 1 条 32 路 = 8×0.53 + 1×2.69 = 7.0 周期
+                                                          <span class="a">↓ 3.7×</span></pre>
+    <p class="prose">
+      <b>算术强度一个字没动（7.969 → 7.969），<code>dist</code> 从 1.000 掉到 0.125。</b>
+      <span style="color:var(--crit);font-weight:650">节拍 3.34 → 0.99，实测 3.359×。</span>
+    </p>
+  </div>
+</section>
+
+<!-- ============ §7 K5 ============ -->
+<section>
+<h2 id="s7"><span class="num">K5</span>2D 寄存器分块：两个方向一起复用<a class="up" href="#t7" title="回到目录">↑</a></h2>
+  <div class="sec">
+    <h3 id="s7-1">一、代码<a class="up" href="#t7-1" title="回到目录">↑</a></h3>
+    <pre>// ---------------------------------------------------------------------------
+__global__ void sgemm_k5(int M, int N, int K, float alpha,
+                         const float *A, const float *B, float beta, float *C) {
+    __shared__ float Mds[TILE][TILE];               //  4 KB
+    __shared__ float Nds[TILE][TILE * TN];          // 16 KB
+
+    const int tx = threadIdx.x, ty = threadIdx.y;
+    const int i0      = ty * CF;
+    const int Row0    = blockIdx.y * TILE + i0;
+    const int colBase = blockIdx.x * TILE * TN;
+
+    float acc[CF][TN];
+    #pragma unroll
+    for (int r = 0; r &lt; CF; ++r)
+        #pragma unroll
+        for (int j = 0; j &lt; TN; ++j) acc[r][j] = 0.0f;
+
+    for (int ph = 0; ph &lt; (K + TILE - 1) / TILE; ++ph) {
+        const int aCol = ph * TILE + tx;
+
+        // ---- 搬 A 的 tile：每线程 8 格（和 K4 一样）----
+        #pragma unroll
+        for (int r = 0; r &lt; CF; ++r) {
+            const int row = Row0 + r;
+            Mds[i0 + r][tx] = (row &lt; M &amp;&amp; aCol &lt; K) ? A[row * K + aCol] : 0.0f;
+        }
+
+        // ---- 搬 B 的 tile：每线程 8 行 × 4 段 = 32 格，段内仍以 tx 结尾 → 合并 ----
+        #pragma unroll
+        for (int r = 0; r &lt; CF; ++r) {
+            const int bRow = ph * TILE + i0 + r;
+            #pragma unroll
+            for (int j = 0; j &lt; TN; ++j) {
+                const int col = colBase + j * TILE + tx;
+                Nds[i0 + r][j * TILE + tx] =
+                    (bRow &lt; K &amp;&amp; col &lt; N) ? B[bRow * N + col] : 0.0f;
+            }
+        }
+
+        __syncthreads();                            // ① 写后读
+
+        // ---- 内层：一次 8×4 的外积 ----
+        #pragma unroll
+        for (int k = 0; k &lt; TILE; ++k) {
+            float m[CF], n[TN];
+            #pragma unroll
+            for (int r = 0; r &lt; CF; ++r) m[r] = Mds[i0 + r][k];          // 8 条广播
+            #pragma unroll
+            for (int j = 0; j &lt; TN; ++j) n[j] = Nds[k][j * TILE + tx];   // 4 条 32 路
+
+            #pragma unroll
+            for (int r = 0; r &lt; CF; ++r)
+                #pragma unroll
+                for (int j = 0; j &lt; TN; ++j)
+                    acc[r][j] += m[r] * n[j];                            // 32 个 FMA
+        }
+
+        __syncthreads();                            // ② 读后写
+    }
+
+    #pragma unroll
+    for (int r = 0; r &lt; CF; ++r) {
+        const int row = Row0 + r;
+        if (row &gt;= M) continue;
+        #pragma unroll
+        for (int j = 0; j &lt; TN; ++j) {
+            const int col = colBase + j * TILE + tx;
+            if (col &lt; N) C[row * N + col] = alpha * acc[r][j] + beta * C[row * N + col];
+        }
+    }
+}</pre>
+  </div>
+  <div class="sec">
+    <h3 id="s7-2">二、8 × 4 = 32 个输出，每个 M 用 4 次、每个 N 用 8 次<a class="up" href="#t7-2" title="回到目录">↑</a></h3>
+    <figure class="fig">
+    <svg viewBox="0 0 860 322" role="img" aria-label="每一步 k，线程把 8 个 M 元素和 4 个 N 元素读进寄存器，做 8 乘 4 等于 32 个乘加。每个 M 用 4 次，每个 N 用 8 次。"><g font-size="12" fill="currentColor"><text x="20" y="26" font-weight="700">第 k 步：读 8 + 4 = 12 个数，做 32 个乘加</text><rect x="230" y="48" width="60" height="24" rx="2" style="fill:var(--accent-soft); stroke:var(--accent)" stroke-width="1.4"/><text x="260" y="65" text-anchor="middle" font-size="11" style="fill:var(--accent)">n[0]</text><rect x="296" y="48" width="60" height="24" rx="2" style="fill:var(--accent-soft); stroke:var(--accent)" stroke-width="1.4"/><text x="326" y="65" text-anchor="middle" font-size="11" style="fill:var(--accent)">n[1]</text><rect x="362" y="48" width="60" height="24" rx="2" style="fill:var(--accent-soft); stroke:var(--accent)" stroke-width="1.4"/><text x="392" y="65" text-anchor="middle" font-size="11" style="fill:var(--accent)">n[2]</text><rect x="428" y="48" width="60" height="24" rx="2" style="fill:var(--accent-soft); stroke:var(--accent)" stroke-width="1.4"/><text x="458" y="65" text-anchor="middle" font-size="11" style="fill:var(--accent)">n[3]</text><text x="362" y="40" text-anchor="middle" font-size="11" style="fill:var(--accent)">4 个 N（Nds[k][j*32+tx]，32 路）</text><rect x="140" y="86" width="76" height="24" rx="2" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="178" y="102" text-anchor="middle" font-size="11" style="fill:var(--warn)">m[0]</text><rect x="230" y="86" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="260" y="102" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[0][0]</text><rect x="296" y="86" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="326" y="102" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[0][1]</text><rect x="362" y="86" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="392" y="102" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[0][2]</text><rect x="428" y="86" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="458" y="102" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[0][3]</text><rect x="140" y="112" width="76" height="24" rx="2" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="178" y="128" text-anchor="middle" font-size="11" style="fill:var(--warn)">m[1]</text><rect x="230" y="112" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="260" y="128" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[1][0]</text><rect x="296" y="112" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="326" y="128" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[1][1]</text><rect x="362" y="112" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="392" y="128" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[1][2]</text><rect x="428" y="112" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="458" y="128" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[1][3]</text><rect x="140" y="138" width="76" height="24" rx="2" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="178" y="154" text-anchor="middle" font-size="11" style="fill:var(--warn)">m[2]</text><rect x="230" y="138" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="260" y="154" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[2][0]</text><rect x="296" y="138" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="326" y="154" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[2][1]</text><rect x="362" y="138" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="392" y="154" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[2][2]</text><rect x="428" y="138" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="458" y="154" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[2][3]</text><rect x="140" y="164" width="76" height="24" rx="2" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="178" y="180" text-anchor="middle" font-size="11" style="fill:var(--warn)">m[3]</text><rect x="230" y="164" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="260" y="180" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[3][0]</text><rect x="296" y="164" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="326" y="180" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[3][1]</text><rect x="362" y="164" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="392" y="180" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[3][2]</text><rect x="428" y="164" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="458" y="180" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[3][3]</text><rect x="140" y="190" width="76" height="24" rx="2" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="178" y="206" text-anchor="middle" font-size="11" style="fill:var(--warn)">m[4]</text><rect x="230" y="190" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="260" y="206" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[4][0]</text><rect x="296" y="190" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="326" y="206" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[4][1]</text><rect x="362" y="190" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="392" y="206" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[4][2]</text><rect x="428" y="190" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="458" y="206" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[4][3]</text><rect x="140" y="216" width="76" height="24" rx="2" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="178" y="232" text-anchor="middle" font-size="11" style="fill:var(--warn)">m[5]</text><rect x="230" y="216" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="260" y="232" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[5][0]</text><rect x="296" y="216" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="326" y="232" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[5][1]</text><rect x="362" y="216" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="392" y="232" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[5][2]</text><rect x="428" y="216" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="458" y="232" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[5][3]</text><rect x="140" y="242" width="76" height="24" rx="2" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="178" y="258" text-anchor="middle" font-size="11" style="fill:var(--warn)">m[6]</text><rect x="230" y="242" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="260" y="258" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[6][0]</text><rect x="296" y="242" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="326" y="258" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[6][1]</text><rect x="362" y="242" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="392" y="258" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[6][2]</text><rect x="428" y="242" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="458" y="258" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[6][3]</text><rect x="140" y="268" width="76" height="24" rx="2" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="178" y="284" text-anchor="middle" font-size="11" style="fill:var(--warn)">m[7]</text><rect x="230" y="268" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="260" y="284" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[7][0]</text><rect x="296" y="268" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="326" y="284" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[7][1]</text><rect x="362" y="268" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="392" y="284" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[7][2]</text><rect x="428" y="268" width="60" height="24" rx="2" fill="none" style="stroke:var(--rule)"/><text x="458" y="284" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">acc[7][3]</text><text x="70" y="180" text-anchor="middle" font-size="11" style="fill:var(--warn)">8 个 M</text><text x="70" y="198" text-anchor="middle" font-size="11" style="fill:var(--warn)">（广播）</text><text x="516" y="120" font-weight="700" style="fill:var(--warn)">每个 m 用 4 次</text><text x="516" y="142" font-size="11" style="fill:var(--ink-3)">→ 沿右边一整行</text><text x="516" y="176" font-weight="700" style="fill:var(--accent)">每个 n 用 8 次</text><text x="516" y="198" font-size="11" style="fill:var(--ink-3)">→ 沿下面一整列</text><text x="516" y="236" font-weight="700">12 条 load → 32 个 FMA</text><text x="516" y="258" font-size="11" style="fill:var(--ink-3)">K4 是 9 条 load → 8 个 FMA</text><text x="516" y="280" font-size="11" style="fill:var(--ink-3)">K3 是 2 条 load → 1 个 FMA</text><text x="140" y="308" font-size="11" style="fill:var(--ink-3)">acc[8][4] 全部住在寄存器里，整个 K 方向只写回一次</text></g></svg>
+    <figcaption class="cap">
+      <strong>图 K5-1 · 每一步 k，线程先把 8 个 M、4 个 N 读进寄存器，再做一次 8×4 的外积。</strong>
+      <b>每个 m 横着用 4 次，每个 n 竖着用 8 次</b> —— 这就是"二维"的含义。
+      32 个累加器 <code>acc[8][4]</code> 全程住在寄存器里，走完整个 K 方向才写回一次 C。
+    </figcaption>
+  </figure>
+    <pre>归一到每 32 个 FMA：
+K3  32 条广播 + 32 条 32 路  ≈ 103 周期
+K4  32 条广播 +  4 条 32 路  ≈ 28 周期
+K5   8 条广播 +  4 条 32 路  ≈ 15 周期      <span class="a">← 两个方向一起省</span></pre>
+  </div>
+  <div class="sec">
+    <h3 id="s7-3">三、占用率下降，速度反而更快<a class="up" href="#t7-3" title="回到目录">↑</a></h3>
+    <div class="tw"><table>
+      <thead><tr><th>kernel</th><th>每线程寄存器</th><th>occupancy</th><th>GFLOP/s</th><th>相邻提速</th></tr></thead>
+      <tbody>
+        <tr><td class="cn">K4</td><td class="en">54</td><td class="en">75.0%</td>
+            <td class="en">20770.6</td><td class="en">—</td></tr>
+        <tr><td class="cn">K5</td><td class="en">72</td>
+            <td class="en"><span style="color:var(--crit);font-weight:650">33.3%</span></td>
+            <td class="en">34506.4</td><td class="en"><b>1.661×</b></td></tr>
+        <tr><td class="cn">K6</td><td class="en">111</td><td class="en">33.3%</td>
+            <td class="en">40928.8</td><td class="en">1.186×</td></tr>
+      </tbody>
+      <caption><b>occupancy 砍掉一半以上，性能涨了 1.661 倍。</b>
+        <span style="color:var(--ink-3)">多数教程说"提高 occupancy"，这里正确答案是<u>降低</u>它，
+        换取每线程更多的寄存器复用。</span>
+        <span style="color:var(--crit);font-weight:650">七个 kernel 全部 0 bytes stack frame / 0 spill ——
+        K6 用到 111 个寄存器仍未溢出（上限 255）。</span></caption>
+    </table></div>
+  </div>
+</section>
+
+<!-- ============ §8 K6 ============ -->
+<section>
+<h2 id="s8"><span class="num">K6</span>float4：4 条并 1 条<a class="up" href="#t8" title="回到目录">↑</a></h2>
+  <div class="sec">
+    <h3 id="s8-1">一、代码<a class="up" href="#t8-1" title="回到目录">↑</a></h3>
+    <pre>// ---------------------------------------------------------------------------
+__global__ void sgemm_k6(int M, int N, int K, float alpha,
+                         const float *A, const float *B, float beta, float *C) {
+    __shared__ __align__(16) float Ads[TILE][TILE];           // 转置存：Ads[k][行]
+    __shared__ __align__(16) float Bds[TILE][TILE * TN];
+
+    const int tx = threadIdx.x, ty = threadIdx.y;
+    const int tid     = ty * TILE + tx;                       // 0..127
+    const int i0      = ty * CF;
+    const int Row0    = blockIdx.y * TILE + i0;
+    const int colBase = blockIdx.x * TILE * TN;
+    const int col0    = colBase + tx * TN;                    // 连续 4 列
+
+    float acc[CF][TN];
+    #pragma unroll
+    for (int r = 0; r &lt; CF; ++r)
+        #pragma unroll
+        for (int j = 0; j &lt; TN; ++j) acc[r][j] = 0.0f;
+
+    const int phases = (K + TILE - 1) / TILE;
+    for (int ph = 0; ph &lt; phases; ++ph) {
+        // ---- 搬 A：TILE×TILE 个 float = 256 个 float4，128 线程各 2 条 ----
+        #pragma unroll
+        for (int s = 0; s &lt; (TILE * TILE / 4) / 128; ++s) {
+            const int idx4 = tid + s * 128;                   // 0..255
+            const int r    = idx4 / (TILE / 4);               // tile 内行号 0..31
+            const int c    = (idx4 % (TILE / 4)) * 4;         // tile 内列号，4 的倍数
+            const int row  = blockIdx.y * TILE + r;
+            const int aCol = ph * TILE + c;
+            float4 a4 = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+            if (row &lt; M &amp;&amp; aCol + 3 &lt; K)
+                a4 = *reinterpret_cast&lt;const float4 *&gt;(&amp;A[row * K + aCol]);
+            Ads[c + 0][r] = a4.x;   Ads[c + 1][r] = a4.y;     // 转置写入
+            Ads[c + 2][r] = a4.z;   Ads[c + 3][r] = a4.w;
+        }
+
+        // ---- 搬 B：TILE×(TILE*TN) 个 float = 1024 个 float4，128 线程各 8 条 ----
+        #pragma unroll
+        for (int s = 0; s &lt; (TILE * TILE * TN / 4) / 128; ++s) {
+            const int idx4 = tid + s * 128;                   // 0..1023
+            const int r    = idx4 / (TILE * TN / 4);          // tile 内行号 0..31
+            const int c    = (idx4 % (TILE * TN / 4)) * 4;    // tile 内列号 0..124
+            const int bRow = ph * TILE + r;
+            const int col  = colBase + c;
+            float4 b4 = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+            if (bRow &lt; K &amp;&amp; col + 3 &lt; N)
+                b4 = *reinterpret_cast&lt;const float4 *&gt;(&amp;B[bRow * N + col]);
+            *reinterpret_cast&lt;float4 *&gt;(&amp;Bds[r][c]) = b4;
+        }
+
+        __syncthreads();                                      // ① 写后读
+
+        // ---- 内层：每步 3 条 128 位读 + 32 个 FMA ----
+        #pragma unroll
+        for (int k = 0; k &lt; TILE; ++k) {
+            // reinterpret_cast 把"4 个连续 float 的地址"重新看作"1 个 float4 的地址"，
+            // 前面的 * 再把它读出来 —— 一条 128 位指令顶四条 32 位。
+            // 前提是地址必须 16 字节对齐，所以 Ads/Bds 声明时加了 __align__(16)。
+            const float4 m0 = *reinterpret_cast&lt;const float4 *&gt;(&amp;Ads[k][i0    ]);  // 广播
+            const float4 m1 = *reinterpret_cast&lt;const float4 *&gt;(&amp;Ads[k][i0 + 4]);  // 广播
+            const float4 n0 = *reinterpret_cast&lt;const float4 *&gt;(&amp;Bds[k][tx * TN]); // 32 路
+            const float m[CF] = { m0.x, m0.y, m0.z, m0.w, m1.x, m1.y, m1.z, m1.w };
+            const float n[TN] = { n0.x, n0.y, n0.z, n0.w };
+            #pragma unroll
+            for (int r = 0; r &lt; CF; ++r)
+                #pragma unroll
+                for (int j = 0; j &lt; TN; ++j)
+                    acc[r][j] += m[r] * n[j];
+        }
+
+        __syncthreads();                                      // ② 读后写
+    }
+
+    // ---- 写回：每线程 8 行 × 一条 float4 ----
+    #pragma unroll
+    for (int r = 0; r &lt; CF; ++r) {
+        const int row = Row0 + r;
+        if (row &gt;= M || col0 + TN &gt; N) continue;
+        const float4 old = *reinterpret_cast&lt;const float4 *&gt;(&amp;C[row * N + col0]);
+        float4 out;
+        out.x = alpha * acc[r][0] + beta * old.x;
+        out.y = alpha * acc[r][1] + beta * old.y;
+        out.z = alpha * acc[r][2] + beta * old.z;
+        out.w = alpha * acc[r][3] + beta * old.w;
+        *reinterpret_cast&lt;float4 *&gt;(&amp;C[row * N + col0]) = out;
+    }
+}</pre>
+  </div>
+  <div class="sec">
+    <h3 id="s8-2">二、12 条变 3 条<a class="up" href="#t8-2" title="回到目录">↑</a></h3>
+    <figure class="fig">
+    <svg viewBox="0 0 860 236" role="img" aria-label="K5 每一步 k 要发 8 条 32 位广播读加 4 条 32 位 32 路读，一共 12 条指令；K6 把它们合成 2 条 128 位广播读加 1 条 128 位 32 路读，一共 3 条指令。搬的字节数完全一样。"><g font-size="12" fill="currentColor"><text x="20" y="26" font-weight="700">每一步 k（32 个 FMA）要发的 shared load 指令</text><text x="20" y="72" font-weight="700">K5</text><rect x="80" y="56" width="22" height="22" rx="2" style="fill:var(--accent-soft); stroke:var(--accent)"/><text x="91" y="71" text-anchor="middle" font-size="9" style="fill:var(--accent)">m0</text><rect x="106" y="56" width="22" height="22" rx="2" style="fill:var(--accent-soft); stroke:var(--accent)"/><text x="117" y="71" text-anchor="middle" font-size="9" style="fill:var(--accent)">m1</text><rect x="132" y="56" width="22" height="22" rx="2" style="fill:var(--accent-soft); stroke:var(--accent)"/><text x="143" y="71" text-anchor="middle" font-size="9" style="fill:var(--accent)">m2</text><rect x="158" y="56" width="22" height="22" rx="2" style="fill:var(--accent-soft); stroke:var(--accent)"/><text x="169" y="71" text-anchor="middle" font-size="9" style="fill:var(--accent)">m3</text><rect x="184" y="56" width="22" height="22" rx="2" style="fill:var(--accent-soft); stroke:var(--accent)"/><text x="195" y="71" text-anchor="middle" font-size="9" style="fill:var(--accent)">m4</text><rect x="210" y="56" width="22" height="22" rx="2" style="fill:var(--accent-soft); stroke:var(--accent)"/><text x="221" y="71" text-anchor="middle" font-size="9" style="fill:var(--accent)">m5</text><rect x="236" y="56" width="22" height="22" rx="2" style="fill:var(--accent-soft); stroke:var(--accent)"/><text x="247" y="71" text-anchor="middle" font-size="9" style="fill:var(--accent)">m6</text><rect x="262" y="56" width="22" height="22" rx="2" style="fill:var(--accent-soft); stroke:var(--accent)"/><text x="273" y="71" text-anchor="middle" font-size="9" style="fill:var(--accent)">m7</text><rect x="310" y="56" width="22" height="22" rx="2" style="fill:var(--warn-soft); stroke:var(--warn)"/><text x="321" y="71" text-anchor="middle" font-size="9" style="fill:var(--warn)">n0</text><rect x="336" y="56" width="22" height="22" rx="2" style="fill:var(--warn-soft); stroke:var(--warn)"/><text x="347" y="71" text-anchor="middle" font-size="9" style="fill:var(--warn)">n1</text><rect x="362" y="56" width="22" height="22" rx="2" style="fill:var(--warn-soft); stroke:var(--warn)"/><text x="373" y="71" text-anchor="middle" font-size="9" style="fill:var(--warn)">n2</text><rect x="388" y="56" width="22" height="22" rx="2" style="fill:var(--warn-soft); stroke:var(--warn)"/><text x="399" y="71" text-anchor="middle" font-size="9" style="fill:var(--warn)">n3</text><text x="440" y="71" font-size="11" style="fill:var(--ink-3)">12 条 32 位指令，搬 48 字节</text><text x="20" y="142" font-weight="700">K6</text><rect x="80" y="126" width="100" height="22" rx="2" style="fill:var(--accent-soft); stroke:var(--accent)" stroke-width="1.6"/><text x="130" y="141" text-anchor="middle" font-size="10" style="fill:var(--accent)">float4 m[0..3]</text><rect x="184" y="126" width="100" height="22" rx="2" style="fill:var(--accent-soft); stroke:var(--accent)" stroke-width="1.6"/><text x="234" y="141" text-anchor="middle" font-size="10" style="fill:var(--accent)">float4 m[4..7]</text><rect x="310" y="126" width="100" height="22" rx="2" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.6"/><text x="360" y="141" text-anchor="middle" font-size="10" style="fill:var(--warn)">float4 n[0..3]</text><text x="440" y="141" font-size="11" style="fill:var(--ink-3)">3 条 128 位指令，<tspan font-weight="700">同样 48 字节</tspan></text><text x="80" y="186" font-weight="700" style="fill:var(--good)">条数 ÷ 4，字节不变</text><text x="80" y="208" font-size="11" style="fill:var(--ink-3)">—— 但一条 128 位 load 比一条 32 位 load 贵多少，本章标定的两个单价<tspan font-weight="700">没有覆盖</tspan>，要实测</text></g></svg>
+    <figcaption class="cap">
+      <strong>图 K6-1 · 一条 128 位 load 一次搬 4 个 float。</strong>
+      K5 每一步 k 发 12 条 32 位读；K6 发 3 条 128 位读，<b>搬的还是那 48 个字节</b>。
+      按条数账这是 4 倍的改善，<span style="color:var(--warn);font-weight:650">但前提是"一条 128 位读没有贵到 4 倍"</span> ——
+      §5·⑥ 标定的两个单价都是 32 位的，覆盖不到这里，只能实测。
+    </figcaption>
+  </figure>
+    <p class="prose">
+      <b>字节数一个都没省（算术强度仍是 12.720），省的全是指令条数。</b>
+      <span style="color:var(--ink-3)">load/FMA 0.414 → 0.104，正好 4 倍。</span>
+    </p>
+  </div>
+  <div class="sec">
+    <h3 id="s8-3">三、为什么 A 的 tile 必须转置存<a class="up" href="#t8-3" title="回到目录">↑</a></h3>
+    <figure class="fig">
+    <svg viewBox="0 0 860 290" role="img" aria-label="K5 把 A 的 tile 按 Mds[行][k] 存，同一步 k 要用的 8 个 m 在 shared 里每隔 32 个 float 才出现一次，没法合成一条 128 位读；K6 改成 Ads[k][行]，这 8 个 m 变成连续的，2 条 float4 就读完。"><g font-size="12" fill="currentColor"><text x="20" y="26" font-weight="700" style="fill:var(--warn)">K5：Mds[行][k] —— 同一步 k 的 8 个 m 相隔 32 个 float</text><rect x="60" y="40" width="300" height="18" fill="none" style="stroke:var(--rule)"/><text x="52" y="53" text-anchor="end" font-size="10" style="fill:var(--ink-3)">行 8</text><rect x="180" y="40" width="18" height="18" style="fill:var(--warn-soft); stroke:var(--warn)"/><rect x="60" y="60" width="300" height="18" fill="none" style="stroke:var(--rule)"/><text x="52" y="73" text-anchor="end" font-size="10" style="fill:var(--ink-3)">行 9</text><rect x="180" y="60" width="18" height="18" style="fill:var(--warn-soft); stroke:var(--warn)"/><rect x="60" y="80" width="300" height="18" fill="none" style="stroke:var(--rule)"/><text x="52" y="93" text-anchor="end" font-size="10" style="fill:var(--ink-3)">行 10</text><rect x="180" y="80" width="18" height="18" style="fill:var(--warn-soft); stroke:var(--warn)"/><rect x="60" y="100" width="300" height="18" fill="none" style="stroke:var(--rule)"/><text x="52" y="113" text-anchor="end" font-size="10" style="fill:var(--ink-3)">行 11</text><rect x="180" y="100" width="18" height="18" style="fill:var(--warn-soft); stroke:var(--warn)"/><rect x="60" y="120" width="300" height="18" fill="none" style="stroke:var(--rule)"/><text x="52" y="133" text-anchor="end" font-size="10" style="fill:var(--ink-3)">行 12</text><rect x="180" y="120" width="18" height="18" style="fill:var(--warn-soft); stroke:var(--warn)"/><rect x="60" y="140" width="300" height="18" fill="none" style="stroke:var(--rule)"/><text x="52" y="153" text-anchor="end" font-size="10" style="fill:var(--ink-3)">行 13</text><rect x="180" y="140" width="18" height="18" style="fill:var(--warn-soft); stroke:var(--warn)"/><rect x="60" y="160" width="300" height="18" fill="none" style="stroke:var(--rule)"/><text x="52" y="173" text-anchor="end" font-size="10" style="fill:var(--ink-3)">行 14</text><rect x="180" y="160" width="18" height="18" style="fill:var(--warn-soft); stroke:var(--warn)"/><rect x="60" y="180" width="300" height="18" fill="none" style="stroke:var(--rule)"/><text x="52" y="193" text-anchor="end" font-size="10" style="fill:var(--ink-3)">行 15</text><rect x="180" y="180" width="18" height="18" style="fill:var(--warn-soft); stroke:var(--warn)"/><text x="370" y="120" font-size="11" style="fill:var(--warn)">橙色 = 这一步要读的 8 个 m</text><text x="370" y="140" font-size="11" style="fill:var(--ink-3)">在内存里每隔一整行（32 个 float）</text><text x="370" y="160" font-size="11" style="fill:var(--ink-3)">→ 只能一条一条读，8 条指令</text><text x="20" y="220" font-weight="700" style="fill:var(--accent)">K6：Ads[k][行] —— 转置存进去，8 个 m 连成一片</text><rect x="60" y="234" width="300" height="22" fill="none" style="stroke:var(--rule)"/><text x="52" y="249" text-anchor="end" font-size="10" style="fill:var(--ink-3)">第 k 行</text><rect x="150" y="234" width="18" height="22" style="fill:var(--accent-soft); stroke:var(--accent)"/><rect x="169" y="234" width="18" height="22" style="fill:var(--accent-soft); stroke:var(--accent)"/><rect x="188" y="234" width="18" height="22" style="fill:var(--accent-soft); stroke:var(--accent)"/><rect x="207" y="234" width="18" height="22" style="fill:var(--accent-soft); stroke:var(--accent)"/><rect x="226" y="234" width="18" height="22" style="fill:var(--accent-soft); stroke:var(--accent)"/><rect x="245" y="234" width="18" height="22" style="fill:var(--accent-soft); stroke:var(--accent)"/><rect x="264" y="234" width="18" height="22" style="fill:var(--accent-soft); stroke:var(--accent)"/><rect x="283" y="234" width="18" height="22" style="fill:var(--accent-soft); stroke:var(--accent)"/><path d="M150,262 V268 H226 V262" fill="none" style="stroke:var(--accent)" stroke-width="1.4"/><path d="M226,262 V268 H302 V262" fill="none" style="stroke:var(--accent)" stroke-width="1.4"/><text x="188" y="282" text-anchor="middle" font-size="10" style="fill:var(--accent)">float4</text><text x="264" y="282" text-anchor="middle" font-size="10" style="fill:var(--accent)">float4</text><text x="370" y="244" font-size="11" style="fill:var(--accent)" font-weight="700">连续 8 个 → 2 条 float4 读完</text><text x="370" y="264" font-size="11" style="fill:var(--ink-3)">代价：搬进 shared 时要转着写（4 条 store）</text></g></svg>
+    <figcaption class="cap">
+      <strong>图 K6-2 · 向量化的前提是"要用的几个数在内存里连着"。</strong>
+      K5 的 <code>Mds[行][k]</code> 布局下，同一步 k 的 8 个 m 每隔 32 个 float 才出现一次；
+      <b>改成 <code>Ads[k][行]</code>，它们就连成一片，2 条 <code>float4</code> 读完</b>。
+      代价是搬进 shared 的时候要转着写。
+    </figcaption>
+  </figure>
+    <p class="prose">
+      <b>K5 把 A 的 tile 按 <code>Mds[行][k]</code> 存，同一步 k 要用的 8 个 m 在 shared 里每隔 32 个 float
+      才出现一次 —— 没法合成一条 128 位读。</b>
+      <span style="color:var(--crit);font-weight:650">转置成 <code>Ads[k][行]</code> 之后它们才连号。
+      代价是搬进 shared 时要横读竖写，那一步会撞 bank。</span>
+    </p>
+  </div>
+  <div class="sec">
+    <h3 id="s8-4">四、SASS 验证：float4 真的编成 128 位了吗<a class="up" href="#t8-4" title="回到目录">↑</a></h3>
+    <p class="prose">
+      <b>这是整条链上唯一一条纯靠推理、没有直接证据的断言。</b>
+      <span style="color:var(--ink-3)">编译器完全有权把 <code>float4</code> 拆成 4 条 32 位 load ——
+      <code>ptxas -v</code> 只报寄存器和 spill，报不了指令形态。</span>
+      <b>反汇编数一遍（<code>cuobjdump -sass</code>，静态条数）：</b>
+    </p>
+    <pre>kernel     FFMA  LDS.128   LDS.32  LDG.128   LDG.32      STS  STG.128   STG.32    TOTAL
+k5         1056       <span class="w">64</span>      128        -       72       40        -       32     1856
+k6         1056       <span class="a">96</span>        -       <span class="a">18</span>        -       16        8        -     1520
+
+<span class="a">// ✓ 证实：K6 有 96 条 LDS.128 + 18 条 LDG.128，float4 确实编成了 128 位访存。</span>
+<span class="x">// ✗ 推翻：K5 竟然也有 64 条 LDS.128 —— 编译器自己把它三分之一的 shared load 向量化了。</span></pre>
+    <div class="callout crit">
+      <p class="k">第二条改写了 K5→K6 的解释</p>
+      <p><b>原来的说法是"标量 vs 向量化"，实际是"部分向量化 vs 完全向量化"。</b></p>
+      <pre>访存指令合计   K5 = 192 + 72 = <span class="w">264 条</span>
+               K6 =  96 + 18 = <span class="a">114 条</span>      比值 <span class="a">2.32×</span>
+
+<span class="x">// 而手推的条数账说 load/FMA 从 0.414 降到 0.104，比值 3.98× —— 高估了。</span>
+<span class="x">// 根源就是手推时假设 K5 全是标量 load，没料到编译器已经替它向量化了三分之一。</span>
+<span class="c">// 两者 FFMA 条数完全相同（1056），说明展开程度一样，静态条数可以直接比。</span></pre>
+      <p style="margin-bottom:0"><b>顺带一个没预测到的旁证：K1 和 K2 的 SASS 逐项相同</b>
+        <span style="color:var(--ink-3)">（都是 30 FFMA / 59 LDG.32 / 216 条总计）。
+        它们只差一个索引映射，指令构成一模一样。</span>
+        <span style="color:var(--crit);font-weight:650">所以 K1→K2 那 8.209× 里，
+        指令条数的贡献是严格的零，100% 来自访存行为。</span>
+        <b>这是"请求账必须独立于条数账"最干净的一个证据。</b></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ §9 全景 ============ -->
+<section>
+<h2 id="s9"><span class="num">全景</span>六级并排看一次<a class="up" href="#t9" title="回到目录">↑</a></h2>
+  <div class="sec">
+    <h3 id="s9-1">一、每一步动了哪本账<a class="up" href="#t9-1" title="回到目录">↑</a></h3>
+    <div class="tw"><table>
+      <thead><tr><th>这一步</th><th>字节账<br><span class="sub">算术强度</span></th>
+        <th>请求账<br><span class="sub">请求/FMA</span></th>
+        <th>条数账<br><span class="sub">load/FMA</span></th><th>实测</th></tr></thead>
+      <tbody>
+        <tr><td class="cn">K1→K2</td><td class="en">不变 0.25</td>
+            <td class="en"><b>33 → 2</b></td><td class="en">不变 2.000</td>
+            <td class="en"><b>8.209×</b></td></tr>
+        <tr><td class="cn">K2→K3</td><td class="en">0.25 → 7.97</td><td class="en">不变</td>
+            <td class="en">2.000 → 2.062</td><td class="en">1.162×</td></tr>
+        <tr><td class="cn">K3→K3c</td><td class="en">7.97 → 12.72</td><td class="en">不变</td>
+            <td class="en">2.062 → 2.039</td><td class="en">1.082×</td></tr>
+        <tr><td class="cn">K3→K4</td><td class="en">不变 7.97</td><td class="en">不变</td>
+            <td class="en"><b>2.062 → 1.188</b></td><td class="en"><b>3.359×</b></td></tr>
+        <tr><td class="cn">K4→K5</td><td class="en">7.97 → 12.72</td><td class="en">不变</td>
+            <td class="en"><b>1.188 → 0.414</b></td><td class="en">1.661×</td></tr>
+        <tr><td class="cn">K5→K6</td><td class="en">不变 12.72</td><td class="en">不变</td>
+            <td class="en"><b>0.414 → 0.104</b></td><td class="en">1.186×</td></tr>
+      </tbody>
+      <caption><strong>收益大的每一步都动了请求账或条数账；只动字节账的两步，收益都在 10% 上下。</strong></caption>
+    </table></div>
+  </div>
+  <div class="sec">
+    <h3 id="s9-2">二、一句话版本<a class="up" href="#t9-2" title="回到目录">↑</a></h3>
+    <div class="callout link">
+      <p class="k">把六级压成六句</p>
+      <p style="margin-bottom:0">
+        <b>K1</b> 索引映射写反，一条 LDG 被拆成 32 个请求。<br>
+        <b>K2</b> 换回来。8.209 倍里 2.392 倍是合并，3.43 倍是顺带治好的 2 的幂跨度冲突。<br>
+        <b>K3</b> shared 分块。算术强度涨 32 倍，但 K2 本来就不在带宽墙上，所以只换来 14%
+        —— 真正的收益来自 LDG 换成了更便宜的 shared load。<br>
+        <b>K3c</b> 书上的粗化。只动字节账的干净实验，8%。<br>
+        <b>K4</b> 一个 N 元素进寄存器用 8 次。算术强度一动没动，<code>dist</code> 掉到 1/8，3.359 倍。<br>
+        <b>K5</b> 两个方向一起复用。占用率砍到 33.3%，反而快 1.661 倍。<br>
+        <b>K6</b> float4。字节不变，条数 ÷4，1.186 倍 —— 而 SASS 告诉我们 K5 本来就被编译器
+        向量化了三分之一，所以真实的条数比只有 2.32 倍，不是 4 倍。
+      </p>
+    </div>
+    <p class="prose">
+      <b>最终：<span style="color:var(--accent);font-weight:700">K1 → K6 共 63.1 倍，做到 cuBLAS 的 71.5%。</span></b>
+      <span style="color:var(--ink-3)">对标 siboehm 在 A6000 上的 93%，差的 21 个点主要是 warptiling
+      和 double buffering。</span>
+    </p>
+  </div>
+</section>
+
+<!-- ============ §10 去哪看 ============ -->
+<section>
+<h2 id="s10"><span class="num">延伸</span>完整代码、实测数据、原始推导<a class="up" href="#t10" title="回到目录">↑</a></h2>
+  <div class="tw"><table>
+    <thead><tr><th>要什么</th><th>去哪</th></tr></thead>
+    <tbody>
+      <tr><td class="cn">八个 kernel 的完整源码 + 测试脚手架</td>
+          <td class="en"><a href="../src/sgemm_all.cu">src/sgemm_all.cu</a>（含 K0 cuBLAS 基准）</td></tr>
+      <tr><td class="cn">测试脚本</td>
+          <td class="en"><a href="../Scripts/run_p0.sh">Scripts/</a> —— <code>run_p0.sh</code> 一条命令跑完全套</td></tr>
+      <tr><td class="cn">原始输出与解析后的 CSV</td>
+          <td class="en"><a href="../Results/Round1/">Results/Round1/</a></td></tr>
+      <tr><td class="cn"><b>八个指标各自怎么算出来的</b></td>
+          <td class="en"><a href="02-SGEMM实测与三本账.html">报告 02 · §3</a></td></tr>
+      <tr><td class="cn">形状扫描（prefill / decode）</td>
+          <td class="en"><a href="02-SGEMM实测与三本账.html">报告 02 · §5</a></td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout">
+    <p class="k">这份报告的代码从哪来</p>
+    <p style="margin-bottom:0"><b>K1 出自 PMPP 第 3 章 Fig. 3.11，K2 是第 4 章的修正，
+      K3 是第 5 章的分块，K3c 是第 6 章 Fig. 6.13。</b>
+      <span style="color:var(--ink-3)">K4 / K5 / K6 书上没有，是照着 siboehm 那篇的思路自己写的。
+      全部合并进同一个可执行文件、同一次开机跑 —— 因为"K6 是 cuBLAS 的百分之多少"这类比值，
+      只有在同一个二进制下才成立。</span></p>
+  </div>
+</section>
+
+<footer>
+  <span>02 阶段 · 报告 01 · 配套报告 02（实测与三本账）</span>
+  <span>代码：src/sgemm_all.cu · 脚本：Scripts/ · 数据：Results/Round1/</span>
+  <span>实测 2026-09-24 · RTX 4090 · driver 580.159.03 · 同批同二进制</span>
+  <span>K1/K2/K3/K3c 出自 PMPP 第 3/4/5/6 章；K4/K5/K6 参考 siboehm 的 CUDA-MMM</span>
+  <span>原理图取自本项目第 3–6 章精读导学</span>
+</footer>
+
+</div>

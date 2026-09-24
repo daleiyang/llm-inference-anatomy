@@ -1,0 +1,19 @@
+=== Nsight Compute 指标采集  2026-09-24T18:08:16+00:00 ===
+N = 4096   kernels: k0 k1 k2 k3 k3c k4 k5 k6
+NVIDIA (R) Nsight Compute Command Line Profiler
+Copyright (c) 2018-2025 NVIDIA Corporation
+Version 2025.3.1.0 (build 36398880) (public-release)
+
+!! ncu 跑不起来 —— 多半是权限（ERR_NVGPUCTRPERM），见上机导学 §3·一
+==PROF== Connected to process 4288 (/root/workspace/sgemm_all)
+==ERROR== ERR_NVGPUCTRPERM - The user does not have permission to access NVIDIA GPU Performance Counters on the target device 0. For instructions on enabling permissions and to get more information see https://developer.nvidia.com/ERR_NVGPUCTRPERM
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 75.5 MB   时钟 2.52 GHz
+[k3] 矩阵 512×512×512   TILE 32   block 32×32   grid 16×16
+shared/block = 8192 B（每 SM 上限 102400 B）　occupancy: 1 block × 1024 线程 = 1024 / 1536 = 66.7%
+footprint = A+B+C = 3.1 MB（L2 75.5 MB）  ⚠ 装得下 → 数字会虚高，主基准请用 4096 以上
+✓ 抽样校验通过（抽样 100 个元素）
+中位耗时 0.872 ms   308.0 GFLOP/s = FP32 峰值的 0.37%
+字节账: 算术强度 7.758 FLOP/byte → roofline 上限 7820 GFLOP/s，达成率 3.9%
+条数账: load/FMA 2.062（32 路 1.000 + 广播 1.000 + 全局 0.062）
+        节拍 67.02 周期/warp圈 → 每条 load 32.50 周期   模型预测 3.26
+==PROF== Disconnected from process 4288

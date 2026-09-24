@@ -6,7 +6,7 @@
 **先从参数张量逐层算出该有的数，再上机器量，看两边对不对得上。**
 对上了，这个数才敢拿去做容量规划；对不上，那个缺口本身就是发现。
 
-第一阶段的例子 —— 手算 KV Cache 每 token 占用，与 vLLM 启动日志的实测值差 **0.03%**：
+**对上的例子**（01 阶段）—— 手算 KV Cache 每 token 占用，与 vLLM 启动日志的实测值差 **0.03%**：
 
 ```
 2 (K,V) × 28 层 × 4 KV头 × 128 dim × 2 B = 57,344 B = 56 KiB / token
@@ -14,6 +14,24 @@
 ```
 
 于是「这张卡能扛多少并发」变成一道除法，**不需要压测**。压测只用来标定。
+
+**对不上的例子**（02 阶段）—— 教科书说「算术强度不够 → 受带宽限制 → 提高它就能更快」。
+手写六级 SGEMM 实测下来，**这条因果链七次里断了五次**：
+
+```
+roofline 达成率   K2 2113%    K4 261%    K5 271%    K6 322%
+                     ↑ 超过 100% 就意味着它根本没在带宽墙上
+
+收益最大的两步（8.2× 和 3.1×），算术强度一个字都没变
+而算术强度真涨 1.6 倍的那一步，只换来 8%
+```
+
+**缺口本身就是发现**：我把一本账换成了三本，让每一级优化只动其中一本 ——
+于是「这一步的收益归谁」没有含糊的余地。
+
+> 这两个例子放在一起，才是这个仓库想说的话：
+> **先算，再测，然后对账。对上了拿去用；对不上，就去查为什么。**
+> 后者的收获通常更大。
 
 ---
 
@@ -34,6 +52,21 @@
 
 → **[进入第一阶段，看完整的 7 份报告与生产建议](01-decode-latency-anatomy/)**
 
+### [02 · CUDA from a Systems Engineer's Eyes](02-cuda-from-systems-eyes/) — SGEMM 部分已完成
+
+同一块卡、同一个可执行文件、同一次开机，把 FP32 矩阵乘从 naive 改到 **cuBLAS 的 71.5%**，
+共 **63.1 倍**。**2 份报告**，原始数据（含 8981 行完整 SASS 反汇编）一条没删。
+
+| | |
+|---|---|
+| **方法论结论** | 教科书那本账（算术强度 → roofline）**七个 kernel 里失效五次**。替换成三本账，每一级只动一本 |
+| **最反直觉的一条** | 收益最大的两步（**8.2×** 和 **3.1×**）**算术强度一个字都没变**；算术强度真涨 1.6 倍的那一步只换来 **8%** |
+| **意外发现 ①** | naive 的 8 倍劣势里**只有 2.4 倍是"不合并"**，另外 **3.4 倍是 2 的幂跨度冲突** —— N 改成 4097，naive 快 3.33 倍 |
+| **意外发现 ②** | SASS 显示**编译器早就替 K5 做了三分之一的向量化**，手推的条数账因此高估了 K6 的收益 |
+| **适用边界** | **"优化了 63 倍"只在方阵上成立**。换成 decode 形状只剩 **3.4 倍**，而且 K6 反而比 K4 慢 |
+
+→ **[进入第二阶段](02-cuda-from-systems-eyes/)**
+
 ---
 
 ## 路线图
@@ -43,7 +76,7 @@
 | 阶段 | 内容 | 要证明什么 | 状态 |
 |---|---|---|---|
 | **01** | [**Decode Latency Anatomy**](01-decode-latency-anatomy/)<br>推理成本模型：prefill/decode、KV Cache、roofline | 我懂成本模型 | ✅ **已完成** |
-| 02 | [**CUDA from a Systems Engineer's Eyes**](02-cuda-from-systems-eyes/)<br>naive → tiled → coalesced matmul 逼近 cuBLAS，融合 softmax/RMSNorm，配 Nsight roofline | 我能写 GPU 代码 | 🚧 **进行中** —— [设计与预测已就绪](02-cuda-from-systems-eyes/)，kernel 待写 |
+| 02 | [**CUDA from a Systems Engineer's Eyes**](02-cuda-from-systems-eyes/)<br>naive → tiled → coalesced matmul 逼近 cuBLAS，融合 softmax/RMSNorm，配 Nsight roofline | 我能写 GPU 代码 | 🚧 **SGEMM 已完成**（[2 份报告](02-cuda-from-systems-eyes/)，做到 cuBLAS 的 71.5%）<br>融合算子代码已写，待上机 |
 | 03 | **Quantization Shootout**<br>同一模型族跨 GGUF-Q4_K_M / AWQ / GPTQ / FP16，同硬件比 perplexity、tok/s、TTFT、VRAM | 我有 serving 判断力 | 📋 计划中 |
 | 04 | **FlashAttention Forward in Triton**<br>实现 FA-2 前向，对 `sdpa` 验证并基准 | 我是可信地精通，不是会调库 | 📋 计划中 |
 | 05 | **Speed Up a Real Deployment**<br>baseline → 调 batching/prefix-cache + AWQ/FP8 + 投机解码，报告每一步的 delta | **这就是客户交付物本身** | 📋 计划中 |

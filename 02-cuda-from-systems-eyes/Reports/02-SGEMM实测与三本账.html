@@ -1,0 +1,973 @@
+<meta charset="utf-8">
+<title>SGEMM 实测与三本账</title>
+
+<style>
+  :root{
+    --ground:#F5F7F6; --surface:#FFFFFF; --surface-2:#EDF1F0;
+    --ink:#131C1B; --ink-2:#455553; --ink-3:#6E807D;
+    --rule:#D6DFDD; --rule-soft:#E6EBEA;
+    --accent:#0D7A80; --accent-soft:rgba(13,122,128,.10);
+    --good:#2E7D4F; --warn:#B05A12; --crit:#A32F35;
+    --good-soft:rgba(46,125,79,.12); --warn-soft:rgba(176,90,18,.12); --crit-soft:rgba(163,47,53,.10);
+    --shadow:0 1px 2px rgba(19,28,27,.05), 0 8px 24px -16px rgba(19,28,27,.22);
+    --font-mono:ui-monospace,"Cascadia Mono","SF Mono",Menlo,Consolas,monospace;
+    --font-body:"Segoe UI",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+    --ground:#0D1312; --surface:#141C1B; --surface-2:#1B2524;
+    --ink:#E2EAE8; --ink-2:#A3B4B0; --ink-3:#7E8F8B;
+    --rule:#26332F; --rule-soft:#1E2A28;
+    --accent:#45B6BC; --accent-soft:rgba(69,182,188,.13);
+    --good:#58B87C; --warn:#DF9247; --crit:#E06A70;
+    --good-soft:rgba(88,184,124,.13); --warn-soft:rgba(223,146,71,.13); --crit-soft:rgba(224,106,112,.12);
+    --shadow:0 1px 2px rgba(0,0,0,.32), 0 10px 28px -18px rgba(0,0,0,.7);
+  }}
+  :root[data-theme="dark"]{
+    --ground:#0D1312; --surface:#141C1B; --surface-2:#1B2524;
+    --ink:#E2EAE8; --ink-2:#A3B4B0; --ink-3:#7E8F8B;
+    --rule:#26332F; --rule-soft:#1E2A28;
+    --accent:#45B6BC; --accent-soft:rgba(69,182,188,.13);
+    --good:#58B87C; --warn:#DF9247; --crit:#E06A70;
+    --good-soft:rgba(88,184,124,.13); --warn-soft:rgba(223,146,71,.13); --crit-soft:rgba(224,106,112,.12);
+    --shadow:0 1px 2px rgba(0,0,0,.32), 0 10px 28px -18px rgba(0,0,0,.7);
+  }
+  *{box-sizing:border-box}
+  body{background:var(--ground); color:var(--ink); font-family:var(--font-body);
+    font-size:16px; line-height:1.7; margin:0; padding:0 20px 96px; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:940px; margin:0 auto}
+  .prose{max-width:70ch}
+  header{padding:56px 0 32px; border-bottom:1px solid var(--rule)}
+  .eyebrow{font-family:var(--font-mono); font-size:11px; font-weight:600; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--accent); display:flex; align-items:center; gap:10px; margin:0 0 18px}
+  .eyebrow::after{content:""; flex:1; height:1px; background:var(--rule)}
+  h1{font-size:clamp(28px,4.4vw,40px); line-height:1.18; font-weight:700; letter-spacing:-.018em; margin:0 0 14px}
+  .standfirst{font-size:17px; color:var(--ink-2); margin:0; max-width:62ch}
+  section{padding:52px 0 0}
+  h2{font-size:24px; font-weight:700; letter-spacing:-.012em; margin:0 0 10px}
+  h2 .num{font-family:var(--font-mono); font-size:12px; font-weight:600; color:var(--accent);
+    letter-spacing:.1em; display:block; margin-bottom:7px}
+  h3{font-size:17px; font-weight:650; margin:32px 0 8px}
+  h4{font-size:15.5px; font-weight:650; margin:30px 0 6px; color:var(--ink)}
+  p{margin:0 0 14px}
+  .lede{color:var(--ink-2); margin-bottom:24px}
+  strong{font-weight:650}
+  code{font-family:var(--font-mono); font-size:.88em; background:var(--surface-2); padding:1px 5px;
+    border-radius:3px; border:1px solid var(--rule-soft)}
+  pre{background:var(--surface-2); border:1px solid var(--rule); border-radius:4px; padding:14px 16px;
+    overflow-x:auto; margin:14px 0 0; font-family:var(--font-mono); font-size:12.5px; line-height:1.65}
+  /* ---- 汇总表 / 图（make_report.py 生成的片段要用）---- */
+  caption { caption-side:top; text-align:left; padding:11px 13px 9px; font-size:12px;
+    color:var(--ink-3); border-bottom:1px solid var(--rule-soft); background:var(--surface-2) }
+  th .sub, td .sub { display:block; font-weight:400; text-transform:none; letter-spacing:0;
+    font-size:10.5px; color:var(--ink-3) }
+  td .bad { color:var(--crit); font-weight:700 }
+  .tag { display:inline-block; font-family:var(--font-mono); font-size:10px; font-weight:700;
+    letter-spacing:.08em; padding:2px 7px; border-radius:3px; white-space:nowrap }
+  .tag.good { color:var(--good); background:var(--good-soft) }
+  .tag.warn { color:var(--warn); background:var(--warn-soft) }
+  .tag.crit { color:var(--crit); background:var(--crit-soft) }
+  svg { margin:22px 0 4px }
+  pre .c{color:var(--ink-3)} pre .a{color:var(--accent); font-weight:600} pre .w{color:var(--warn); font-weight:600}
+  pre .x{color:var(--crit); font-weight:600}
+  /* ---- 插图 ---- */
+  .fig{margin:20px 0 0; padding:16px 18px 10px; background:var(--surface);
+    border:1px solid var(--rule); border-radius:4px; box-shadow:var(--shadow); overflow-x:auto}
+  .fig svg{display:block; width:100%; min-width:640px; height:auto; color:var(--ink)}
+  .fig .cap{margin:8px 0 0; font-size:13px; color:var(--ink-3); line-height:1.6}
+  .legend{display:flex; flex-wrap:wrap; gap:6px 18px; margin:10px 0 0; font-size:13px; color:var(--ink-2)}
+  .legend i{display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px}
+  .tw{overflow-x:auto; margin:20px 0 0; border:1px solid var(--rule); border-radius:4px; background:var(--surface)}
+  table{border-collapse:collapse; width:100%; font-size:14px; min-width:640px}
+  th,td{padding:9px 13px; text-align:left; vertical-align:top; border-bottom:1px solid var(--rule-soft)}
+  th{font-size:10.5px; font-weight:600; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--ink-3); background:var(--surface-2)}
+  tbody tr:last-child td{border-bottom:0}
+  td.en{font-family:var(--font-mono); font-size:12.5px; white-space:nowrap; color:var(--accent); font-weight:600}
+  td.cn{white-space:nowrap; font-weight:650}
+  caption{caption-side:bottom; text-align:left; padding:10px 13px; font-size:13px;
+    color:var(--ink-3); border-top:1px solid var(--rule-soft)}
+  .callout{border:1px solid var(--rule); border-left:3px solid var(--accent);
+    background:var(--surface); border-radius:4px; padding:16px 20px; margin:22px 0 0; box-shadow:var(--shadow)}
+  .callout.link{border-left-color:var(--good); background:var(--good-soft)}
+  .callout.warn{border-left-color:var(--warn); background:var(--warn-soft)}
+  .callout.crit{border-left-color:var(--crit); background:var(--crit-soft)}
+  .callout .k{font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.13em;
+    text-transform:uppercase; margin:0 0 8px; color:var(--accent)}
+  .callout.link .k{color:var(--good)} .callout.warn .k{color:var(--warn)} .callout.crit .k{color:var(--crit)}
+  .callout p{margin:0; font-size:14.5px; color:var(--ink-2)}
+  .callout p+p{margin-top:9px}
+  ul.pts{list-style:none; padding:0; margin:14px 0 0; display:flex; flex-direction:column; gap:11px}
+  ul.pts li{padding-left:19px; position:relative; color:var(--ink-2); max-width:70ch}
+  ul.pts li::before{content:""; position:absolute; left:0; top:.72em; width:7px; height:2px;
+    background:var(--accent); border-radius:1px}
+  ul.pts li strong{color:var(--ink)}
+  .sec{background:var(--surface); border:1px solid var(--rule); border-radius:4px;
+    padding:20px 22px; margin:20px 0 0; box-shadow:var(--shadow)}
+  .sec h3{margin:0 0 4px; font-size:18px}
+  .sec .orig{font-family:var(--font-mono); font-size:12.5px; color:var(--ink-3); margin:0 0 14px}
+  .badge{display:inline-block; font-family:var(--font-mono); font-size:10px; font-weight:700;
+    letter-spacing:.1em; padding:2px 8px; border-radius:3px; margin-left:8px; vertical-align:middle}
+  .b-deep{background:var(--crit-soft); color:var(--crit)}
+  .b-mid{background:var(--warn-soft); color:var(--warn)}
+  .b-skim{background:var(--surface-2); color:var(--ink-3)}
+  .b-code{background:var(--good-soft); color:var(--good)}
+  footer{margin-top:64px; padding-top:22px; border-top:1px solid var(--rule);
+    font-family:var(--font-mono); font-size:11.5px; color:var(--ink-3); display:flex; flex-wrap:wrap; gap:6px 20px}
+
+  /* ---- 目录 ---- */
+  .toc{margin:34px 0 4px; padding:22px 24px; background:var(--surface);
+    border:1px solid var(--rule); border-radius:4px; box-shadow:var(--shadow); scroll-margin-top:16px}
+  .toc .hd{font-family:var(--font-mono); font-size:10.5px; font-weight:600; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--accent); margin:0 0 16px}
+  .toc .grid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px 36px}
+  @media (max-width:760px){ .toc .grid{grid-template-columns:1fr} }
+  .toc .grp{break-inside:avoid}
+  .toc a{text-decoration:none}
+  .toc a:hover{color:var(--accent); text-decoration:underline}
+  .toc .l1{display:block; color:var(--ink); font-weight:650; font-size:15px;
+    margin:0 0 7px; padding-bottom:6px; border-bottom:1px solid var(--rule-soft); scroll-margin-top:16px}
+  .toc .l1 .n{font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.1em;
+    color:var(--accent); margin-right:9px}
+  .toc ol{list-style:none; margin:0; padding:0}
+  .toc li{margin:4px 0; font-size:13.5px; line-height:1.5; scroll-margin-top:16px}
+  .toc li a{color:var(--ink-2)}
+  .toc .badge{font-size:9px; padding:1px 6px; margin-left:6px}
+  .toc code{font-size:.85em; background:none; border:0; padding:0; color:inherit}
+  /* ---- 标题旁的返回目录链接 ---- */
+  h2,h3,h4{scroll-margin-top:18px}
+  .up{font-family:var(--font-mono); font-size:12px; font-weight:600; color:var(--ink-3);
+    text-decoration:none; margin-left:11px; opacity:.4; vertical-align:middle;
+    transition:opacity .15s ease, color .15s ease}
+  h2:hover .up, h3:hover .up, h4:hover .up{opacity:1}
+  .up:hover{color:var(--accent)}
+  @media print{ .up{display:none} }
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">02 · CUDA from a Systems Engineer’s Eyes · 报告 02</p>
+  <h1>SGEMM 实测与三本账：八个指标怎么算出来的</h1>
+  <p class="lede prose">
+    <strong>K1 → K6 共 63.1 倍，做到 cuBLAS 的 71.5%。</strong>
+    <b>但这份报告的价值不在这两个数，而在于：教科书给的那本账
+    （算术强度 → roofline）在七个 kernel 里失效五次。</b>
+    <span style="color:var(--ink-3)">真正预测得准的是第三本 —— 指令条数 × 分类单价，
+    外推误差 ±10% 以内。</span>
+    <span style="color:var(--crit);font-weight:650">八个指标各自怎么从代码数出来，§3 一步一步走一遍。</span>
+  </p>
+</header>
+
+<nav class="toc" id="toc">
+  <p class="hd">本页导航 · 点标题跳转，标题旁的 ↑ 回到这里</p>
+  <div class="grid">
+    <div class="grp">
+      <a class="l1" id="t1" href="#s1"><span class="n">结论</span>主表，和三句话</a>
+      <ol>
+        <li id="t1-1"><a href="#s1-1">一、三句话</a></li>
+        <li id="t1-2"><a href="#s1-2">二、cuBLAS 这个分母怎么定的</a></li>
+      </ol>
+    </div>
+    <div class="grp">
+      <a class="l1" id="t2" href="#s2"><span class="n">方法</span>怎么测才算数</a>
+      <ol>
+        <li id="t2-1"><a href="#s2-1">一、六条规矩</a></li>
+        <li id="t2-2"><a href="#s2-2">二、两个口径必须一起换</a></li>
+      </ol>
+    </div>
+    <div class="grp">
+      <a class="l1" id="t3" href="#s3"><span class="n">推导</span>八个指标怎么算出来的</a>
+      <ol>
+        <li id="t3-1"><a href="#s3-1">一、读 shared 的两种姿势</a></li>
+        <li id="t3-2"><a href="#s3-2">二、主例 K3：八步走一遍</a></li>
+        <li id="t3-3"><a href="#s3-3">三、K1/K2：请求账为什么必须存在</a></li>
+        <li id="t3-4"><a href="#s3-4">四、K3c/K4：两种"粗化"</a></li>
+        <li id="t3-5"><a href="#s3-5">五、K5/K6</a></li>
+        <li id="t3-6"><a href="#s3-6">六、全部指标与单价标定</a></li>
+      </ol>
+    </div>
+    <div class="grp">
+      <a class="l1" id="t4" href="#s4"><span class="n">对账</span>哪一本真的预测对了</a>
+      <ol>
+        <li id="t4-1"><a href="#s4-1">一、按账本拆开看每一步</a></li>
+        <li id="t4-2"><a href="#s4-2">二、那句该改写的话</a></li>
+      </ol>
+    </div>
+    <div class="grp">
+      <a class="l1" id="t5" href="#s5"><span class="n">扫描</span>尺寸与形状</a>
+      <ol>
+        <li id="t5-1"><a href="#s5-1">一、为什么主表必须用 4096</a></li>
+        <li id="t5-2"><a href="#s5-2">二、换成真实推理负载还剩多少</a></li>
+      </ol>
+    </div>
+    <div class="grp">
+      <a class="l1" id="t6" href="#s6"><span class="n">意外</span>两个没预料到的发现</a>
+      <ol>
+        <li id="t6-1"><a href="#s6-1">一、四分之三和"不合并"无关</a></li>
+        <li id="t6-2"><a href="#s6-2">二、编译器早就替 K5 向量化了</a></li>
+      </ol>
+    </div>
+    <div class="grp">
+      <a class="l1" id="t7" href="#s7"><span class="n">缺口</span>ncu 六指标没拿到</a>
+      <ol>
+        <li id="t7-1"><a href="#s7-1">一、只有两个真的拿不到</a></li>
+        <li id="t7-2"><a href="#s7-2">二、三条腿的替代论证</a></li>
+      </ol>
+    </div>
+    <div class="grp">
+      <a class="l1" id="t8" href="#s8"><span class="n">复现</span>一条命令与原始数据</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============ §1 结论 ============ -->
+<section>
+<h2 id="s1"><span class="num">结论</span>主表，和三句话<a class="up" href="#t1" title="回到目录">↑</a></h2>
+  <div class="tw"><table>
+    <caption>N=4096 方阵 · 3 轮交错 · 每轮 11 次取中位 · 2026-09-24 同批同二进制</caption>
+    <thead><tr><th>kernel</th><th>中位耗时</th><th>GFLOP/s</th><th>占 FP32 峰值</th>
+      <th>占 cuBLAS</th><th>相对 K1</th><th>算术强度</th><th>roofline 达成率</th>
+      <th>占用率</th><th>寄存器</th><th>跨轮漂移</th></tr></thead>
+    <tbody>
+      <tr><td class="cn"><b>K1 naive</b></td><td class="en">211.911 ms</td><td class="en">648.6</td><td class="en">0.79%</td><td class="en">1.1%</td><td class="en">基准</td><td class="en">0.250</td><td class="en">258.0%</td><td class="en">66.7%</td><td class="en">40</td><td class="en">±0.2%</td></tr>
+      <tr><td class="cn"><b>K2 合并</b></td><td class="en">25.815 ms</td><td class="en">5324.0</td><td class="en">6.45%</td><td class="en">9.3%</td><td class="en">8.2×</td><td class="en">0.250</td><td class="en">2113.5%</td><td class="en">66.7%</td><td class="en">40</td><td class="en">±0.2%</td></tr>
+      <tr><td class="cn"><b>K3 shared 分块</b></td><td class="en">22.225 ms</td><td class="en">6184.0</td><td class="en">7.49%</td><td class="en">10.8%</td><td class="en">9.5×</td><td class="en">7.969</td><td class="en">77.0%</td><td class="en">66.7%</td><td class="en">38</td><td class="en">±0.1%</td></tr>
+      <tr><td class="cn"><b>K3c 书上的粗化</b></td><td class="en">20.542 ms</td><td class="en">6690.6</td><td class="en">8.10%</td><td class="en">11.7%</td><td class="en">10.3×</td><td class="en">12.720</td><td class="en">52.2%</td><td class="en">66.7%</td><td class="en">38</td><td class="en">±0.1%</td></tr>
+      <tr><td class="cn"><b>K4 1D 寄存器</b></td><td class="en">6.617 ms</td><td class="en">20770.6</td><td class="en">25.37%</td><td class="en">36.3%</td><td class="en">32.0×</td><td class="en">7.969</td><td class="en">260.8%</td><td class="en">75.0%</td><td class="en">54</td><td class="en">±0.5%</td></tr>
+      <tr><td class="cn"><b>K5 2D 寄存器</b></td><td class="en">3.983 ms</td><td class="en">34506.4</td><td class="en">42.02%</td><td class="en">60.3%</td><td class="en">53.2×</td><td class="en">12.720</td><td class="en">270.6%</td><td class="en">33.3%</td><td class="en">72</td><td class="en">±0.7%</td></tr>
+      <tr><td class="cn"><b>K6 float4</b></td><td class="en">3.358 ms</td><td class="en"><b>40928.8</b></td><td class="en">50.08%</td><td class="en"><b>71.5%</b></td><td class="en">63.1×</td><td class="en">12.720</td><td class="en">322.5%</td><td class="en">33.3%</td><td class="en">111</td><td class="en">±0.9%</td></tr>
+      <tr><td class="cn"><b>K0 cuBLAS</b></td><td class="en">2.401 ms</td><td class="en"><b>57242.4</b></td><td class="en">69.66%</td><td class="en"><b>100.0%</b></td><td class="en">88.3×</td><td class="en">—</td><td class="en">—</td><td class="en">—</td><td class="en">—</td><td class="en">±0.6%</td></tr>
+    </tbody>
+  </table></div>
+  <div class="sec">
+    <h3 id="s1-1">一、三句话<a class="up" href="#t1-1" title="回到目录">↑</a></h3>
+    <div class="callout link">
+      <p class="k">这批数据最该被记住的三件事</p>
+      <p><b>① 教科书那本账失效五次。</b>
+        <span style="color:var(--ink-3)">roofline 达成率超过 100% 就意味着"它根本没在带宽墙上"——
+        七个 kernel 里有五个超了，K2 甚至到 2113.5%。</span>
+        <b>而真正预测得准的是条数账，外推误差 ±10% 以内。</b></p>
+      <p><b>② 收益最大的两步，算术强度一个字都没变。</b>
+        <span style="color:var(--ink-3)">K1→K2（8.21×）和 K3→K4（3.36×）——
+        前者只动了访存合并，后者只动了指令条数。</span>
+        <span style="color:var(--crit);font-weight:650">而算术强度真涨了 1.6 倍的 K3c，只换来 1.08×。</span></p>
+      <p style="margin-bottom:0"><b>③ cuBLAS 自己也只有峰值的 69.66%。</b>
+        <span style="color:var(--ink-3)">纯 FP32 的 SGEMM 在 Ada 上并不是 NVIDIA 精心优化的路径（FP16/TF32 才是），
+        所以"离 cuBLAS 还有多远"这个靶子比想象中近 —— 它只比 K6 快 1.40 倍。</span></p>
+    </div>
+  </div>
+  <div class="sec">
+    <h3 id="s1-2">二、cuBLAS 这个分母怎么定的<a class="up" href="#t1-2" title="回到目录">↑</a></h3>
+    <p class="prose">
+      <b>K0 = <code>2.401 ms / 57242.4 GFLOP/s / 占峰值 69.66%</code>，抽样校验通过。</b>
+      <span style="color:var(--ink-3)">两道保险确保它是纯 FP32：源码里
+      <code>cublasSetMathMode(CUBLAS_PEDANTIC_MATH)</code>，环境里
+      <code>NVIDIA_TF32_OVERRIDE=0</code>。</span>
+      <span style="color:var(--crit);font-weight:650">如果 TF32 没禁掉，tensor core 会把数字顶到
+      FP32 峰值以上 —— 69.66% 这个位置只可能是纯 FP32 在跑。</span>
+    </p>
+    <pre><span class="c">// cuBLAS 是列主序，而我们的矩阵是行主序。不想转置数据，就转置运算：</span>
+<span class="c">//   行主序的 C = A·B   等价于   列主序的 Cᵀ = Bᵀ·Aᵀ</span>
+<span class="c">// 所以把 B 当第一个参数、A 当第二个传进去，m/n 也跟着换位置。</span>
+cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N,
+            N, M, K, &amp;alpha,
+            B, N,          <span class="a">// ← B 在前</span>
+            A, K, &amp;beta,   <span class="a">// ← A 在后</span>
+            C, N);</pre>
+  </div>
+</section>
+
+<!-- ============ §2 方法 ============ -->
+<section>
+<h2 id="s2"><span class="num">方法</span>怎么测才算数<a class="up" href="#t2" title="回到目录">↑</a></h2>
+  <div class="sec">
+    <h3 id="s2-1">一、六条规矩<a class="up" href="#t2-1" title="回到目录">↑</a></h3>
+    <div class="tw"><table>
+      <thead><tr><th>规矩</th><th>为什么</th></tr></thead>
+      <tbody>
+        <tr><td class="cn">八个 kernel 进同一个可执行文件</td>
+            <td><b>"K6 是 cuBLAS 的百分之多少"这类比值，只有在同一个二进制、同一次开机下才成立。</b>
+                <span style="color:var(--ink-3)">实测：跨批次绝对耗时漂 2–3%，同批内比值只漂 0.5%</span></td></tr>
+        <tr><td class="cn">kernel 顺序每轮轮转</td>
+            <td>避免热漂移固定惩罚排在最后的那一个</td></tr>
+        <tr><td class="cn">CUDA event 计时，取中位数</td>
+            <td>kernel 是异步下发的，主机计时器量不到。
+                <span style="color:var(--ink-3)">中位数而非平均：一次偶发卡顿会把平均整个带偏</span></td></tr>
+        <tr><td class="cn">预热按 ITERS 分档，至少 1 次</td>
+            <td><span style="color:var(--crit);font-weight:650">cuBLAS 第一次调用要惰性加载 kernel 库，
+                一次就是几十毫秒</span>
+                <span style="color:var(--ink-3)">—— 这个坑真踩过，K0 在 512 上报出过 55 ms</span></td></tr>
+        <tr><td class="cn">先校验再看速度</td>
+            <td>每个 kernel 抽 100 个元素和 CPU 参照比。
+                <span style="color:var(--ink-3)">没验证过的"快"通常是编译器把循环删了</span></td></tr>
+        <tr><td class="cn">设备参数现读现用</td>
+            <td>峰值算力和带宽都从 <code>cudaDeviceProp</code> 取，不抄规格表。
+                <span style="color:var(--ink-3)">和 01 阶段"KV 池必须每台机器现读日志"是同一条原则</span></td></tr>
+      </tbody>
+    </table></div>
+  </div>
+  <div class="sec">
+    <h3 id="s2-2">二、两个口径，必须一起换<a class="up" href="#t2-2" title="回到目录">↑</a></h3>
+    <pre>FP32 峰值   128 SM × 128 core × 2 × <span class="a">2.52 GHz</span> = 82,575 GFLOP/s   <span class="c">// 设备报告的 clockRate</span>
+            128 SM × 128 core × 2 × <span class="w">2.713 GHz</span> = 88,908 GFLOP/s   <span class="c">// 压测中实测的加速时钟</span>
+
+显存带宽    10501 MHz × 2（DDR 双沿）× 384 bit ÷ 8 = <span class="a">1008 GB/s</span></pre>
+    <p class="prose">
+      <b>主表的"占 FP32 峰值"按 2.52 GHz 算。</b>
+      <span style="color:var(--ink-3)">换成 2.713 GHz 的口径，K6 的 71.5% 那一列里
+      "占峰值"要从 50.08% 修正为 46.5%，cuBLAS 从 69.66% 修正为 64.4%。</span>
+      <span style="color:var(--crit);font-weight:650">两个要一起换，不能只换一个 ——
+      这是最容易出错的地方。</span>
+      <b>而"占 cuBLAS"那一列不受影响，因为分子分母同时变。</b>
+    </p>
+  </div>
+</section>
+
+<!-- ============ §3 八个指标 ============ -->
+<section>
+<h2 id="s3"><span class="num">推导</span>八个指标各自怎么算出来的<a class="up" href="#t3" title="回到目录">↑</a></h2>
+  <p class="lede prose">
+    <strong>这一节是整份报告的核心。</strong>
+    <b>八个指标里，只有一个（耗时）是量出来的，其余七个全部从代码数出来 ——
+    数完再和实测对账，对上了才说明理解是对的。</b>
+  </p>
+
+  <div class="sec">
+    <h3 id="s3-1">一、先看清一件事：一个 warp 读 shared 有两种姿势<a class="up" href="#t3-1" title="回到目录">↑</a></h3>
+    <p class="prose">
+      <b>一条 load 是<u>整个 warp</u> 的指令。</b>
+      <span style="color:var(--ink-3)">32 个线程同时执行它，各自把自己的 <code>tx</code> 代进下标算出一个地址 ——
+      所以"一条 load"其实是 32 个地址。这 32 个地址长什么样，决定了它便宜还是贵。</span>
+    </p>
+    <figure class="fig">
+    <svg viewBox="0 0 860 372" role="img" aria-label="同一条 shared load 指令，32 个线程各算各的地址。广播：所有线程算出同一个地址，硬件取一次 4 字节复制给全 warp，约 0.5 周期。32 路无冲突：每个线程一个地址，正好落在 32 个不同 bank，一拍取回 128 字节，约 2.54 周期。四路冲突：地址步长是 4，只用到 8 个 bank，每个 bank 排 4 个线程，要拆成 4 拍。"><g font-size="12" fill="currentColor"><defs><marker id="bcarr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--accent)"/></marker><marker id="bcarrw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--warn)"/></marker><marker id="bcarrc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--crit)"/></marker></defs><text x="20" y="24" font-weight="700">同一条 shared load 指令，32 个线程各算各的地址（图里只画 8 个 lane / 8 个 bank，其余同理）</text><text x="150" y="48" text-anchor="middle" font-size="11" style="fill:var(--ink-3)">warp 的 8 个 lane</text><text x="620" y="48" text-anchor="middle" font-size="11" style="fill:var(--ink-3)">shared memory 的 8 个 bank</text><text x="20" y="78" font-weight="700" style="fill:var(--accent)">广播</text><text x="20" y="96" font-size="10" style="fill:var(--ink-3)">Mds[ty][k]　下标里没有 tx</text><rect x="90" y="60" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="103" y="78" text-anchor="middle" font-size="10">T0</text><rect x="120" y="60" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="133" y="78" text-anchor="middle" font-size="10">T1</text><rect x="150" y="60" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="163" y="78" text-anchor="middle" font-size="10">T2</text><rect x="180" y="60" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="193" y="78" text-anchor="middle" font-size="10">T3</text><rect x="210" y="60" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="223" y="78" text-anchor="middle" font-size="10">T4</text><rect x="240" y="60" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="253" y="78" text-anchor="middle" font-size="10">T5</text><rect x="270" y="60" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="283" y="78" text-anchor="middle" font-size="10">T6</text><rect x="300" y="60" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="313" y="78" text-anchor="middle" font-size="10">T7</text><rect x="470" y="60" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="483" y="78" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">0</text><rect x="500" y="60" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="513" y="78" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">1</text><rect x="530" y="60" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="543" y="78" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">2</text><rect x="560" y="60" width="26" height="26" rx="3" style="fill:var(--accent-soft); stroke:var(--accent)" stroke-width="1.4"/><text x="573" y="78" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">3</text><rect x="590" y="60" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="603" y="78" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">4</text><rect x="620" y="60" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="633" y="78" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">5</text><rect x="650" y="60" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="663" y="78" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">6</text><rect x="680" y="60" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="693" y="78" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">7</text><line x1="103" y1="88" x2="573" y2="88" stroke-width="0.9" style="stroke:var(--accent)" opacity="0.75"/><line x1="573" y1="88" x2="573" y2="86" stroke-width="1.2" style="stroke:var(--accent)" marker-end="url(#bcarr)"/><line x1="133" y1="88" x2="573" y2="88" stroke-width="0.9" style="stroke:var(--accent)" opacity="0.75"/><line x1="573" y1="88" x2="573" y2="86" stroke-width="1.2" style="stroke:var(--accent)" marker-end="url(#bcarr)"/><line x1="163" y1="88" x2="573" y2="88" stroke-width="0.9" style="stroke:var(--accent)" opacity="0.75"/><line x1="573" y1="88" x2="573" y2="86" stroke-width="1.2" style="stroke:var(--accent)" marker-end="url(#bcarr)"/><line x1="193" y1="88" x2="573" y2="88" stroke-width="0.9" style="stroke:var(--accent)" opacity="0.75"/><line x1="573" y1="88" x2="573" y2="86" stroke-width="1.2" style="stroke:var(--accent)" marker-end="url(#bcarr)"/><line x1="223" y1="88" x2="573" y2="88" stroke-width="0.9" style="stroke:var(--accent)" opacity="0.75"/><line x1="573" y1="88" x2="573" y2="86" stroke-width="1.2" style="stroke:var(--accent)" marker-end="url(#bcarr)"/><line x1="253" y1="88" x2="573" y2="88" stroke-width="0.9" style="stroke:var(--accent)" opacity="0.75"/><line x1="573" y1="88" x2="573" y2="86" stroke-width="1.2" style="stroke:var(--accent)" marker-end="url(#bcarr)"/><line x1="283" y1="88" x2="573" y2="88" stroke-width="0.9" style="stroke:var(--accent)" opacity="0.75"/><line x1="573" y1="88" x2="573" y2="86" stroke-width="1.2" style="stroke:var(--accent)" marker-end="url(#bcarr)"/><line x1="313" y1="88" x2="573" y2="88" stroke-width="0.9" style="stroke:var(--accent)" opacity="0.75"/><line x1="573" y1="88" x2="573" y2="86" stroke-width="1.2" style="stroke:var(--accent)" marker-end="url(#bcarr)"/><text x="90" y="114" font-size="10" style="fill:var(--ink-3)">取一次 4 字节，复制给全 warp</text><text x="740" y="78" font-size="11" font-weight="700" style="fill:var(--accent)">≈ 0.50 周期</text><text x="20" y="188" font-weight="700" style="fill:var(--warn)">32 路</text><text x="20" y="206" font-size="10" style="fill:var(--ink-3)">Nds[k][tx]　tx 的系数是 1</text><rect x="90" y="170" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="103" y="188" text-anchor="middle" font-size="10">T0</text><rect x="120" y="170" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="133" y="188" text-anchor="middle" font-size="10">T1</text><rect x="150" y="170" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="163" y="188" text-anchor="middle" font-size="10">T2</text><rect x="180" y="170" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="193" y="188" text-anchor="middle" font-size="10">T3</text><rect x="210" y="170" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="223" y="188" text-anchor="middle" font-size="10">T4</text><rect x="240" y="170" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="253" y="188" text-anchor="middle" font-size="10">T5</text><rect x="270" y="170" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="283" y="188" text-anchor="middle" font-size="10">T6</text><rect x="300" y="170" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="313" y="188" text-anchor="middle" font-size="10">T7</text><rect x="470" y="170" width="26" height="26" rx="3" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="483" y="188" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">0</text><rect x="500" y="170" width="26" height="26" rx="3" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="513" y="188" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">1</text><rect x="530" y="170" width="26" height="26" rx="3" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="543" y="188" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">2</text><rect x="560" y="170" width="26" height="26" rx="3" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="573" y="188" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">3</text><rect x="590" y="170" width="26" height="26" rx="3" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="603" y="188" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">4</text><rect x="620" y="170" width="26" height="26" rx="3" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="633" y="188" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">5</text><rect x="650" y="170" width="26" height="26" rx="3" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="663" y="188" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">6</text><rect x="680" y="170" width="26" height="26" rx="3" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="1.4"/><text x="693" y="188" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">7</text><line x1="103" y1="198" x2="483" y2="198" stroke-width="0.9" style="stroke:var(--warn)" opacity="0.75"/><line x1="483" y1="198" x2="483" y2="196" stroke-width="1.2" style="stroke:var(--warn)" marker-end="url(#bcarrw)"/><line x1="133" y1="198" x2="513" y2="198" stroke-width="0.9" style="stroke:var(--warn)" opacity="0.75"/><line x1="513" y1="198" x2="513" y2="196" stroke-width="1.2" style="stroke:var(--warn)" marker-end="url(#bcarrw)"/><line x1="163" y1="198" x2="543" y2="198" stroke-width="0.9" style="stroke:var(--warn)" opacity="0.75"/><line x1="543" y1="198" x2="543" y2="196" stroke-width="1.2" style="stroke:var(--warn)" marker-end="url(#bcarrw)"/><line x1="193" y1="198" x2="573" y2="198" stroke-width="0.9" style="stroke:var(--warn)" opacity="0.75"/><line x1="573" y1="198" x2="573" y2="196" stroke-width="1.2" style="stroke:var(--warn)" marker-end="url(#bcarrw)"/><line x1="223" y1="198" x2="603" y2="198" stroke-width="0.9" style="stroke:var(--warn)" opacity="0.75"/><line x1="603" y1="198" x2="603" y2="196" stroke-width="1.2" style="stroke:var(--warn)" marker-end="url(#bcarrw)"/><line x1="253" y1="198" x2="633" y2="198" stroke-width="0.9" style="stroke:var(--warn)" opacity="0.75"/><line x1="633" y1="198" x2="633" y2="196" stroke-width="1.2" style="stroke:var(--warn)" marker-end="url(#bcarrw)"/><line x1="283" y1="198" x2="663" y2="198" stroke-width="0.9" style="stroke:var(--warn)" opacity="0.75"/><line x1="663" y1="198" x2="663" y2="196" stroke-width="1.2" style="stroke:var(--warn)" marker-end="url(#bcarrw)"/><line x1="313" y1="198" x2="693" y2="198" stroke-width="0.9" style="stroke:var(--warn)" opacity="0.75"/><line x1="693" y1="198" x2="693" y2="196" stroke-width="1.2" style="stroke:var(--warn)" marker-end="url(#bcarrw)"/><text x="90" y="224" font-size="10" style="fill:var(--ink-3)">32 个 bank 各取一个字，凑 128 字节</text><text x="740" y="188" font-size="11" font-weight="700" style="fill:var(--warn)">≈ 2.54 周期</text><text x="20" y="298" font-weight="700" style="fill:var(--crit)">四路冲突</text><text x="20" y="316" font-size="10" style="fill:var(--ink-3)">Nds[k][tx*4]　tx 的系数是 4</text><rect x="90" y="280" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="103" y="298" text-anchor="middle" font-size="10">T0</text><rect x="120" y="280" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="133" y="298" text-anchor="middle" font-size="10">T1</text><rect x="150" y="280" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="163" y="298" text-anchor="middle" font-size="10">T2</text><rect x="180" y="280" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="193" y="298" text-anchor="middle" font-size="10">T3</text><rect x="210" y="280" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="223" y="298" text-anchor="middle" font-size="10">T4</text><rect x="240" y="280" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="253" y="298" text-anchor="middle" font-size="10">T5</text><rect x="270" y="280" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="283" y="298" text-anchor="middle" font-size="10">T6</text><rect x="300" y="280" width="26" height="26" rx="3" fill="none" stroke="currentColor"/><text x="313" y="298" text-anchor="middle" font-size="10">T7</text><rect x="470" y="280" width="26" height="26" rx="3" style="fill:var(--crit-soft); stroke:var(--crit)" stroke-width="1.4"/><text x="483" y="298" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">0</text><rect x="500" y="280" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="513" y="298" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">1</text><rect x="530" y="280" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="543" y="298" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">2</text><rect x="560" y="280" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="573" y="298" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">3</text><rect x="590" y="280" width="26" height="26" rx="3" style="fill:var(--crit-soft); stroke:var(--crit)" stroke-width="1.4"/><text x="603" y="298" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">4</text><rect x="620" y="280" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="633" y="298" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">5</text><rect x="650" y="280" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="663" y="298" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">6</text><rect x="680" y="280" width="26" height="26" rx="3" fill="none" style="stroke:var(--rule)"/><text x="693" y="298" text-anchor="middle" font-size="10" style="fill:var(--ink-3)">7</text><line x1="103" y1="308" x2="483" y2="308" stroke-width="0.9" style="stroke:var(--crit)" opacity="0.75"/><line x1="483" y1="308" x2="483" y2="306" stroke-width="1.2" style="stroke:var(--crit)" marker-end="url(#bcarrc)"/><line x1="133" y1="308" x2="603" y2="308" stroke-width="0.9" style="stroke:var(--crit)" opacity="0.75"/><line x1="603" y1="308" x2="603" y2="306" stroke-width="1.2" style="stroke:var(--crit)" marker-end="url(#bcarrc)"/><line x1="163" y1="308" x2="483" y2="308" stroke-width="0.9" style="stroke:var(--crit)" opacity="0.75"/><line x1="483" y1="308" x2="483" y2="306" stroke-width="1.2" style="stroke:var(--crit)" marker-end="url(#bcarrc)"/><line x1="193" y1="308" x2="603" y2="308" stroke-width="0.9" style="stroke:var(--crit)" opacity="0.75"/><line x1="603" y1="308" x2="603" y2="306" stroke-width="1.2" style="stroke:var(--crit)" marker-end="url(#bcarrc)"/><line x1="223" y1="308" x2="483" y2="308" stroke-width="0.9" style="stroke:var(--crit)" opacity="0.75"/><line x1="483" y1="308" x2="483" y2="306" stroke-width="1.2" style="stroke:var(--crit)" marker-end="url(#bcarrc)"/><line x1="253" y1="308" x2="603" y2="308" stroke-width="0.9" style="stroke:var(--crit)" opacity="0.75"/><line x1="603" y1="308" x2="603" y2="306" stroke-width="1.2" style="stroke:var(--crit)" marker-end="url(#bcarrc)"/><line x1="283" y1="308" x2="483" y2="308" stroke-width="0.9" style="stroke:var(--crit)" opacity="0.75"/><line x1="483" y1="308" x2="483" y2="306" stroke-width="1.2" style="stroke:var(--crit)" marker-end="url(#bcarrc)"/><line x1="313" y1="308" x2="603" y2="308" stroke-width="0.9" style="stroke:var(--crit)" opacity="0.75"/><line x1="603" y1="308" x2="603" y2="306" stroke-width="1.2" style="stroke:var(--crit)" marker-end="url(#bcarrc)"/><text x="90" y="334" font-size="10" style="fill:var(--ink-3)">只用到 1/4 的 bank，每个排 4 个线程</text><text x="740" y="298" font-size="11" font-weight="700" style="fill:var(--crit)">拆成 4 拍</text><text x="20" y="366" font-size="10" style="fill:var(--ink-3)">bank 编号 = (字节地址 ÷ 4) mod 32　　一拍里每个 bank 只能服务一个地址 —— 除非大家读的是同一个地址（那就走广播）</text></g></svg>
+    <figcaption class="cap">
+      <strong>图 K4-2b · shared memory 按 4 字节交错分成 32 个 bank，<code>bank = (地址 ÷ 4) mod 32</code>。</strong>
+      一拍里每个 bank 只能服务一个地址 —— <b>除非 32 个线程读的是同一个地址，那条路叫广播</b>。
+    </figcaption>
+  </figure>
+    <div class="tw"><table>
+      <thead><tr><th>类型</th><th>代码长什么样</th><th>32 个地址</th><th>硬件怎么做</th><th>本批实测单价</th></tr></thead>
+      <tbody>
+        <tr><td class="cn" style="color:var(--accent)"><b>广播</b></td>
+            <td class="en">下标里<b>没有 tx</b></td><td>全部相同</td>
+            <td>取一次 4 字节，复制给全 warp</td>
+            <td class="en"><b>0.53</b> 周期</td></tr>
+        <tr><td class="cn" style="color:var(--warn)"><b>32 路</b></td>
+            <td class="en">下标里 <b>tx 的系数是 1</b></td><td>32 个连号地址</td>
+            <td>落在 32 个不同 bank，一拍全服务完</td>
+            <td class="en"><b>2.69</b> 周期</td></tr>
+        <tr><td class="cn" style="color:var(--crit)"><b>撞 bank</b></td>
+            <td class="en">tx 的系数 ≥ 2</td><td>只用到 1/4 的 bank</td>
+            <td>拆成 4 拍</td>
+            <td class="en">更贵（本链未出现）</td></tr>
+      </tbody>
+      <caption><b>一眼判定法：看下标里 <code>tx</code> 前面乘了什么。</b>
+        <span style="color:var(--ink-3)">没有 tx 是广播，系数 1 是干净的 32 路，系数 ≥ 2 就开始撞 bank。</span>
+        <span style="color:var(--crit);font-weight:650">两者单价差 2.69 ÷ 0.53 ≈ 5 倍 ——
+        这是 K3→K4 那 3.36 倍的全部来源。</span></caption>
+    </table></div>
+    <figure class="fig">
+      <svg viewBox="0 0 880 330" role="img" aria-label="左边是 32 路访问：下标含 tx，warp 内 32 个线程读 shared 的 32 个不同地址，落在 32 个不同 bank 上，单价约 2.54 周期。右边是广播访问：下标不含 tx，32 个线程读同一个地址，硬件一次广播给全部线程，单价约 0.50 周期。两者差 5 倍。"><g font-size="12" fill="currentColor"><defs><marker id="ar1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--warn)"/></marker><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--good)"/></marker></defs>
+
+<text x="20" y="20" font-weight="700">同一个 warp 的 32 个线程，读 shared 的两种姿势（图上画 8 个代表 32 个）</text>
+
+<text x="30" y="52" font-size="12" font-weight="700" style="fill:var(--warn)">32 路 · 下标里有 tx</text>
+<rect x="30" y="60" width="240" height="22" rx="2" style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="0.8"/>
+<text x="40" y="76" font-size="11" font-family="monospace">acc += … * Nds[k][tx];</text>
+<text x="280" y="76" font-size="10" style="fill:var(--ink-3)">tx 在变 → 32 个不同地址</text>
+
+<text x="30" y="108" font-size="10" style="fill:var(--ink-3)">lane</text>
+<g style="fill:var(--surface); stroke:var(--accent)" stroke-width="0.9">
+<rect x="30" y="114" width="34" height="22" rx="2"/><rect x="74" y="114" width="34" height="22" rx="2"/><rect x="118" y="114" width="34" height="22" rx="2"/><rect x="162" y="114" width="34" height="22" rx="2"/><rect x="206" y="114" width="34" height="22" rx="2"/><rect x="250" y="114" width="34" height="22" rx="2"/><rect x="294" y="114" width="34" height="22" rx="2"/><rect x="338" y="114" width="34" height="22" rx="2"/></g>
+<g font-size="10" fill="currentColor"><text x="42" y="129">0</text><text x="86" y="129">1</text><text x="130" y="129">2</text><text x="174" y="129">3</text><text x="218" y="129">4</text><text x="262" y="129">5</text><text x="306" y="129">6</text><text x="346" y="129">…31</text></g>
+
+<g style="stroke:var(--warn)" stroke-width="1.2" marker-end="url(#ar1)">
+<line x1="47" y1="138" x2="47" y2="196"/><line x1="91" y1="138" x2="91" y2="196"/><line x1="135" y1="138" x2="135" y2="196"/><line x1="179" y1="138" x2="179" y2="196"/><line x1="223" y1="138" x2="223" y2="196"/><line x1="267" y1="138" x2="267" y2="196"/><line x1="311" y1="138" x2="311" y2="196"/><line x1="355" y1="138" x2="355" y2="196"/></g>
+
+<text x="30" y="216" font-size="10" style="fill:var(--ink-3)">shared bank</text>
+<g style="fill:var(--warn-soft); stroke:var(--warn)" stroke-width="0.9">
+<rect x="30" y="222" width="34" height="22" rx="2"/><rect x="74" y="222" width="34" height="22" rx="2"/><rect x="118" y="222" width="34" height="22" rx="2"/><rect x="162" y="222" width="34" height="22" rx="2"/><rect x="206" y="222" width="34" height="22" rx="2"/><rect x="250" y="222" width="34" height="22" rx="2"/><rect x="294" y="222" width="34" height="22" rx="2"/><rect x="338" y="222" width="34" height="22" rx="2"/></g>
+<text x="30" y="264" font-size="11">32 个地址落在 32 个 bank 上，全都要真的取一遍</text>
+<text x="30" y="288" font-size="14" font-weight="700" style="fill:var(--warn)">实测单价 ≈ 2.54 周期</text>
+
+<line x1="420" y1="40" x2="420" y2="300" style="stroke:var(--rule)"/>
+
+<text x="460" y="52" font-size="12" font-weight="700" style="fill:var(--good)">广播 · 下标里没有 tx</text>
+<rect x="460" y="60" width="240" height="22" rx="2" style="fill:var(--good-soft); stroke:var(--good)" stroke-width="0.8"/>
+<text x="470" y="76" font-size="11" font-family="monospace">acc += Mds[ty][k] * …;</text>
+<text x="710" y="76" font-size="10" style="fill:var(--ink-3)">ty、k 在 warp 内不变</text>
+
+<text x="460" y="108" font-size="10" style="fill:var(--ink-3)">lane</text>
+<g style="fill:var(--surface); stroke:var(--accent)" stroke-width="0.9">
+<rect x="460" y="114" width="34" height="22" rx="2"/><rect x="504" y="114" width="34" height="22" rx="2"/><rect x="548" y="114" width="34" height="22" rx="2"/><rect x="592" y="114" width="34" height="22" rx="2"/><rect x="636" y="114" width="34" height="22" rx="2"/><rect x="680" y="114" width="34" height="22" rx="2"/><rect x="724" y="114" width="34" height="22" rx="2"/><rect x="768" y="114" width="34" height="22" rx="2"/></g>
+<g font-size="10" fill="currentColor"><text x="472" y="129">0</text><text x="516" y="129">1</text><text x="560" y="129">2</text><text x="604" y="129">3</text><text x="648" y="129">4</text><text x="692" y="129">5</text><text x="736" y="129">6</text><text x="776" y="129">…31</text></g>
+
+<g style="stroke:var(--good)" stroke-width="1.2" marker-end="url(#ar2)">
+<line x1="477" y1="138" x2="622" y2="196"/><line x1="521" y1="138" x2="626" y2="196"/><line x1="565" y1="138" x2="630" y2="196"/><line x1="609" y1="138" x2="634" y2="196"/><line x1="653" y1="138" x2="638" y2="196"/><line x1="697" y1="138" x2="642" y2="196"/><line x1="741" y1="138" x2="646" y2="196"/><line x1="785" y1="138" x2="650" y2="196"/></g>
+
+<text x="460" y="216" font-size="10" style="fill:var(--ink-3)">shared bank</text>
+<rect x="614" y="222" width="44" height="22" rx="2" style="fill:var(--good-soft); stroke:var(--good)" stroke-width="1.4"/>
+<text x="460" y="264" font-size="11">32 个线程要的是<tspan font-weight="700">同一个地址</tspan> → 硬件取一次，广播给全部</text>
+<text x="460" y="288" font-size="14" font-weight="700" style="fill:var(--good)">实测单价 ≈ 0.50 周期</text>
+
+<text x="700" y="288" font-size="13" font-weight="700" style="fill:var(--crit)">差 5 倍</text>
+</g></svg>
+      <figcaption class="cap">
+        <strong>图 M-1 · 同一条 <code>LDS</code> 指令，代价差 5 倍，区别只在下标里有没有 <code>tx</code>。</strong>
+        <b>K3 的内层一句 <code>acc += Mds[ty][k] * Nds[k][tx];</code> 两种各来一条</b>，
+        <span style="color:var(--ink-3)">所以它的 dist 和 bcast 都是 1.000。
+        <span style="color:var(--good);font-weight:650">而 K4 的全部本事，就是把左边那条贵的从"每个 FMA 一条"降到"八个 FMA 共用一条"。</span></span>
+      </figcaption>
+    </figure>
+  </div>
+
+  <div class="sec">
+    <h3 id="s3-2">二、主例 K3：从代码一步步数出全部八个<a class="up" href="#t3-2" title="回到目录">↑</a></h3>
+    <p class="prose">
+      <b>K3 的内层循环就这么两行，八个指标全从它们数出来：</b>
+    </p>
+    <pre>for (int k = 0; k &lt; TILE; ++k)
+    acc += Mds[<span class="w">ty</span>][k] * Nds[k][<span class="a">tx</span>];
+<span class="c">//         ↑ 下标没有 tx       ↑ 下标含 tx 且系数为 1</span>
+<span class="c">//           = 广播               = 32 路</span></pre>
+
+    <h4 style="font-size:15px;margin:26px 0 6px">第 1 步 · <code>dist</code>（32 路条数 ÷ FMA）</h4>
+    <pre>循环体里含 tx 的 shared 读：<span class="a">Nds[k][tx]</span> —— 1 条
+一次循环做几个 FMA：       1 个
+
+dist = 1 条 ÷ 1 个 FMA = <b>1.000</b></pre>
+    <p class="prose">
+      <b>为什么要除以 FMA 数？</b>
+      <span style="color:var(--ink-3)">因为不同 kernel 的一次循环做的 FMA 个数不一样
+      （K3 做 1 个，K5 做 32 个）。除以 FMA 数就把它们归一到同一把尺子上：
+      <u>"每做一次乘加，平均要发多少条这类 load"</u>。</span>
+      <b>这个商是无量纲的，可以横向比较 —— 这正是"条数账"能成立的前提。</b>
+    </p>
+
+    <h4 style="font-size:15px;margin:26px 0 6px">第 2 步 · <code>bcast</code>（广播条数 ÷ FMA）</h4>
+    <pre>循环体里不含 tx 的 shared 读：<span class="w">Mds[ty][k]</span> —— 1 条
+bcast = 1 条 ÷ 1 个 FMA = <b>1.000</b></pre>
+
+    <h4 style="font-size:15px;margin:26px 0 6px">第 3 步 · <code>ldg</code>（全局 load 条数 ÷ FMA）</h4>
+    <pre>一个阶段里，每个线程从 global 搬 2 个元素进 shared（A 一个、B 一个）—— 2 条 LDG
+同一个阶段里，内层循环跑 TILE = 32 步，每步 1 个 FMA        —— 32 个 FMA
+
+ldg = 2 条 ÷ 32 个 FMA = <b>0.062</b></pre>
+    <div class="callout">
+      <p class="k">这 2 条为什么能摊给 32 个 FMA</p>
+      <p style="margin-bottom:0"><b>因为搬进 shared 的东西被整个 block 复用了。</b>
+        <span style="color:var(--ink-3)">一个线程只搬 2 个元素，但内层 32 步用到的是
+        <u>32 个线程一起搬来的那一整行/整列</u>。"我搬一个，我用三十二个"——
+        这一句就是 tiling 的全部。</span></p>
+    </div>
+    <p class="prose">
+      <b>三步合起来：<code>load/FMA = dist + bcast + ldg = 1.000 + 1.000 + 0.062 = 2.062</code>。</b>
+    </p>
+
+    <h4 style="font-size:15px;margin:26px 0 6px">第 4 步 · <code>bytesPerOut</code>（每个输出要过多少字节）</h4>
+    <pre>一个 block 算 32×32 = 1024 个输出，沿 K 走 N/32 = 128 个阶段
+每个阶段搬进来：A 的 32×32 + B 的 32×32 = 2048 个 float = 8192 字节
+128 个阶段合计：128 × 8192 = 1,048,576 字节
+摊到 1024 个输出：1,048,576 ÷ 1024 = 1024 字节
+再加上写回 C 自己那 4 字节：            <b>1028 字节/输出</b></pre>
+
+    <h4 style="font-size:15px;margin:26px 0 6px">第 5 步 · 算术强度与 roofline 达成率</h4>
+    <pre>算术强度 = 每个输出的浮点运算 ÷ 每个输出的字节
+         = 2K ÷ bytesPerOut = 2×4096 ÷ 1028 = <b>7.969</b> FLOP/byte
+
+roofline 上限 = 算术强度 × 峰值带宽 = 7.969 × 1008 = <b>8033 GFLOP/s</b>
+
+实测 GFLOP/s = 2·M·N·K ÷ 耗时(秒) ÷ 1e9
+             = 2 × 4096³ ÷ (22.225/1000) ÷ 1e9 = <b>6184.0</b>
+
+达成率 = 6184.0 ÷ 8033 = <b>77.0%</b></pre>
+    <p class="prose">
+      <b>K3 的达成率 77.0%，低于 100% —— 这是七个里少数几个"字节账还没失效"的。</b>
+      <span style="color:var(--ink-3)">而 K2 的达成率是 2113.5%，超了二十倍。</span>
+    </p>
+
+    <h4 style="font-size:15px;margin:26px 0 6px">第 6 步 · 节拍（唯一用到实测值的一步）</h4>
+    <pre>节拍 = 32 × SM数 × 时钟 × 耗时(秒) ÷ (M·N·K)
+     = 32 × 128 × 2.52e9 × 22.225e-3 ÷ 4096³
+     = <b>3.338</b> 周期/warp圈        <span class="c">（程序打印 3.34）</span></pre>
+    <div class="callout">
+      <p class="k">这个公式在算什么</p>
+      <p><b>分母 <code>M·N·K</code> 是这次乘法一共要做的 FMA 个数。</b>
+        <span style="color:var(--ink-3)">除以 32 得到"要跑多少个 warp 圈"——
+        一圈指一个 warp 的 32 个线程各做一次 FMA。</span></p>
+      <p><b>分子 <code>SM数 × 时钟 × 耗时</code> 是这段时间里全卡一共转了多少 SM-周期。</b></p>
+      <p style="margin-bottom:0"><b>两者相除 = 平均每个 warp 圈占掉多少 SM-周期。越小越快。</b>
+        <span style="color:var(--crit);font-weight:650">4090 上的物理地板是 0.25 ——
+        每个 SM 每周期能发 128 个 FP32 FMA，也就是 4 个 warp 圈。</span>
+        <span style="color:var(--ink-3)">K6 实测 0.50，是地板的 2 倍。</span></p>
+    </div>
+
+    <h4 style="font-size:15px;margin:26px 0 6px">第 7 步 · 每条 load 多少周期</h4>
+    <pre>每条 load 周期 = 节拍 ÷ load/FMA = 3.34 ÷ 2.062 = <b>1.62</b></pre>
+    <p class="prose">
+      <b>这是个诊断量，不是预测量。</b>
+      <span style="color:var(--ink-3)">它把"这个 kernel 慢"翻译成"它每发一条 load 要付多少周期"。
+      如果这个数在不同 kernel 之间差很多，说明 load 的类型构成变了
+      （比如 K1 的 15.88 —— 它那条 load 触发 33 个请求）。</span>
+    </p>
+
+    <h4 style="font-size:15px;margin:26px 0 6px">第 8 步 · 模型预测</h4>
+    <pre>预测节拍 = 2.69 × dist + 0.53 × bcast + 1.94 × ldg
+        = 2.69 × 1.000 + 0.53 × 1.000 + 1.94 × 0.062
+        = <b>3.34</b>        实测 <b>3.34</b>   <span class="a">✓</span></pre>
+    <p class="prose">
+      <span style="color:var(--ink-3)">K3 是标定点之一，所以这里必然吻合。
+      真正的考验是拿同样三个单价去外推 K3c 和 K5 —— 见 §3 · 六。</span>
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 id="s3-3">三、K1 / K2：没有 shared 的特例，以及请求账为什么必须存在<a class="up" href="#t3-3" title="回到目录">↑</a></h3>
+    <pre>for (int i = 0; i &lt; K; ++i)
+    acc += A[row * K + i] * B[i * N + col];     <span class="c">// 两条都是全局 load</span>
+
+第 1 步 dist  = 0 条 shared ÷ 1 FMA = <b>0.000</b>     <span class="c">// 根本没有 shared</span>
+第 2 步 bcast = 0 条 ÷ 1 FMA        = <b>0.000</b>
+第 3 步 ldg   = 2 条 ÷ 1 FMA        = <b>2.000</b>     <span class="c">// 一个 FMA 配两条全局读</span>
+       load/FMA = <b>2.000</b>
+第 4 步 bytesPerOut = 2K×4 + 4 = 32,772 字节        <span class="c">// 完全没有复用</span>
+第 5 步 算术强度 = 2×4096 ÷ 32772 = <b>0.250</b>
+第 6 步 节拍     K1 <b>31.76</b>   K2 <b>3.88</b>          <span class="x">← 差 8 倍</span>
+第 8 步 模型预测  两者都是 1.94 × 2.000 = <b>3.88</b>  <span class="x">← 完全相同</span></pre>
+    <div class="callout crit">
+      <p class="k">第三本账就是在这里诞生的</p>
+      <p><b>K1 和 K2 的前七步逐字相同：同样的算术强度、同样的 load/FMA、同样的模型预测。</b>
+        <span style="color:var(--crit);font-weight:650">可实测差了 8.21 倍。</span></p>
+      <p><b>后来的 SASS 反汇编给了决定性证据：</b>
+        <span style="color:var(--ink-3)">K1 和 K2 的指令构成逐项完全相同
+        （都是 30 FFMA / 59 LDG.32 / 216 条总计）。</span>
+        <b>所以这 8.21 倍里，指令条数的贡献是严格的零。</b></p>
+      <p style="margin-bottom:0"><b>差别只在一条指令触发几个内存事务：</b>
+        <span style="color:var(--ink-3)">K1 每个 FMA 要 <b>33</b> 个请求
+        （A 的那条被拆成 32 个 + B 的 1 个），K2 只要 2 个。</span>
+        <span style="color:var(--crit);font-weight:650">条数账的误差 -88% ——
+        它不是模型错了，是这个 kernel 根本不在它的适用区间里。</span></p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3 id="s3-4">四、K3c / K4：同叫"粗化"，动的是两本不同的账<a class="up" href="#t3-4" title="回到目录">↑</a></h3>
+    <pre><span class="c">// K3c：一个线程算 4 个输出，但 4 个输出【横向排开】</span>
+for (int c = 0; c &lt; 4; ++c)
+    for (int k = 0; k &lt; TILE; ++k)
+        acc[c] += Mds[ty][k] * Nds[c][k][tx];
+<span class="c">// 每个 FMA 仍然要 1 条广播 + 1 条 32 路 —— 内层一条都没少</span>
+dist 12.720→ 1.000    bcast 1.000    ldg 0.062→0.039   <span class="c">// 只有 ldg 降了</span>
+<b>省的是"搬进 shared"那一侧 —— 字节账</b>，实测 1.08×
+
+<span class="c">// K4：一个线程算 8 个输出，8 个输出【纵向排开】</span>
+float nv = Nds[k][tx];                 <span class="a">// ← 提出来！读一次</span>
+for (int r = 0; r &lt; 8; ++r)
+    acc[r] += Mds[ty*8+r][k] * nv;     <span class="a">// ← 用 8 次</span>
+<span class="c">// 8 个 FMA 只发 1 条 32 路 + 8 条广播</span>
+dist 1.000 → <b>0.125</b>    bcast 1.000    ldg 0.062
+<b>省的是内层循环的指令条数 —— 条数账</b>，实测 3.36×</pre>
+    <p class="prose">
+      <b>两个都叫"线程粗化"，收益差了 28.8 倍。</b>
+      <span style="color:var(--crit);font-weight:650">区别就在那一行 <code>float nv = ...</code> ——
+      把贵的那类 load 提到循环外面。</span>
+      <span style="color:var(--ink-3)">K3c 的 4 个输出横向排开，各自要用 Nds 的不同列，提不出来；
+      K4 的 8 个输出纵向排开，共用同一个 Nds 元素，才提得出来。</span>
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 id="s3-5">五、K5 / K6：两个方向一起复用，再换成 128 位<a class="up" href="#t3-5" title="回到目录">↑</a></h3>
+    <pre><span class="c">// K5：8 行 × 4 列 = 32 个输出</span>
+for (int r = 0; r &lt; 8; ++r) m[r] = Ads[k][i0+r];      <span class="c">// 8 条广播</span>
+for (int c = 0; c &lt; 4; ++c) n[c] = Bds[k][tx+c*32];   <span class="c">// 4 条 32 路</span>
+for (r) for (c) acc[r][c] += m[r] * n[c];             <span class="c">// 32 个 FMA</span>
+
+dist  = 4 条 ÷ 32 FMA = <b>0.125</b>
+bcast = 8 条 ÷ 32 FMA = <b>0.250</b>      <span class="c">// 两个方向一起摊薄</span>
+ldg   = <b>0.039</b>
+
+<span class="c">// K6：把上面 12 条 32 位读换成 3 条 128 位读</span>
+float4 m01 = ((float4*)&amp;Ads[k][i0])[0];   <span class="c">// 2 条广播覆盖 8 个 m</span>
+float4 m23 = ((float4*)&amp;Ads[k][i0])[1];
+float4 nv  = ((float4*)&amp;Bds[k][tx*4])[0]; <span class="c">// 1 条 32 路覆盖 4 个 n</span>
+
+dist  = 1 条 ÷ 32 FMA = <b>0.031</b>
+bcast = 2 条 ÷ 32 FMA = <b>0.062</b>
+ldg   = <b>0.010</b>       <span class="c">// 字节数一个没变，AI 仍是 12.720</span></pre>
+    <div class="callout warn">
+      <p class="k">K6 的模型预测为什么不准</p>
+      <p><b>预测 0.136，实测 0.50 —— 差 3.7 倍。</b></p>
+      <p style="margin-bottom:0"><b>因为三个单价都是用 32 位 load 标定的，而 K6 用的是 128 位 load。</b>
+        <span style="color:var(--ink-3)">一条 128 位 load 搬 4 倍的数据，不可能和 32 位 load 同价。</span>
+        <span style="color:var(--crit);font-weight:650">反过来用实测反推：128 位的隐含倍率 =
+        0.50 ÷ 0.136 = <b>3.68</b> ——
+        接近 4 但不到，说明 128 位 load 确实比 4 条 32 位便宜，但省不到 4 倍。</span></p>
+    </div>
+    <div class="callout crit">
+      <p class="k">SASS 又给这个数字打了个折扣</p>
+      <p style="margin-bottom:0"><b>反汇编发现 K5 本来就有 64 条 <code>LDS.128</code> ——
+        编译器自己把它三分之一的 shared load 向量化了。</b>
+        <span style="color:var(--ink-3)">所以手推的 "K5 全是标量" 这个前提是错的，
+        K5 的 dist / bcast 被高估了。</span>
+        <span style="color:var(--crit);font-weight:650">真实的访存指令比是 264 ÷ 114 = 2.32 倍，
+        不是条数账说的 3.98 倍。</span>
+        <b>3.68 这个倍率里，混着这部分误差 —— 它是个上界，不是干净的单价。</b></p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3 id="s3-6">六、七个 kernel 的全部指标，和单价标定<a class="up" href="#t3-6" title="回到目录">↑</a></h3>
+  <div class="tw"><table>
+    <caption>七个 kernel 的八个指标 · 全部由 N=4096 那一批算出</caption>
+    <thead><tr><th>kernel</th><th>32 路<br><span class="sub">dist</span></th>
+      <th>广播<br><span class="sub">bcast</span></th>
+      <th>全局<br><span class="sub">ldg</span></th>
+      <th>load/FMA</th><th>bytesPerOut</th><th>算术强度</th>
+      <th>节拍<br><span class="sub">周期/warp圈</span></th>
+      <th>每条 load<br><span class="sub">周期</span></th></tr></thead>
+    <tbody>
+      <tr><td class="cn"><b>K1</b></td><td class="en">0.000</td><td class="en">0.000</td><td class="en">2.000</td><td class="en">2.000</td><td class="en">32768 B</td><td class="en">0.250</td><td class="en"><b>31.76</b></td><td class="en">15.88</td></tr>
+      <tr><td class="cn"><b>K2</b></td><td class="en">0.000</td><td class="en">0.000</td><td class="en">2.000</td><td class="en">2.000</td><td class="en">32768 B</td><td class="en">0.250</td><td class="en"><b>3.88</b></td><td class="en">1.94</td></tr>
+      <tr><td class="cn"><b>K3</b></td><td class="en">1.000</td><td class="en">1.000</td><td class="en">0.062</td><td class="en">2.062</td><td class="en">1028 B</td><td class="en">7.969</td><td class="en"><b>3.34</b></td><td class="en">1.62</td></tr>
+      <tr><td class="cn"><b>K3C</b></td><td class="en">1.000</td><td class="en">1.000</td><td class="en">0.039</td><td class="en">2.039</td><td class="en">644 B</td><td class="en">12.720</td><td class="en"><b>3.09</b></td><td class="en">1.51</td></tr>
+      <tr><td class="cn"><b>K4</b></td><td class="en">0.125</td><td class="en">1.000</td><td class="en">0.062</td><td class="en">1.188</td><td class="en">1028 B</td><td class="en">7.969</td><td class="en"><b>0.99</b></td><td class="en">0.83</td></tr>
+      <tr><td class="cn"><b>K5</b></td><td class="en">0.125</td><td class="en">0.250</td><td class="en">0.039</td><td class="en">0.414</td><td class="en">644 B</td><td class="en">12.720</td><td class="en"><b>0.59</b></td><td class="en">1.44</td></tr>
+      <tr><td class="cn"><b>K6</b></td><td class="en">0.031</td><td class="en">0.062</td><td class="en">0.010</td><td class="en">0.104</td><td class="en">644 B</td><td class="en">12.720</td><td class="en"><b>0.50</b></td><td class="en">4.82</td></tr>
+    </tbody>
+  </table></div>
+    <p class="prose">
+      <b>三个单价怎么解出来的：拿 K2 / K3 / K4 三个实测点解三元一次方程组。</b>
+    </p>
+    <pre>K2:  1.94? × 2.000                                    = 3.88   →  LDG = <b>1.940</b>
+K3:  dist? × 1.000 + bcast? × 1.000 + 1.940 × 0.062   = 3.34
+K4:  dist? × 0.125 + bcast? × 1.000 + 1.940 × 0.062   = 0.99
+                     ↓ 两式相减，bcast 消掉
+     dist? × 0.875 = 3.34 − 0.99 − 0
+                                        →  32 路 = <b>2.686</b>
+                                        →  广播 = <b>0.534</b>
+
+<span class="c">// 09-21 那一批解出的是 2.61 / 0.53 / 1.89 —— 换了机器、换了驱动，</span>
+<span class="c">// 三个单价的相对关系稳得住，绝对值差 3% 左右。</span></pre>
+    <div class="callout link">
+      <p class="k">外推验收：两个没参与标定的点</p>
+      <p style="margin-bottom:0"><b>K3c 误差 +6.6%，K5 误差 -7.6% —— 都在 ±10% 以内。</b>
+        <span style="color:var(--ink-3)">这是条数账唯一能被证伪的地方：三个点定三个参数是必然吻合的，
+        只有外推到没参与标定的点，模型才算被检验过。</span>
+        <span style="color:var(--crit);font-weight:650">两个已知边界外的点（K1 的非合并、K6 的 128 位）
+        各缺一个参数，不算模型错。</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ §4 三本账 ============ -->
+<section>
+<h2 id="s4"><span class="num">对账</span>哪一本真的预测对了<a class="up" href="#t4" title="回到目录">↑</a></h2>
+  <div class="tw"><table>
+    <caption>三本账各自预测得准不准 · 单价用本批 K2/K3/K4 标定</caption>
+    <thead><tr><th>kernel</th><th>① 字节账<br><span class="sub">roofline 达成率</span></th>
+      <th>② 请求账<br><span class="sub">请求/FMA</span></th>
+      <th>③ 条数账<br><span class="sub">load/FMA</span></th>
+      <th>实测节拍</th><th>条数账预测</th><th>误差</th><th>判定</th></tr></thead>
+    <tbody>
+      <tr><td class="cn"><b>K1</b></td><td class="en"><span style="color:var(--crit);font-weight:700">258.0%</span></td><td class="en">33</td><td class="en">2.000</td><td class="en">31.76</td><td class="en">3.880</td><td class="en">-87.8%</td><td class="en"><span class="tag crit">请求账的地盘</span></td></tr>
+      <tr><td class="cn"><b>K2</b></td><td class="en"><span style="color:var(--crit);font-weight:700">2113.5%</span></td><td class="en">2</td><td class="en">2.000</td><td class="en">3.88</td><td class="en">3.880</td><td class="en">+0.0%</td><td class="en"><span class="tag good">标定点</span></td></tr>
+      <tr><td class="cn"><b>K3</b></td><td class="en">77.0%</td><td class="en">—</td><td class="en">2.062</td><td class="en">3.34</td><td class="en">3.340</td><td class="en">+0.0%</td><td class="en"><span class="tag good">标定点</span></td></tr>
+      <tr><td class="cn"><b>K3C</b></td><td class="en">52.2%</td><td class="en">—</td><td class="en">2.039</td><td class="en">3.09</td><td class="en">3.295</td><td class="en">+6.6%</td><td class="en"><span class="tag good">外推 ±10% 内</span></td></tr>
+      <tr><td class="cn"><b>K4</b></td><td class="en"><span style="color:var(--crit);font-weight:700">260.8%</span></td><td class="en">—</td><td class="en">1.188</td><td class="en">0.99</td><td class="en">0.990</td><td class="en">-0.0%</td><td class="en"><span class="tag good">标定点</span></td></tr>
+      <tr><td class="cn"><b>K5</b></td><td class="en"><span style="color:var(--crit);font-weight:700">270.6%</span></td><td class="en">—</td><td class="en">0.414</td><td class="en">0.59</td><td class="en">0.545</td><td class="en">-7.6%</td><td class="en"><span class="tag good">外推 ±10% 内</span></td></tr>
+      <tr><td class="cn"><b>K6</b></td><td class="en"><span style="color:var(--crit);font-weight:700">322.5%</span></td><td class="en">—</td><td class="en">0.104</td><td class="en">0.50</td><td class="en">0.136</td><td class="en">-72.8%</td><td class="en"><span class="tag warn">128 位未标定</span></td></tr>
+    </tbody>
+  </table></div>
+  <div class="sec">
+    <h3 id="s4-1">一、按账本拆开看每一步<a class="up" href="#t4-1" title="回到目录">↑</a></h3>
+    <div class="tw"><table>
+      <thead><tr><th>这一步</th><th>字节账</th><th>请求账</th><th>条数账</th><th>实测</th></tr></thead>
+      <tbody>
+        <tr><td class="cn">K1→K2</td><td class="en">不变 0.25</td>
+            <td class="en"><b>33 → 2</b></td><td class="en">不变 2.000</td>
+            <td class="en"><b>8.21×</b></td></tr>
+        <tr><td class="cn">K2→K3</td><td class="en">0.25 → 7.97</td><td class="en">不变</td>
+            <td class="en">2.000 → 2.062</td><td class="en">1.16×</td></tr>
+        <tr><td class="cn">K3→K3c</td><td class="en">7.97 → 12.72</td><td class="en">不变</td>
+            <td class="en">2.062 → 2.039</td><td class="en">1.08×</td></tr>
+        <tr><td class="cn">K3→K4</td><td class="en">不变 7.97</td><td class="en">不变</td>
+            <td class="en"><b>2.062 → 1.188</b></td><td class="en"><b>3.36×</b></td></tr>
+        <tr><td class="cn">K4→K5</td><td class="en">7.97 → 12.72</td><td class="en">不变</td>
+            <td class="en"><b>1.188 → 0.414</b></td><td class="en">1.66×</td></tr>
+        <tr><td class="cn">K5→K6</td><td class="en">不变 12.72</td><td class="en">不变</td>
+            <td class="en"><b>0.414 → 0.104</b></td><td class="en">1.19×</td></tr>
+      </tbody>
+      <caption><strong>收益大的每一步都动了请求账或条数账；只动字节账的两步，收益都在 10% 上下。</strong></caption>
+    </table></div>
+  </div>
+  <div class="sec">
+    <h3 id="s4-2">二、那句该改写的话<a class="up" href="#t4-2" title="回到目录">↑</a></h3>
+    <div class="callout crit">
+      <p class="k">原来的说法</p>
+      <p style="margin-bottom:0">"SGEMM 在 4090 上摸不到 FP32 峰值，因为 128×128 分块的算术强度只有 32，
+        而脊点是 82 —— 剩下的靠 L2 和寄存器复用补。"</p>
+    </div>
+    <div class="callout link">
+      <p class="k">实测之后应该这么说</p>
+      <p style="margin-bottom:0"><b>"SGEMM 在 4090 上摸不到 FP32 峰值，<u>不是</u>因为带宽 ——
+        K6 的 roofline 达成率 322%，说明它早就不在那堵墙上了。</b>
+        <span style="color:var(--crit);font-weight:650">真正的墙在 LSU：算力地板是 0.25 周期/warp圈，
+        K6 实测 0.50，差的那一倍是 3 条 128 位 shared load 占掉的发射槽。</span>
+        <b>要再往上走，只能继续砍 load 条数（warptiling）或者换张量核心。"</b></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ §5 扫描 ============ -->
+<section>
+<h2 id="s5"><span class="num">扫描</span>尺寸与形状<a class="up" href="#t5" title="回到目录">↑</a></h2>
+  <div class="sec">
+    <h3 id="s5-1">一、尺寸：为什么主表必须用 4096<a class="up" href="#t5-1" title="回到目录">↑</a></h3>
+  <div class="tw"><table>
+    <caption>方阵尺寸扫描 · GFLOP/s · 最后一列是 8192 相对 4096</caption>
+    <thead><tr><th>kernel</th>
+      <th>N=1024</th>
+      <th>N=2048</th>
+      <th>N=4096</th>
+      <th>N=8192</th>
+      <th>8192/4096</th></tr></thead>
+    <tbody>
+      <tr><td class="cn"><b>K1</b></td><td class="en">616</td><td class="en">648</td><td class="en">649</td><td class="en">648</td><td class="en">1.00</td></tr>
+      <tr><td class="cn"><b>K2</b></td><td class="en">5162</td><td class="en">5325</td><td class="en">5324</td><td class="en">4570</td><td class="en">0.86</td></tr>
+      <tr><td class="cn"><b>K3</b></td><td class="en">6449</td><td class="en">6695</td><td class="en">6184</td><td class="en">5875</td><td class="en">0.95</td></tr>
+      <tr><td class="cn"><b>K3C</b></td><td class="en">6628</td><td class="en">6847</td><td class="en">6691</td><td class="en">6042</td><td class="en">0.90</td></tr>
+      <tr><td class="cn"><b>K4</b></td><td class="en">17044</td><td class="en">19861</td><td class="en">20771</td><td class="en">14412</td><td class="en"><b>0.69</b></td></tr>
+      <tr><td class="cn"><b>K5</b></td><td class="en">23599</td><td class="en">32415</td><td class="en">34506</td><td class="en">20536</td><td class="en"><b>0.60</b></td></tr>
+      <tr><td class="cn"><b>K6</b></td><td class="en">28256</td><td class="en">39223</td><td class="en">40929</td><td class="en">35456</td><td class="en">0.87</td></tr>
+      <tr><td class="cn"><b>K0 cuBLAS</b></td><td class="en">39768</td><td class="en">53024</td><td class="en">57242</td><td class="en">58819</td><td class="en"><b>1.03</b></td></tr>
+    </tbody>
+  </table></div>
+    <p class="prose">
+      <b>1024 的 footprint 只有 12.6 MB，整个塞得进 4090 的 75.5 MB L2 —— 那种尺寸测的不是显存带宽。</b>
+      <span style="color:var(--crit);font-weight:650">4096（201 MB）起才明显超出 L2。</span>
+      <span style="color:var(--ink-3)">主表取 4096 是折中：够大到脱离 L2，又不至于让 K1 单次就要 1.6 秒。</span>
+    </p>
+    <div class="callout">
+      <p class="k">8192 那一列有两件事值得看</p>
+      <p><b>① K6 的价值要到装不下 L2 的尺寸才显现。</b>
+        <span style="color:var(--ink-3)">4096 上它只值 1.19×，8192 上变成 1.73×。</span></p>
+      <p style="margin-bottom:0"><b>② 只有 cuBLAS 在 8192 上不掉（1.03×），我们最好的 K6 掉到 0.87、K5 掉到 0.60。</b>
+        <span style="color:var(--crit);font-weight:650">差距就在 double buffering 和更好的 L2 复用策略上 ——
+        这比"占 cuBLAS 71.5%"更具体地说明了缺口在哪。</span></p>
+    </div>
+  </div>
+  <div class="sec">
+    <h3 id="s5-2">二、形状：换成真实推理负载还剩多少<a class="up" href="#t5-2" title="回到目录">↑</a></h3>
+    <p class="prose">
+      <b>主表的一切都是方阵，而生产里的 GEMM 几乎从来不是方阵。</b>
+      <span style="color:var(--ink-3)">prefill 是瘦长矩阵；decode 的 M 就等于 batch size，常常只有 1。
+      N/K 取自 Qwen2.5-7B 的 FFN 维度（18944 × 3584）。</span>
+    </p>
+  <div class="tw"><table>
+    <caption>四组形状 · 上半是 GFLOP/s，下半是占 cuBLAS · N/K 取自 Qwen2.5-7B 的 FFN</caption>
+    <thead><tr><th>kernel</th>
+      <th>方阵基准<br><span class="sub">4096³</span></th>
+      <th>prefill<br><span class="sub">2048×18944×3584</span></th>
+      <th>decode-b32<br><span class="sub">32×18944×3584</span></th>
+      <th>decode-b1<br><span class="sub">1×18944×3584</span></th>
+</tr></thead>
+    <tbody>
+      <tr><td class="cn"><b>K0 cuBLAS</b></td><td class="en">57506</td><td class="en">55586</td><td class="en">13883</td><td class="en">450</td></tr>
+      <tr><td class="cn"><b>K1</b></td><td class="en">648</td><td class="en">645</td><td class="en">570</td><td class="en">127</td></tr>
+      <tr><td class="cn"><b>K2</b></td><td class="en">5320</td><td class="en">4568</td><td class="en">4057</td><td class="en">284</td></tr>
+      <tr><td class="cn"><b>K3</b></td><td class="en">6167</td><td class="en">5806</td><td class="en">5094</td><td class="en">159</td></tr>
+      <tr><td class="cn"><b>K3C</b></td><td class="en">6678</td><td class="en">5785</td><td class="en">3274</td><td class="en">104</td></tr>
+      <tr><td class="cn"><b>K4</b></td><td class="en">20840</td><td class="en">14186</td><td class="en">14247</td><td class="en">453</td></tr>
+      <tr><td class="cn"><b>K5</b></td><td class="en">34558</td><td class="en">20916</td><td class="en">12668</td><td class="en">407</td></tr>
+      <tr><td class="cn"><b>K6</b></td><td class="en">41112</td><td class="en">31743</td><td class="en">13537</td><td class="en">426</td></tr>
+      <tr><td class="cn" colspan="5" style="background:var(--surface-2);font-weight:700">占 cuBLAS %</td></tr>
+      <tr><td class="cn"><b>K4</b></td><td class="en">36.2%</td><td class="en">25.5%</td><td class="en"><span style="color:var(--crit);font-weight:700">102.6%</span></td><td class="en"><span style="color:var(--crit);font-weight:700">100.7%</span></td></tr>
+      <tr><td class="cn"><b>K5</b></td><td class="en">60.1%</td><td class="en">37.6%</td><td class="en">91.3%</td><td class="en">90.4%</td></tr>
+      <tr><td class="cn"><b>K6</b></td><td class="en">71.5%</td><td class="en">57.1%</td><td class="en">97.5%</td><td class="en">94.7%</td></tr>
+    </tbody>
+  </table></div>
+    <div class="callout crit">
+      <p class="k">三个结论</p>
+      <p><b>① 「优化了 63.1 倍」只在方阵上成立。</b></p>
+      <pre>方阵 4096³     K1 → K6   <span class="a">63.4×</span>
+prefill        K1 → K6   <span class="a">49.2×</span>
+decode b32     K1 → K6   <span class="w">23.8×</span>
+decode b1      K1 → K6   <span class="x">3.4×</span>   <span class="c">← 只剩零头</span></pre>
+      <p><b>② decode 上 K6 反而比 K4 慢（0.95×）。</b>
+        <span style="color:var(--ink-3)">K6 相对 K4 多出来的本事全部用来砍指令条数，
+        而 decode 那一侧的墙是带宽 —— 砍条数不但没用，更大的 tile 在 M=1 时还浪费更多线程。</span>
+        <span style="color:var(--crit);font-weight:650">这就把"三本账只在算力受限一侧有效"钉死了。</span></p>
+      <p style="margin-bottom:0"><b>③ decode 上我们几乎追平 cuBLAS，K4 甚至超过它（102.6%）。</b>
+        <span style="color:var(--ink-3)">这和事前预测正好相反。原因不难想：<u>带宽墙对谁都一样高</u>。
+        decode 的瓶颈是把 18944×3584 的权重完整读一遍，这件事谁做都得付同样的 DRAM 时间，
+        cuBLAS 那些精巧的分块调度无处施展。</span>
+        <b>cuBLAS 的优势只在算力受限那一侧兑现 —— prefill 上它还有 96.7%，我们的 K6 只剩 57.1%。</b></p>
+    </div>
+    <div class="callout link">
+      <p class="k">给下一阶段的接口</p>
+      <pre>decode b1   0.302 ms        decode b32  0.313 ms        耗时比 <span class="a">1.04×</span>
+                                                       吞吐比 <span class="a">32×</span></pre>
+      <p style="margin-bottom:0"><b>batch 32 和 batch 1 花一样的时间，吞吐差 32 倍。</b>
+        <span style="color:var(--ink-3)">这就是 continuous batching 必须存在的量化理由 ——
+        也和 01 阶段在 vLLM 吞吐曲线上看到的宏观现象对上了：那边是现象，这里是机制。</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ §6 意外 ============ -->
+<section>
+<h2 id="s6"><span class="num">意外</span>两个没预料到的发现<a class="up" href="#t6" title="回到目录">↑</a></h2>
+  <div class="sec">
+    <h3 id="s6-1">一、K1 的 211.911 ms 里，四分之三和"不合并"无关<a class="up" href="#t6-1" title="回到目录">↑</a></h3>
+    <pre>            N=4096（2 的幂）    N=4097（打破对齐）
+K1           211.911 ms          63.675 ms     <span class="a">← 快了 3.33 倍</span>
+K1/K2          <span class="w">8.209×</span>             <span class="a">2.392×</span>
+
+8.209 ÷ 2.392 = <b>3.43</b>   ← 2 的幂跨度的额外惩罚
+回乘检验：2.392 × 3.43 = 8.209，逐位相同</pre>
+    <p class="prose">
+      <b>N=4096 时 A 的行跨度恰好 16384 字节，warp 的 32 个地址全部撞进同一批 L2 set / DRAM bank。</b>
+      <span style="color:var(--crit);font-weight:650">所以"合并访存是性价比最高的一步"要加个注：
+      那 8.21 倍里只有 2.392 倍是合并本身，另外 3.43 倍是顺带治好的跨度冲突。</span>
+      <span style="color:var(--ink-3)">对照组：同一个 4096→4097，其余 kernel 只慢 2.8%–7.1%，cuBLAS 慢 15.7%。</span>
+    </p>
+  </div>
+  <div class="sec">
+    <h3 id="s6-2">二、编译器早就替 K5 做了一半向量化<a class="up" href="#t6-2" title="回到目录">↑</a></h3>
+    <pre>kernel     FFMA  LDS.128   LDS.32  LDG.128   LDG.32    TOTAL
+k1           30        -        -        -       59      216
+k2           30        -        -        -       59      216   <span class="a">← 和 k1 逐项相同</span>
+k5         1056       <span class="w">64</span>      128        -       72     1856   <span class="x">← 预测说这里该是 0</span>
+k6         1056       <span class="a">96</span>        -       <span class="a">18</span>        -     1520</pre>
+    <div class="tw"><table>
+      <thead><tr><th>预测</th><th>结果</th><th>意味着什么</th></tr></thead>
+      <tbody>
+        <tr><td>K6 的 <code>LDS.128</code> &gt; 0</td><td><span class="tag good">成立</span></td>
+            <td>float4 确实编成了 128 位访存，K6 那一步的推导前提坐实</td></tr>
+        <tr><td>K5 的 <code>LDS.128</code> = 0</td><td><span class="tag crit">推翻</span></td>
+            <td><b>K5→K6 不是"标量 vs 向量化"，是"部分 vs 完全向量化"</b>。
+                真实指令比 2.32×，而非手推的 3.98×</td></tr>
+        <tr><td>K6 的 <code>LDG.128</code> &gt; 0</td><td><span class="tag good">成立</span></td>
+            <td>全局侧也向量化了</td></tr>
+        <tr><td><code>LDL</code>/<code>STL</code> = 0</td><td><span class="tag good">成立</span></td>
+            <td>没有 spill，七个 kernel 比的确实是 kernel 本身</td></tr>
+      </tbody>
+      <caption><b>一个没预测到的旁证：K1 和 K2 的 SASS 逐项相同。</b>
+        <span style="color:var(--crit);font-weight:650">所以 K1→K2 那 8.21 倍里指令条数的贡献严格为零 ——
+        这是"请求账必须独立于条数账"最干净的证据。</span></caption>
+    </table></div>
+  </div>
+</section>
+
+<!-- ============ §7 缺口 ============ -->
+<section>
+<h2 id="s7"><span class="num">缺口</span>ncu 六指标没拿到<a class="up" href="#t7" title="回到目录">↑</a></h2>
+  <div class="callout crit">
+    <p class="k">诚实标注：这一项失败了</p>
+    <pre>==ERROR== ERR_NVGPUCTRPERM - The user does not have permission to access
+          NVIDIA GPU Performance Counters on the target device 0.</pre>
+    <p><b>租用实例的容器没有 <code>CAP_SYS_ADMIN</code>，是 root 也没用</b>
+      <span style="color:var(--ink-3)">—— 这个能力在 <code>docker run</code> 创建容器时就定死了，
+      容器内部改不了。实测 <code>CapEff = 0xa80405fb</code>，正是 Docker 的默认集。</span></p>
+    <p style="margin-bottom:0"><b>好消息是自检起作用了：</b>
+      <span style="color:var(--ink-3)">脚本在编译完成后 5 秒就探明了这件事并跳过后两步，
+      前面三步（SASS / 计时主表 / 形状扫描）的数据一个没丢。</span></p>
+  </div>
+  <div class="sec">
+    <h3 id="s7-1">一、六个指标里，只有两个是真的拿不到<a class="up" href="#t7-1" title="回到目录">↑</a></h3>
+    <div class="tw"><table>
+      <thead><tr><th>ncu 指标</th><th>它回答什么</th><th>有没有替代</th></tr></thead>
+      <tbody>
+        <tr><td class="en">launch__registers_per_thread</td><td>寄存器超预算没有</td>
+            <td><span class="tag good">有</span> <code>ptxas -v</code> 编译时就打了</td></tr>
+        <tr><td class="en">sm__warps_active</td><td>理论占用率兑现没有</td>
+            <td><span class="tag good">有</span> <code>cudaOccupancyMaxActiveBlocksPerMultiprocessor</code></td></tr>
+        <tr><td class="en">l1tex__data_bank_conflicts</td><td>shared 排布踩雷没有</td>
+            <td><span class="tag warn">半有</span> 可从 SASS 的访问模式推</td></tr>
+        <tr><td class="en">sm__throughput</td><td>算力用满没有</td>
+            <td><span class="tag warn">半有</span> 「节拍」是它的等价物</td></tr>
+        <tr><td class="en">gpu__dram_throughput</td><td>带宽用满没有</td>
+            <td><span class="tag crit">没有</span></td></tr>
+        <tr><td class="en">average_data_bytes_per_sector</td><td>合并做对没有</td>
+            <td><span class="tag crit">没有</span></td></tr>
+      </tbody>
+    </table></div>
+  </div>
+  <div class="sec">
+    <h3 id="s7-2">二、那张"合并效率"图的三条腿替代论证<a class="up" href="#t7-2" title="回到目录">↑</a></h3>
+    <p class="prose">
+      <b>最后那个指标想证明的是"K1 的 8.21 倍劣势来自访存不合并"。没有它，这件事照样能证：</b>
+    </p>
+    <div class="tw"><table>
+      <thead><tr><th></th><th>证据</th><th>证明了什么</th></tr></thead>
+      <tbody>
+        <tr><td class="cn">①</td><td>K1 和 K2 的 SASS <b>逐项相同</b></td>
+            <td>8.21 倍里指令条数贡献<b>严格为零</b>，100% 是访存行为</td></tr>
+        <tr><td class="cn">②</td><td>请求账 33 → 2 请求/FMA</td>
+            <td>机制：一条 LDG 被拆成 32 个请求 vs 合并成 1 个</td></tr>
+        <tr><td class="cn">③</td><td>N=4097 把 8.209× 拆成 2.392× × 3.43×，回乘逐位对上</td>
+            <td>进一步分出"不合并"和"2 的幂跨度"各占多少</td></tr>
+      </tbody>
+      <caption><b>① 是排除法，比 ncu 的测量法更干净</b>
+        <span style="color:var(--ink-3)">—— 它不是量访存效率，是直接排除了另一个自变量。</span>
+        <span style="color:var(--crit);font-weight:650">③ 更是 ncu 看不出来的：
+        sector 指标只会告诉你效率低，不会告诉你其中四分之三是跨度冲突。</span></caption>
+    </table></div>
+    <p class="prose">
+      <span style="color:var(--ink-3)">实测确认 <code>nsys</code> 在这种容器里能跑（CUDA 时间线可用），
+      但它的 <code>--gpu-metrics-devices</code> 走同一条权限路径，同样报 <code>ERR_NVGPUCTRPERM</code>。</span>
+    </p>
+  </div>
+</section>
+
+<!-- ============ §8 复现 ============ -->
+<section>
+<h2 id="s8"><span class="num">复现</span>一条命令，和全部原始数据<a class="up" href="#t8" title="回到目录">↑</a></h2>
+  <pre><span class="c"># 测试机（RTX 4090）</span>
+nvcc -O3 -arch=sm_89 -lineinfo -Xptxas -v sgemm_all.cu -o sgemm_all -lcublas
+export NVIDIA_TF32_OVERRIDE=0
+bash run_p0.sh                      <span class="c"># 九个阶段，50~80 分钟</span>
+
+<span class="c"># 本地</span>
+python parse_results.py all_*.txt shapes_*.txt     <span class="c"># 文本 → CSV</span></pre>
+  <div class="tw"><table>
+    <thead><tr><th>文件</th><th>是什么</th></tr></thead>
+    <tbody>
+      <tr><td class="en"><a href="../src/sgemm_all.cu">src/sgemm_all.cu</a></td>
+          <td>八个 kernel + 测试脚手架（设备查询、occupancy、三本账、抽样校验、中位数计时）</td></tr>
+      <tr><td class="en"><a href="../Scripts/run_p0.sh">Scripts/run_p0.sh</a></td>
+          <td>总驱动。<b>顺序不能改</b>：SASS 不占 GPU 放最前，两步计时排中间，ncu 垫底</td></tr>
+      <tr><td class="en"><a href="../Scripts/run_all.sh">Scripts/run_all.sh</a></td>
+          <td>计时引擎：kernel × 尺寸 × 轮次，含正确性、边界、racecheck、时钟采样</td></tr>
+      <tr><td class="en"><a href="../Scripts/sweep_shapes.sh">Scripts/sweep_shapes.sh</a></td>
+          <td>四组形状扫描</td></tr>
+      <tr><td class="en"><a href="../Scripts/check_sass.sh">Scripts/check_sass.sh</a></td>
+          <td>反汇编按 kernel 分类计数。纯 CPU</td></tr>
+      <tr><td class="en"><a href="../Scripts/parse_results.py">Scripts/parse_results.py</a></td>
+          <td>文本 → 两份 CSV：逐轮的是证据，中位数的是结论</td></tr>
+      <tr><td class="en"><a href="../Results/Round1/">Results/Round1/</a></td>
+          <td>原始输出、时钟采样、SASS 全文、解析后的 CSV、环境指纹</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout">
+    <p class="k">一条注意事项</p>
+    <p style="margin-bottom:0"><b>报告里的每一个数都来自 <code>Results/Round1/</code> 那一批，
+      没有跨批次拼接。</b>
+      <span style="color:var(--ink-3)">三个单价也是用本批的 K2/K3/K4 现场标定的，
+      没有沿用任何历史常数。</span>
+      <span style="color:var(--crit);font-weight:650">理由见 §2 · 一第一行：
+      绝对耗时跨批漂 2–3%，而本报告有一半的结论建立在比值上。</span></p>
+  </div>
+</section>
+
+<footer>
+  <span>02 阶段 · 报告 02 · 配套报告 01（核心代码的演化）</span>
+  <span>实测 2026-09-24 · RTX 4090 · driver 580.159.03 · 同批同二进制</span>
+  <span>数据：Results/Round1/ · 脚本：Scripts/ · 代码：src/sgemm_all.cu</span>
+  <span>三个单价用本批 K2/K3/K4 现场标定，未沿用任何历史常数</span>
+  <span>唯一缺口：ncu 六指标与 roofline 图（实例无性能计数器权限，见 §7）</span>
+</footer>
+
+</div>
