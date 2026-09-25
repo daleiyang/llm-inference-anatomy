@@ -828,11 +828,31 @@ K1/K2          <span class="w">8.209×</span>             <span class="a">2.392�
 8.209 ÷ 2.392 = <b>3.43</b>   ← 2 的幂跨度的额外惩罚
 回乘检验：2.392 × 3.43 = 8.209，逐位相同</pre>
     <p class="prose">
-      <b>N=4096 时 A 的行跨度恰好 16384 字节，warp 的 32 个地址全部撞进同一批 L2 set / DRAM bank。</b>
+      <b>N=4096 时 A 的行跨度恰好 16384 字节 = 2¹⁴，而 4097 让它变成 16388。
+      唯一改动的变量就是这个。</b>
       <span style="color:var(--crit);font-weight:650">所以"合并访存是性价比最高的一步"要加个注：
       那 8.21 倍里只有 2.392 倍是合并本身，另外 3.43 倍是顺带治好的跨度冲突。</span>
       <span style="color:var(--ink-3)">对照组：同一个 4096→4097，其余 kernel 只慢 2.8%–7.1%，cuBLAS 慢 15.7%。</span>
     </p>
+    <div class="callout warn">
+      <p class="k">机制没查出来，这里如实标注</p>
+      <p><b>"跨度是 2 的幂"是起因，这一点是单变量对照，靠得住。
+        但<u>具体是哪个硬件结构在冲突</u>，我们指认不了。</b></p>
+      <pre><span class="c">// 最顺手的解释是"warp 内 32 个地址撞同一个 L2 set"。把地址逐位算一遍：</span>
+              行号(addr÷128)        行内偏移      sector 效率
+N=4096        base + 128t           恒为 0         12.5%
+N=4097        base + 128t           0,4,8,…        12.5%
+              <span class="x">↑ 完全相同</span>                      <span class="x">↑ 完全相同</span>
+
+<span class="c">// 16388 = 2¹⁴ + 2²，多出来的只影响第 2–6 位 —— 那是 128 字节行的【内部】，</span>
+<span class="c">// 不参与任何 set / bank 的选择。所以那个解释解释不了 3.33 倍。</span></pre>
+      <p style="margin-bottom:0"><b>还剩两个候选：L2 slice 哈希退化，或 DRAM row buffer 颠簸。</b>
+        <span style="color:var(--ink-3)">判据很简单 —— sector 数相同而 DRAM 吞吐差很多就是后者，
+        sector 数就差很多则是前者。</span>
+        <span style="color:var(--crit);font-weight:650">两个指标都要 ncu，这一批没有（见 <a href="#s7">§7</a>）。
+        所以这里留一个悬案，而不是给个听起来合理的解释了事。</span>
+        <b>完整推导见第 6 章导学 §5 · 六。</b></p>
+    </div>
   </div>
   <div class="sec">
     <h3 id="s6-2">二、编译器早就替 K5 做了一半向量化<a class="up" href="#t6-2" title="回到目录">↑</a></h3>

@@ -601,8 +601,13 @@ K1/K2          <span class="w">8.209×</span>             <span class="a">2.392�
 <span class="c">// 于是 8.209 ÷ 2.392 = 3.43 就是 2 的幂跨度的额外惩罚。</span>
 <span class="a">// 回乘检验：2.392 × 3.43 = 8.209，和实测逐位相同。</span></pre>
       <p style="margin-bottom:0"><b>N=4096 时 A 的行跨度恰好 16384 字节 —— 2 的幂。</b>
-        <span style="color:var(--ink-3)">warp 里 32 个线程的地址全部映射到同一批 L2 set / DRAM bank 上，
-        在"不合并"之上又叠了一层冲突。N=4097 把对齐打破，这一层就消失了。</span>
+        <span style="color:var(--ink-3)">在"不合并"之上又叠了一层冲突。N=4097 把对齐打破，这一层就消失了。</span>
+        <b>但具体是哪个硬件结构在冲突（L2 slice 哈希？DRAM row buffer？），
+        我们没能指认出来</b><span style="color:var(--ink-3)">——
+        把地址逐位算一遍会发现，两种 N 在"行号"这一级的模式<u>完全相同</u>，
+        所以"32 个地址撞同一个 L2 set"这个顺手的解释站不住。
+        要判到具体结构需要 ncu 的 DRAM 指标，而这一批没有（见
+        <a href="02-SGEMM实测与三本账.html">报告 02 · §7</a>）。</span>
         <span style="color:var(--crit);font-weight:650">对照组：同一个 4096→4097，其余 kernel 只慢 2.8%–7.1%，
         cuBLAS 慢 15.7% —— 说明不是"4097 让谁都变快"，是只有 K1 被单独惩罚了。</span></p>
     </div>
