@@ -229,14 +229,14 @@
       <th>占 cuBLAS</th><th>相对 K1</th><th>算术强度</th><th>roofline 达成率</th>
       <th>占用率</th><th>寄存器</th><th>跨轮漂移</th></tr></thead>
     <tbody>
-      <tr><td class="cn"><b>K1 naive</b></td><td class="en">211.911 ms</td><td class="en">648.6</td><td class="en">0.79%</td><td class="en">1.1%</td><td class="en">基准</td><td class="en">0.250</td><td class="en">258.0%</td><td class="en">66.7%</td><td class="en">40</td><td class="en">±0.2%</td></tr>
-      <tr><td class="cn"><b>K2 合并</b></td><td class="en">25.815 ms</td><td class="en">5324.0</td><td class="en">6.45%</td><td class="en">9.3%</td><td class="en">8.2×</td><td class="en">0.250</td><td class="en">2113.5%</td><td class="en">66.7%</td><td class="en">40</td><td class="en">±0.2%</td></tr>
+      <tr><td class="cn"><b>K1 naive</b></td><td class="en">211.911 ms</td><td class="en">648.6</td><td class="en">0.79%</td><td class="en">1.1%</td><td class="en">基准</td><td class="en">0.250</td><td class="en">257.4%</td><td class="en">66.7%</td><td class="en">40</td><td class="en">±0.2%</td></tr>
+      <tr><td class="cn"><b>K2 合并</b></td><td class="en">25.815 ms</td><td class="en">5324.0</td><td class="en">6.45%</td><td class="en">9.3%</td><td class="en">8.2×</td><td class="en">0.250</td><td class="en">2112.7%</td><td class="en">66.7%</td><td class="en">40</td><td class="en">±0.2%</td></tr>
       <tr><td class="cn"><b>K3 shared 分块</b></td><td class="en">22.225 ms</td><td class="en">6184.0</td><td class="en">7.49%</td><td class="en">10.8%</td><td class="en">9.5×</td><td class="en">7.969</td><td class="en">77.0%</td><td class="en">66.7%</td><td class="en">38</td><td class="en">±0.1%</td></tr>
       <tr><td class="cn"><b>K3c 书上的粗化</b></td><td class="en">20.542 ms</td><td class="en">6690.6</td><td class="en">8.10%</td><td class="en">11.7%</td><td class="en">10.3×</td><td class="en">12.720</td><td class="en">52.2%</td><td class="en">66.7%</td><td class="en">38</td><td class="en">±0.1%</td></tr>
-      <tr><td class="cn"><b>K4 1D 寄存器</b></td><td class="en">6.617 ms</td><td class="en">20770.6</td><td class="en">25.37%</td><td class="en">36.3%</td><td class="en">32.0×</td><td class="en">7.969</td><td class="en">260.8%</td><td class="en">75.0%</td><td class="en">54</td><td class="en">±0.5%</td></tr>
-      <tr><td class="cn"><b>K5 2D 寄存器</b></td><td class="en">3.983 ms</td><td class="en">34506.4</td><td class="en">42.02%</td><td class="en">60.3%</td><td class="en">53.2×</td><td class="en">12.720</td><td class="en">270.6%</td><td class="en">33.3%</td><td class="en">72</td><td class="en">±0.7%</td></tr>
-      <tr><td class="cn"><b>K6 float4</b></td><td class="en">3.358 ms</td><td class="en"><b>40928.8</b></td><td class="en">50.08%</td><td class="en"><b>71.5%</b></td><td class="en">63.1×</td><td class="en">12.720</td><td class="en">322.5%</td><td class="en">33.3%</td><td class="en">111</td><td class="en">±0.9%</td></tr>
-      <tr><td class="cn"><b>K0 cuBLAS</b></td><td class="en">2.401 ms</td><td class="en"><b>57242.4</b></td><td class="en">69.66%</td><td class="en"><b>100.0%</b></td><td class="en">88.3×</td><td class="en">—</td><td class="en">—</td><td class="en">—</td><td class="en">—</td><td class="en">±0.6%</td></tr>
+      <tr><td class="cn"><b>K4 1D 寄存器</b></td><td class="en">6.617 ms</td><td class="en">20770.6</td><td class="en">25.16%</td><td class="en">36.3%</td><td class="en">32.0×</td><td class="en">7.969</td><td class="en">258.6%</td><td class="en">75.0%</td><td class="en">54</td><td class="en">±0.5%</td></tr>
+      <tr><td class="cn"><b>K5 2D 寄存器</b></td><td class="en">3.983 ms</td><td class="en">34506.4</td><td class="en">41.79%</td><td class="en">60.3%</td><td class="en">53.2×</td><td class="en">12.720</td><td class="en">269.1%</td><td class="en">33.3%</td><td class="en">72</td><td class="en">±0.7%</td></tr>
+      <tr><td class="cn"><b>K6 float4</b></td><td class="en">3.358 ms</td><td class="en"><b>40928.8</b></td><td class="en">49.57%</td><td class="en"><b>71.5%</b></td><td class="en">63.1×</td><td class="en">12.720</td><td class="en">319.2%</td><td class="en">33.3%</td><td class="en">111</td><td class="en">±0.9%</td></tr>
+      <tr><td class="cn"><b>K0 cuBLAS</b></td><td class="en">2.401 ms</td><td class="en"><b>57242.4</b></td><td class="en">69.32%</td><td class="en"><b>100.0%</b></td><td class="en">88.3×</td><td class="en">—</td><td class="en">—</td><td class="en">—</td><td class="en">—</td><td class="en">±0.6%</td></tr>
     </tbody>
   </table></div>
   <div class="sec">
@@ -245,13 +245,13 @@
       <p class="k">这批数据最该被记住的三件事</p>
       <p><b>① 教科书那本账失效五次。</b>
         <span style="color:var(--ink-3)">roofline 达成率超过 100% 就意味着"它根本没在带宽墙上"——
-        七个 kernel 里有五个超了，K2 甚至到 2113.5%。</span>
+        七个 kernel 里有五个超了，K2 甚至到 2112.7%。</span>
         <b>而真正预测得准的是条数账，外推误差 ±10% 以内。</b></p>
       <p><b>② 收益最大的两步，算术强度一个字都没变。</b>
         <span style="color:var(--ink-3)">K1→K2（8.21×）和 K3→K4（3.36×）——
         前者只动了访存合并，后者只动了指令条数。</span>
         <span style="color:var(--crit);font-weight:650">而算术强度真涨了 1.6 倍的 K3c，只换来 1.08×。</span></p>
-      <p style="margin-bottom:0"><b>③ cuBLAS 自己也只有峰值的 69.66%。</b>
+      <p style="margin-bottom:0"><b>③ cuBLAS 自己也只有峰值的 69.32%。</b>
         <span style="color:var(--ink-3)">纯 FP32 的 SGEMM 在 Ada 上并不是 NVIDIA 精心优化的路径（FP16/TF32 才是），
         所以"离 cuBLAS 还有多远"这个靶子比想象中近 —— 它只比 K6 快 1.40 倍。</span></p>
     </div>
@@ -259,21 +259,160 @@
   <div class="sec">
     <h3 id="s1-2">二、cuBLAS 这个分母怎么定的<a class="up" href="#t1-2" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>K0 = <code>2.401 ms / 57242.4 GFLOP/s / 占峰值 69.66%</code>，抽样校验通过。</b>
+      <b>K0 = <code>2.401 ms / 57242.4 GFLOP/s / 占峰值 69.32%</code>，抽样校验通过。</b>
       <span style="color:var(--ink-3)">两道保险确保它是纯 FP32：源码里
       <code>cublasSetMathMode(CUBLAS_PEDANTIC_MATH)</code>，环境里
       <code>NVIDIA_TF32_OVERRIDE=0</code>。</span>
       <span style="color:var(--crit);font-weight:650">如果 TF32 没禁掉，tensor core 会把数字顶到
-      FP32 峰值以上 —— 69.66% 这个位置只可能是纯 FP32 在跑。</span>
+      FP32 峰值以上 —— 69.32% 这个位置只可能是纯 FP32 在跑。</span>
     </p>
     <pre><span class="c">// cuBLAS 是列主序，而我们的矩阵是行主序。不想转置数据，就转置运算：</span>
 <span class="c">//   行主序的 C = A·B   等价于   列主序的 Cᵀ = Bᵀ·Aᵀ</span>
-<span class="c">// 所以把 B 当第一个参数、A 当第二个传进去，m/n 也跟着换位置。</span>
 cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N,
             N, M, K, &amp;alpha,
             B, N,          <span class="a">// ← B 在前</span>
             A, K, &amp;beta,   <span class="a">// ← A 在后</span>
             C, N);</pre>
+
+    <p class="prose">
+      <b>这个恒等式和那行调用，是什么关系？</b>
+      <span style="color:var(--ink-3)">关键是先接受一件事：</span>
+      <span style="color:var(--crit);font-weight:650">同一段字节，行主序和列主序读出来互为转置 ——
+      "转置"在这里根本不是一个操作。</span>
+    </p>
+    <figure class="fig">
+<svg viewBox="0 0 860 400" width="100%" role="img" aria-label="同一段连续内存，按行主序读是 2 行 3 列，按列主序读是 3 行 2 列，两者互为转置；转置没有搬动任何数据，只是换了个读法" style="max-width:860px;display:block;margin:0 auto;font-family:var(--font-body)" xmlns="http://www.w3.org/2000/svg">
+<text x="20" y="20" font-size="13" font-weight="700" fill="var(--ink)">内存里的 6 个 float（就这一份，下面两种读法都读它）</text>
+<rect x="20" y="32" width="88" height="40" rx="3" fill="var(--surface-2)" stroke="var(--rule)"/>
+<text x="64" y="58" font-size="16" font-weight="700" text-anchor="middle" fill="var(--ink)" font-family="var(--font-mono)">a</text>
+<text x="64" y="86" font-size="10.5" text-anchor="middle" fill="var(--ink-3)" font-family="var(--font-mono)">[0]</text>
+<rect x="116" y="32" width="88" height="40" rx="3" fill="var(--surface-2)" stroke="var(--rule)"/>
+<text x="160" y="58" font-size="16" font-weight="700" text-anchor="middle" fill="var(--ink)" font-family="var(--font-mono)">b</text>
+<text x="160" y="86" font-size="10.5" text-anchor="middle" fill="var(--ink-3)" font-family="var(--font-mono)">[1]</text>
+<rect x="212" y="32" width="88" height="40" rx="3" fill="var(--surface-2)" stroke="var(--rule)"/>
+<text x="256" y="58" font-size="16" font-weight="700" text-anchor="middle" fill="var(--ink)" font-family="var(--font-mono)">c</text>
+<text x="256" y="86" font-size="10.5" text-anchor="middle" fill="var(--ink-3)" font-family="var(--font-mono)">[2]</text>
+<rect x="308" y="32" width="88" height="40" rx="3" fill="var(--surface-2)" stroke="var(--rule)"/>
+<text x="352" y="58" font-size="16" font-weight="700" text-anchor="middle" fill="var(--ink)" font-family="var(--font-mono)">d</text>
+<text x="352" y="86" font-size="10.5" text-anchor="middle" fill="var(--ink-3)" font-family="var(--font-mono)">[3]</text>
+<rect x="404" y="32" width="88" height="40" rx="3" fill="var(--surface-2)" stroke="var(--rule)"/>
+<text x="448" y="58" font-size="16" font-weight="700" text-anchor="middle" fill="var(--ink)" font-family="var(--font-mono)">e</text>
+<text x="448" y="86" font-size="10.5" text-anchor="middle" fill="var(--ink-3)" font-family="var(--font-mono)">[4]</text>
+<rect x="500" y="32" width="88" height="40" rx="3" fill="var(--surface-2)" stroke="var(--rule)"/>
+<text x="544" y="58" font-size="16" font-weight="700" text-anchor="middle" fill="var(--ink)" font-family="var(--font-mono)">f</text>
+<text x="544" y="86" font-size="10.5" text-anchor="middle" fill="var(--ink-3)" font-family="var(--font-mono)">[5]</text>
+<text x="60" y="140" font-size="13" font-weight="700" fill="var(--accent)">按行主序读 → 2 行 3 列</text>
+<text x="60" y="158" font-size="11" fill="var(--ink-3)">一行一行摆：[0][1][2] 是第一行</text>
+<rect x="60" y="168" width="59" height="41" fill="var(--surface)" stroke="var(--accent)" stroke-width="1.2"/>
+<text x="90" y="189" font-size="15" font-weight="700" text-anchor="middle" fill="var(--ink)" font-family="var(--font-mono)">a</text>
+<text x="90" y="202" font-size="9" text-anchor="middle" fill="var(--ink-3)" font-family="var(--font-mono)">[0]</text>
+<rect x="122" y="168" width="59" height="41" fill="var(--surface)" stroke="var(--accent)" stroke-width="1.2"/>
+<text x="152" y="189" font-size="15" font-weight="700" text-anchor="middle" fill="var(--ink)" font-family="var(--font-mono)">b</text>
+<text x="152" y="202" font-size="9" text-anchor="middle" fill="var(--ink-3)" font-family="var(--font-mono)">[1]</text>
+<rect x="184" y="168" width="59" height="41" fill="var(--surface)" stroke="var(--accent)" stroke-width="1.2"/>
+<text x="214" y="189" font-size="15" font-weight="700" text-anchor="middle" fill="var(--ink)" font-family="var(--font-mono)">c</text>
+<text x="214" y="202" font-size="9" text-anchor="middle" fill="var(--ink-3)" font-family="var(--font-mono)">[2]</text>
+<rect x="60" y="212" width="59" height="41" fill="var(--surface)" stroke="var(--accent)" stroke-width="1.2"/>
+<text x="90" y="233" font-size="15" font-weight="700" text-anchor="middle" fill="var(--ink)" font-family="var(--font-mono)">d</text>
+<text x="90" y="246" font-size="9" text-anchor="middle" fill="var(--ink-3)" font-family="var(--font-mono)">[3]</text>
+<rect x="122" y="212" width="59" height="41" fill="var(--surface)" stroke="var(--accent)" stroke-width="1.2"/>
+<text x="152" y="233" font-size="15" font-weight="700" text-anchor="middle" fill="var(--ink)" font-family="var(--font-mono)">e</text>
+<text x="152" y="246" font-size="9" text-anchor="middle" fill="var(--ink-3)" font-family="var(--font-mono)">[4]</text>
+<rect x="184" y="212" width="59" height="41" fill="var(--surface)" stroke="var(--accent)" stroke-width="1.2"/>
+<text x="214" y="233" font-size="15" font-weight="700" text-anchor="middle" fill="var(--ink)" font-family="var(--font-mono)">f</text>
+<text x="214" y="246" font-size="9" text-anchor="middle" fill="var(--ink-3)" font-family="var(--font-mono)">[5]</text>
+<text x="520" y="140" font-size="13" font-weight="700" fill="var(--warn)">按列主序读 → 3 行 2 列</text>
+<text x="520" y="158" font-size="11" fill="var(--ink-3)">一列一列摆：[0][1][2] 是第一列</text>
+<rect x="520" y="168" width="59" height="41" fill="var(--surface)" stroke="var(--warn)" stroke-width="1.2"/>
+<text x="550" y="189" font-size="15" font-weight="700" text-anchor="middle" fill="var(--ink)" font-family="var(--font-mono)">a</text>
+<text x="550" y="202" font-size="9" text-anchor="middle" fill="var(--ink-3)" font-family="var(--font-mono)">[0]</text>
+<rect x="582" y="168" width="59" height="41" fill="var(--surface)" stroke="var(--warn)" stroke-width="1.2"/>
+<text x="612" y="189" font-size="15" font-weight="700" text-anchor="middle" fill="var(--ink)" font-family="var(--font-mono)">d</text>
+<text x="612" y="202" font-size="9" text-anchor="middle" fill="var(--ink-3)" font-family="var(--font-mono)">[3]</text>
+<rect x="520" y="212" width="59" height="41" fill="var(--surface)" stroke="var(--warn)" stroke-width="1.2"/>
+<text x="550" y="233" font-size="15" font-weight="700" text-anchor="middle" fill="var(--ink)" font-family="var(--font-mono)">b</text>
+<text x="550" y="246" font-size="9" text-anchor="middle" fill="var(--ink-3)" font-family="var(--font-mono)">[1]</text>
+<rect x="582" y="212" width="59" height="41" fill="var(--surface)" stroke="var(--warn)" stroke-width="1.2"/>
+<text x="612" y="233" font-size="15" font-weight="700" text-anchor="middle" fill="var(--ink)" font-family="var(--font-mono)">e</text>
+<text x="612" y="246" font-size="9" text-anchor="middle" fill="var(--ink-3)" font-family="var(--font-mono)">[4]</text>
+<rect x="520" y="256" width="59" height="41" fill="var(--surface)" stroke="var(--warn)" stroke-width="1.2"/>
+<text x="550" y="277" font-size="15" font-weight="700" text-anchor="middle" fill="var(--ink)" font-family="var(--font-mono)">c</text>
+<text x="550" y="290" font-size="9" text-anchor="middle" fill="var(--ink-3)" font-family="var(--font-mono)">[2]</text>
+<rect x="582" y="256" width="59" height="41" fill="var(--surface)" stroke="var(--warn)" stroke-width="1.2"/>
+<text x="612" y="277" font-size="15" font-weight="700" text-anchor="middle" fill="var(--ink)" font-family="var(--font-mono)">f</text>
+<text x="612" y="290" font-size="9" text-anchor="middle" fill="var(--ink-3)" font-family="var(--font-mono)">[5]</text>
+<text x="368" y="222" font-size="34" font-weight="700" fill="var(--crit)">=</text>
+<text x="330" y="252" font-size="13" font-weight="700" fill="var(--crit)">互为转置</text>
+<text x="300" y="274" font-size="11" fill="var(--ink-3)">而字节一个都没动</text>
+<rect x="20" y="316" width="820" height="72" rx="4" fill="var(--crit-soft)" stroke="var(--crit)" stroke-width="1"/>
+<text x="36" y="340" font-size="13" font-weight="700" fill="var(--ink)">所以「转置」在这里是免费的 —— 它不是一个操作，是一句"换个读法"。</text>
+<text x="36" y="362" font-size="12" fill="var(--ink-2)">我们按行主序存的 A（M×K），cuBLAS 按列主序读到的就是 Aᵀ（K×M）。指针没变，一个字节都没搬。</text>
+<text x="36" y="381" font-size="12" font-weight="700" fill="var(--crit)">这就是为什么调用里三个 op 参数全是 CUBLAS_OP_N —— 我们从没让 cuBLAS 转置过任何东西。</text>
+</svg>
+      <figcaption class="cap">
+        <strong>图 · 一段内存，两种读法。</strong>
+        行主序按行摆、列主序按列摆，同一份数据就成了互为转置的两个矩阵。
+        <b>没有任何数据被搬动过</b> —— 所以下面那三个 <code>CUBLAS_OP_N</code>
+        才是"不转置"，我们从没让 cuBLAS 干过转置这件事。
+      </figcaption>
+    </figure>
+
+    <div class="tw"><table>
+      <caption>我们递给 cuBLAS 的是同样的指针，但它看到的东西自动带了转置</caption>
+      <thead><tr><th>缓冲区</th><th>我们按行主序存的</th><th>cuBLAS 按列主序读到的</th></tr></thead>
+      <tbody>
+        <tr><td class="en">A</td><td class="en">M × K 的 A</td>
+            <td class="en"><b>K × M 的 Aᵀ</b></td></tr>
+        <tr><td class="en">B</td><td class="en">K × N 的 B</td>
+            <td class="en"><b>N × K 的 Bᵀ</b></td></tr>
+        <tr><td class="en">C</td><td class="en">M × N 的 C</td>
+            <td class="en"><b>N × M 的 Cᵀ</b></td></tr>
+      </tbody>
+    </table></div>
+
+    <p class="prose">
+      <b>于是那个恒等式可以直接当参数表念：</b>
+    </p>
+    <pre>             Cᵀ    =    Bᵀ    ·    Aᵀ
+             ↓          ↓          ↓
+        <span class="a">写进 C 缓冲区</span>  <span class="a">传 B 指针</span>   <span class="a">传 A 指针</span>
+
+<span class="c">// 右边从左往右念一遍 —— Bᵀ 在前、Aᵀ 在后 —— 就是参数的先后顺序。</span>
+<span class="c">// 而 Bᵀ 和 Aᵀ 根本不用构造：把 B、A 的指针原样递过去，</span>
+<span class="c">// cuBLAS 用列主序一读，看到的就已经是 Bᵀ 和 Aᵀ 了。</span></pre>
+
+    <p class="prose">
+      <b>维度和 ld 也跟着对上，不用另外想：</b>
+      <span style="color:var(--ink-3)"><code>cublasSgemm(h, …, m, n, k, …)</code> 算的是
+      <code>(m×k) · (k×n)</code>。这里要算的结果是 <code>Cᵀ</code>，它是 <b>N×M</b> 的，
+      所以 <code>m=N, n=M</code>，中间那维还是 <code>k=K</code> —— 这就是
+      <code>N, M, K</code> 这个顺序的来历。</span>
+    </p>
+    <pre>参数            值      为什么
+─────────────────────────────────────────────────────────
+m               N       结果 Cᵀ 是 N×M，它的行数是 N
+n               M       Cᵀ 的列数是 M
+k               K       中间那一维没动
+第一个矩阵       B       cuBLAS 读成 Bᵀ（N×K），正好是 m×k ✓
+它的 ld         N       Bᵀ 在列主序下有 N 行 → ld = N
+第二个矩阵       A       cuBLAS 读成 Aᵀ（K×M），正好是 k×n ✓
+它的 ld         K       Aᵀ 有 K 行 → ld = K
+输出            C       cuBLAS 写进去一个 N×M 的列主序矩阵
+它的 ld         N       同上
+
+<span class="a">// 最后一步：cuBLAS 往 C 缓冲区里写的是列主序的 Cᵀ（N×M）；</span>
+<span class="a">// 我们回过头按行主序去读同一段字节，看到的就是 M×N 的 C。闭环。</span></pre>
+
+    <div class="callout">
+      <p class="k">一句话记法</p>
+      <p style="margin-bottom:0"><b>行主序的库要调列主序的库，就把两个输入矩阵的顺序对调、
+        m 和 n 对调，其余原样。</b>
+        <span style="color:var(--ink-3)">代价是零：没有额外的显存、没有额外的 kernel、
+        没有一次数据搬运。</span>
+        <span style="color:var(--crit);font-weight:650">
+        如果你在这里真的调了一次 <code>transpose</code>，那就白白多搬了两遍矩阵 ——
+        对 4096² 的 A 和 B 来说，是 256 MiB 的无谓读写（每个矩阵 64 MiB，转置要读一遍写一遍）。</span></p>
+    </div>
   </div>
 </section>
 
@@ -308,17 +447,24 @@ cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N,
   </div>
   <div class="sec">
     <h3 id="s2-2">二、两个口径，必须一起换<a class="up" href="#t2-2" title="回到目录">↑</a></h3>
-    <pre>FP32 峰值   128 SM × 128 core × 2 × <span class="a">2.52 GHz</span> = 82,575 GFLOP/s   <span class="c">// 设备报告的 clockRate</span>
-            128 SM × 128 core × 2 × <span class="w">2.713 GHz</span> = 88,908 GFLOP/s   <span class="c">// 压测中实测的加速时钟</span>
+    <pre>FP32 峰值   128 SM × 128 core × 2 × <span class="a">2.52 GHz</span>  = <span class="a">82,575 GFLOP/s</span>   <span class="c">// 设备自报的 clockRate ← 主表用这个</span>
+            128 SM × 128 core × 2 × <span class="w">2.64 GHz</span> = <span class="w">86,508 GFLOP/s</span>   <span class="c">// 本批 1 Hz 采样的中位数（稳态 2625–2655）</span>
 
 显存带宽    10501 MHz × 2（DDR 双沿）× 384 bit ÷ 8 = <span class="a">1008 GB/s</span></pre>
     <p class="prose">
-      <b>主表的"占 FP32 峰值"按 2.52 GHz 算。</b>
-      <span style="color:var(--ink-3)">换成 2.713 GHz 的口径，K6 的 71.5% 那一列里
-      "占峰值"要从 50.08% 修正为 46.5%，cuBLAS 从 69.66% 修正为 64.4%。</span>
-      <span style="color:var(--crit);font-weight:650">两个要一起换，不能只换一个 ——
-      这是最容易出错的地方。</span>
-      <b>而"占 cuBLAS"那一列不受影响，因为分子分母同时变。</b>
+      <b>主表的"占 FP32 峰值"按 2.52 GHz 那一行算</b><span style="color:var(--ink-3)">
+      —— 它来自 <code>cudaDeviceProp</code>，换台 4090 也读得到同一个数。
+      标称值是"保证不低于"，实际跑多快由 GPU Boost 按功耗墙（450 W）和温度动态定，
+      所以本批稳定在 2640 MHz（上限是 3105，稠密 FP32 GEMM 太吃电，顶不到）。
+      要按实测口径引用，整列乘 0.955 即可（K6 49.57% → 47.32%）。</span>
+      <span style="color:var(--crit);font-weight:650">换的时候分子分母必须一起换；
+      而且这个时钟每台机器不同，不能跨批次搬。</span>
+    </p>
+    <p class="prose">
+      <b>而"占 cuBLAS"那一列不受口径影响</b><span style="color:var(--ink-3)">，
+      分子分母都是 GFLOP/s，峰值约掉了 ——</span>
+      <span style="color:var(--crit);font-weight:650">所以 K6 = cuBLAS 的 71.5%
+      换哪套口径都成立，这也是本报告把它当主结论的原因。</span>
     </p>
   </div>
 </section>
@@ -417,7 +563,7 @@ cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N,
         <strong>图 M-1 · 同一条 <code>LDS</code> 指令，代价差 5 倍，区别只在下标里有没有 <code>tx</code>。</strong>
         <b>K3 的内层一句 <code>acc += Mds[ty][k] * Nds[k][tx];</code> 两种各来一条</b>，
         <span style="color:var(--ink-3)">所以它的 dist 和 bcast 都是 1.000。
-        <span style="color:var(--good);font-weight:650">而 K4 的全部本事，就是把左边那条贵的从"每个 FMA 一条"降到"八个 FMA 共用一条"。</span></span>
+        <span style="color:var(--good);font-weight:650">而 K4 的全部本事，就是把<b>贵的那条 32 路</b>（<code>Nds[k][tx]</code>，图里在左）从"每个 FMA 一条"降到"八个 FMA 共用一条" —— 它把 <code>n</code> 提进寄存器，配 8 个 <code>Mds</code> 用 8 次；便宜的广播那条一条没省。<span style="color:var(--ink-3)">（别和上面那行代码的左右搞混：代码里 <code>Mds</code> 写在左边，图里却是 32 路在左。）</span></span></span>
       </figcaption>
     </figure>
   </div>
@@ -473,18 +619,77 @@ ldg = 2 条 ÷ 32 个 FMA = <b>0.062</b></pre>
 再加上写回 C 自己那 4 字节：            <b>1028 字节/输出</b></pre>
 
     <h4 style="font-size:15px;margin:26px 0 6px">第 5 步 · 算术强度与 roofline 达成率</h4>
-    <pre>算术强度 = 每个输出的浮点运算 ÷ 每个输出的字节
-         = 2K ÷ bytesPerOut = 2×4096 ÷ 1028 = <b>7.969</b> FLOP/byte
-
-roofline 上限 = 算术强度 × 峰值带宽 = 7.969 × 1008 = <b>8033 GFLOP/s</b>
-
-实测 GFLOP/s = 2·M·N·K ÷ 耗时(秒) ÷ 1e9
-             = 2 × 4096³ ÷ (22.225/1000) ÷ 1e9 = <b>6184.0</b>
-
-达成率 = 6184.0 ÷ 8033 = <b>77.0%</b></pre>
     <p class="prose">
-      <b>K3 的达成率 77.0%，低于 100% —— 这是七个里少数几个"字节账还没失效"的。</b>
-      <span style="color:var(--ink-3)">而 K2 的达成率是 2113.5%，超了二十倍。</span>
+      <b>算术强度回答"这个 kernel 每搬一个字节，能换来多少次浮点运算"。</b>
+      <span style="color:var(--ink-3)">它把第 4 步算出的 <code>bytesPerOut</code> 换算成一个
+      和矩阵规模无关的比值，于是不同 kernel 之间可以直接比。</span>
+    </p>
+    <pre>算术强度 = 每个输出的浮点运算 ÷ 每个输出的字节
+         = 2K ÷ bytesPerOut
+         = 2×4096 ÷ 1028 = <b>7.969</b> FLOP/byte
+
+<span class="c">// 分子的 2K：C 的每个元素要做 K 次乘加，一次乘加算 2 个浮点运算（1 乘 1 加）。</span>
+<span class="c">// 分母的 1028：第 4 步数出来的，每个输出摊到的显存字节。</span>
+
+roofline 上限 = 算术强度 × 峰值带宽
+             = 7.969 × 1008 = <b>8033 GFLOP/s</b>
+
+<span class="c">// 意思是：如果这个 kernel 把显存带宽跑满，它最快只能到 8033。</span>
+<span class="c">// 1008 GB/s 是 4090 的理论峰值带宽，口径见 §2·二。</span></pre>
+
+    <p class="prose">
+      <b>接下来这个 6184.0 是「实测吞吐」—— 它是整套八步里<u>唯一</u>一个量出来的数，
+      其余七个全是从代码数出来的。</b>
+      <span style="color:var(--ink-3)">所以它值得单独拆开看。</span>
+    </p>
+    <pre>实测 GFLOP/s = 2·M·N·K ÷ 耗时(秒) ÷ 1e9
+
+<span class="c">// ① M·N·K 是这次乘法一共要做多少次乘加（FMA）</span>
+<span class="c">//    C 有 M×N 个元素，每个元素要沿 K 方向累加 K 次</span>
+   M·N·K = 4096 × 4096 × 4096 = <b>68,719,476,736</b> 次 FMA
+
+<span class="c">// ② 乘以 2：一次 FMA 在 FLOP 的记法里算 2 个运算（1 次乘 + 1 次加）</span>
+<span class="c">//    这是整个行业的统一口径 —— cuBLAS、Nsight、论文都这么算，</span>
+<span class="c">//    否则跟别人的数字没法比</span>
+   2 × 68,719,476,736 = <b>137,438,953,472</b> FLOP ≈ 137.44 GFLOP
+
+<span class="c">// ③ 除以耗时。22.225 ms 就是主表里那个中位耗时 ——</span>
+<span class="a">//    和第 6 步算节拍用的是【同一个数】，同一次测量，没有第二次计时</span>
+   137,438,953,472 ÷ 0.022225 s = 6,183,979,908,751 FLOP/s
+
+<span class="c">// ④ 换成 GFLOP/s（除以 1e9）</span>
+   6,183,979,908,751 ÷ 1e9 = <b>6184.0</b> GFLOP/s
+
+达成率 = 实测 ÷ 上限 = 6184.0 ÷ 8033 = <b>77.0%</b></pre>
+    <div class="callout">
+      <p class="k">达成率是在检验一个假设，不是在打分</p>
+      <p><b>8033 是<u>推</u>出来的</b>（从代码数字节 → 算算术强度 → 乘带宽），
+        <b>6184.0 是<u>量</u>出来的</b>（跑三轮取中位）。
+        <span style="color:var(--ink-3)">分母的含义是：<u>假如你数的那些字节真的全部走了显存、
+        而且把带宽跑满</u>，能有多快。</span>
+        <span style="color:var(--crit);font-weight:650">所以达成率检验的是这个"假如"，
+        而结果有三档，不是两档：</span></p>
+      <pre><span class="a">≈ 100%</span>  贴着屋顶   带宽真跑满了 —— <b>这才是"受带宽限制"</b>，想更快只能提高算术强度
+<span class="w">≪ 100%</span>  离屋顶远   带宽<b>没</b>跑满 → 瓶颈<b>不是</b>带宽，在别处（指令吞吐 / 延迟 / 占用率）
+<span class="x">&gt; 100%</span>  超出屋顶   分母错了 —— 字节没全走显存，命中了 L2。模型在这里<b>被证伪</b></pre>
+      <p style="margin-bottom:0"><b>⚠ "达成率低"不等于"受带宽限制"。</b>
+        <span style="color:var(--ink-3)">对同一个 kernel，分母是个常数，
+        达成率只是把速度换了个刻度 —— 跑得慢，达成率自然就低。</span>
+        <span style="color:var(--crit);font-weight:650">而"慢"本身说明不了"慢在哪"。</span></p>
+    </div>
+    <p class="prose">
+      <b>K3 的 77.0% 没超过 100%，所以字节账在这里<u>没有被证伪</u> —— 但这不等于它成立。</b>
+      <span style="color:var(--ink-3)">K2 的 2112.7% 才是被直接证伪。</span>
+    </p>
+    <pre>K1 257.4%   K2 2112.7%   K3 77.0%   K3c 52.2%   K4 258.6%   K5 269.1%   K6 319.2%
+
+<span class="a">// 七个里没有一个贴近 100% —— 最近的就是 K3 的 77.0%。</span>
+<span class="a">// 也就是说：这条链上没有一个 kernel 真的受带宽限制。</span>
+<span class="c">// 五个被直接证伪；K3/K3c 虽然没被证伪，但离屋顶太远，同样说明带宽不是它们的墙。</span></pre>
+    <p class="prose">
+      <b>K3 真正的瓶颈是指令条数</b><span style="color:var(--ink-3)">，
+      第 8 步的条数账会把它算到位（3.340 vs 实测 3.34），
+      §4 再把七个并排对一次。</span>
     </p>
 
     <h4 style="font-size:15px;margin:26px 0 6px">第 6 步 · 节拍（唯一用到实测值的一步）</h4>
@@ -509,13 +714,13 @@ roofline 上限 = 算术强度 × 峰值带宽 = 7.969 × 1008 = <b>8033 GFLOP/s
       <b>这是个诊断量，不是预测量。</b>
       <span style="color:var(--ink-3)">它把"这个 kernel 慢"翻译成"它每发一条 load 要付多少周期"。
       如果这个数在不同 kernel 之间差很多，说明 load 的类型构成变了
-      （比如 K1 的 15.88 —— 它那条 load 触发 33 个请求）。</span>
+      （比如 K1 的 15.91 —— 它那条 load 触发 33 个请求）。</span>
     </p>
 
     <h4 style="font-size:15px;margin:26px 0 6px">第 8 步 · 模型预测</h4>
     <pre>预测节拍 = 2.69 × dist + 0.53 × bcast + 1.94 × ldg
         = 2.69 × 1.000 + 0.53 × 1.000 + 1.94 × 0.062
-        = <b>3.34</b>        实测 <b>3.34</b>   <span class="a">✓</span></pre>
+        = <b>3.340</b>        实测 <b>3.34</b>   <span class="a">✓</span></pre>
     <p class="prose">
       <span style="color:var(--ink-3)">K3 是标定点之一，所以这里必然吻合。
       真正的考验是拿同样三个单价去外推 K3c 和 K5 —— 见 §3 · 六。</span>
@@ -524,96 +729,417 @@ roofline 上限 = 算术强度 × 峰值带宽 = 7.969 × 1008 = <b>8033 GFLOP/s
 
   <div class="sec">
     <h3 id="s3-3">三、K1 / K2：没有 shared 的特例，以及请求账为什么必须存在<a class="up" href="#t3-3" title="回到目录">↑</a></h3>
-    <pre>for (int i = 0; i &lt; K; ++i)
-    acc += A[row * K + i] * B[i * N + col];     <span class="c">// 两条都是全局 load</span>
+    <p class="prose">
+      <b>K3 已经在上面逐步算过了（它是主例）。</b>
+      <span style="color:var(--ink-3)">下面按 K1 → K2 → K3c → K4 → K5 → K6 的顺序把其余六个补齐，
+      每个都走同样的八步；只有 K1/K2 多一步"请求账"——
+      因为 K3 之后访存全部合并，那本账归零不再变。</span>
+    </p>
 
-第 1 步 dist  = 0 条 shared ÷ 1 FMA = <b>0.000</b>     <span class="c">// 根本没有 shared</span>
-第 2 步 bcast = 0 条 ÷ 1 FMA        = <b>0.000</b>
-第 3 步 ldg   = 2 条 ÷ 1 FMA        = <b>2.000</b>     <span class="c">// 一个 FMA 配两条全局读</span>
-       load/FMA = <b>2.000</b>
-第 4 步 bytesPerOut = 2K×4 + 4 = 32,772 字节        <span class="c">// 完全没有复用</span>
-第 5 步 算术强度 = 2×4096 ÷ 32772 = <b>0.250</b>
-第 6 步 节拍     K1 <b>31.76</b>   K2 <b>3.88</b>          <span class="x">← 差 8 倍</span>
-第 8 步 模型预测  两者都是 1.94 × 2.000 = <b>3.88</b>  <span class="x">← 完全相同</span></pre>
+    <h4 style="font-size:15px;margin:26px 0 6px">K1 · 九步</h4>
+    <pre>const int x = blockIdx.x * blockDim.x + threadIdx.x;   <span class="c">// 行 ← 从 .x 来</span>
+const int y = blockIdx.y * blockDim.y + threadIdx.y;   <span class="c">// 列 ← 从 .y 来</span>
+float acc = 0.0f;
+for (int i = 0; i &lt; K; ++i)
+    acc += A[x * K + i] * B[i * N + y];                <span class="c">// ← 1 个 FMA + 2 条 LDG（全局！）</span>
+C[x * N + y] = alpha * acc + beta * C[x * N + y];</pre>
+    <pre><span class="c">第 1 步  这个线程负责几个输出？</span>
+  一个 acc → <b>1 个输出</b>                              <span class="c">// 和 K3 相同</span>
+
+<span class="c">第 2 步  内层每轮：几个 FMA、几条 shared load、各属哪类？</span>
+  acc += A[x * K + i] * B[i * N + y];
+        └─ 1 个 FMA ─┘  └ 2 条 LDG ┘                    <span class="c">// 是 LDG（全局），不是 LDS</span>
+  一条 shared load 都没有  →  dist  = 0 ÷ 1 = <b>0.000</b>
+                            bcast = 0 ÷ 1 = <b>0.000</b>
+
+<span class="c">第 3 步  全局 load 怎么摊到每个 FMA 上？</span>
+  内层每轮 2 条全局 load、1 个 FMA，没有阶段可摊
+  →  ldg = 2 条 ÷ 1 个 FMA = <b>2.000</b>
+  <span class="c">// K3 是 0.062，差 32 倍 —— 那 32 倍正是"搬一次进 shared、被 32 个线程各用一次"换来的</span>
+
+<span class="c">第 4 步  bytesPerOut：每个输出摊多少字节？</span>
+  每个输出要读 A 的一整行 + B 的一整列 = 2K = 8192 个 float
+  8192 × 4 字节 = 32768，再加写回 C 的 4 字节
+  →  bytesPerOut = <b>32772 字节</b>                  <span class="c">// 代码：2.0 * K * 4.0 + 4.0</span>
+
+<span class="c">第 5 步  AI = 2K ÷ bytesPerOut</span>
+  8192 ÷ 32772 = <b>0.250</b> FLOP/byte           <span class="c">// 七个 kernel 里最低</span>
+  roofline 上限 = 0.250 × 1008 GB/s = <b>252 GFLOP/s</b>
+  达成率 = 648.6 ÷ 252 = <b>257.4%</b>       <span class="c">// 程序打印的就是这个数</span>
+
+  <span class="a">// 648.6 是这九步里唯一一个【量】出来的数，其余全是从代码数出来的：</span>
+  <span class="c">//   实测 GFLOP/s = 2·M·N·K ÷ 耗时(秒) ÷ 1e9</span>
+  <span class="c">//   分子 2 × 4096³ = 137,438,953,472 FLOP（一次 FMA 记 2 个运算）</span>
+  <span class="c">//   分母就是主表那个中位耗时 211.911 ms = 0.211911 s</span>
+  <span class="c">//   137,438,953,472 ÷ 0.211911 ÷ 1e9 = 648.6 GFLOP/s      —— 逐项拆解见 §3·二</span>
+
+<span class="c">第 6 步  节拍（唯一用实测值的一步）</span>
+  32 × 128 × 2.52e9 × 0.211911 ÷ 4096³ = <b>31.83</b> 周期/warp圈
+
+<span class="c">第 7 步  每条 load 周期</span>
+  load/FMA = 0.000 + 0.000 + 2.000 = <b>2.000</b>
+  31.83 ÷ 2.000 = <b>15.91</b> 周期
+
+<span class="c">第 8 步  模型预测</span>
+  2.69 × 0 + 0.53 × 0 + 1.94 × 2.000 = <b>3.880</b>
+  实测 31.83，误差 <span class="x">-87.8%</span>  <span class="x">← 模型在这里彻底失效</span>
+  <span class="c">// 换哪组单价都救不回来：差的不是系数，是这个 kernel 根本不在条数账的适用区间里</span>
+
+<span class="a">第 9 步  请求账 —— 只有 K1 / K2 走这一步</span>
+  warp 按 threadIdx.x 每 32 个切一刀 → warp 内 x 在变、y 不变。而 K1 里 x 是行、y 是列：
+  A[x*K+i]   32 个线程读 32 个不同行，地址隔 K×4 字节      <span class="x">32 个请求</span>
+  B[i*N+y]   warp 内 y 相同，读同一地址                     1 个请求
+  →  reqPerFMA = <b>33 个/FMA</b>
+  31.83 ÷ 33 ≈ <b>0.96</b> 周期/请求
+  <span class="a">// 换成"请求"当单位，数量级立刻就回来了。</span></pre>
+
+    <h4 style="font-size:15px;margin:26px 0 6px">K2 · 九步 —— 前八步逐字相同，只有第 9 步不同</h4>
+    <pre>const int y = blockIdx.x * blockDim.x + threadIdx.x;   <span class="a">// 列 ← 改成从 .x 来</span>
+const int x = blockIdx.y * blockDim.y + threadIdx.y;   <span class="a">// 行 ← 改成从 .y 来</span>
+...
+    acc += A[x * K + i] * B[i * N + y];                <span class="c">// ← 和 K1 逐字相同</span></pre>
+    <pre><span class="c">第 1 步  几个输出？</span>   1 个                                        <span class="c">// 同 K1</span>
+<span class="c">第 2 步  dist / bcast</span>  没有 shared → 0.000 / 0.000       <span class="c">// 同 K1</span>
+<span class="c">第 3 步  ldg</span>          2 条 ÷ 1 个 FMA = 2.000                 <span class="c">// 同 K1</span>
+<span class="c">第 4 步  bytesPerOut</span>  2K × 4 + 4 = 32772 字节                 <span class="c">// 同 K1</span>
+<span class="c">第 5 步  AI</span>           8192 ÷ 32772 = 0.250，上限 252 GFLOP/s   <span class="c">// 同 K1</span>
+             达成率 = 5324.0 ÷ 252 = <b>2112.7%</b>          <span class="a">← 第一个不同的数</span>
+  <span class="c">// 前四步是人从代码里数出来的，代码没变所以数也没变；</span>
+  <span class="c">// 达成率带上了实测 GFLOP/s，所以从这里开始分家。</span>
+
+  <span class="a">// 5324.0 和 K1 的 648.6 是同一个公式代不同的耗时：</span>
+  <span class="c">//   实测 GFLOP/s = 2·M·N·K ÷ 耗时(秒) ÷ 1e9</span>
+  <span class="c">//   分子一模一样：2 × 4096³ = 137,438,953,472 FLOP —— 两版要算的乘加一次不多一次不少</span>
+  <span class="c">//   分母才是变的：K1 211.911 ms → K2 25.815 ms</span>
+  <span class="c">//   137,438,953,472 ÷ 0.025815 ÷ 1e9 = 5324.0 GFLOP/s      —— 逐项拆解见 §3·二</span>
+  <span class="x">//   所以 5324.0 ÷ 648.6 = 8.21，正好就是耗时之比 —— 吞吐涨的全部来自"跑得快"，</span>
+  <span class="x">//   而不是"算得多"。这也是为什么分母 252 不变，达成率却从 257.4% 跳到 2112.7%。</span>
+
+<span class="c">第 6 步  节拍</span>
+  32 × 128 × 2.52e9 × 0.025815 ÷ 4096³ = <b>3.88</b>
+  <span class="c">// K1 是 31.83 —— 同样的 2.000 条 load/FMA，差 8.21 倍</span>
+
+<span class="c">第 7 步  每条 load 周期</span>
+  3.88 ÷ 2.000 = <b>1.94</b> 周期            <span class="c">// K1 是 15.91</span>
+
+<span class="c">第 8 步  模型预测</span>
+  2.69 × 0 + 0.53 × 0 + 1.94 × 2.000 = <b>3.880</b>   <span class="c">// 和 K1 同一个数</span>
+  实测 3.88，误差 <span class="a">+0.0%</span>   <span class="a">← 模型对 K2 是准的（它是标定点）</span>
+
+<span class="a">第 9 步  请求账 —— 差别全在这里</span>
+  warp 内 tx 在变、ty 不变。K2 把 y（列）接到 tx、x（行）接到 ty：
+  A[x*K+i]   x 由 ty 定 → warp 内行相同，32 个线程读同一地址   1 个请求（广播）
+  B[i*N+y]   y 由 tx 定 → 列连号，32 个地址首尾相接            1 个请求（合并）
+  →  reqPerFMA = <b>2 个/FMA</b>                     <span class="c">// K1 是 33</span>
+  3.88 ÷ 2 ≈ <b>1.94</b> 周期/请求
+  <span class="a">// 和 K1 的 0.96 同一量级，说明"按请求算钱"是对的。</span></pre>
+
     <div class="callout crit">
-      <p class="k">第三本账就是在这里诞生的</p>
-      <p><b>K1 和 K2 的前七步逐字相同：同样的算术强度、同样的 load/FMA、同样的模型预测。</b>
+      <p class="k">这里就是第三本账（请求账）诞生的地方</p>
+      <p><b>K1 和 K2 的差别只有两行 —— x 和 y 的来源对调 —— 而前面五个量一个都没变：</b>
+        <span style="color:var(--ink-3)"><code>dist</code>、<code>bcast</code>、<code>ldg</code>、
+        <code>bytesPerOut</code>、<code>AI</code> 全部相同，连第 8 步的模型预测都是同一个
+        3.880。</span>
         <span style="color:var(--crit);font-weight:650">可实测差了 8.21 倍。</span></p>
-      <p><b>后来的 SASS 反汇编给了决定性证据：</b>
-        <span style="color:var(--ink-3)">K1 和 K2 的指令构成逐项完全相同
-        （都是 30 FFMA / 59 LDG.32 / 216 条总计）。</span>
-        <b>所以这 8.21 倍里，指令条数的贡献是严格的零。</b></p>
-      <p style="margin-bottom:0"><b>差别只在一条指令触发几个内存事务：</b>
-        <span style="color:var(--ink-3)">K1 每个 FMA 要 <b>33</b> 个请求
-        （A 的那条被拆成 32 个 + B 的 1 个），K2 只要 2 个。</span>
-        <span style="color:var(--crit);font-weight:650">条数账的误差 -88% ——
-        它不是模型错了，是这个 kernel 根本不在它的适用区间里。</span></p>
+      <pre>              第 1–5 步（全是人算）        第 6 步   第 7 步   第 8 步      第 9 步
+                                          节拍   每条load  模型/误差    请求账
+K1    1 输出 · dist 0 · bcast 0 ·        <span class="x">31.83</span>    15.91   3.880 / -87.8%   <span class="x">33</span>
+K2    ldg 2.000 · 32772 B · AI 0.250     <span class="a">3.88</span>    1.94    3.880 / +0.0%    <span class="a">2</span>
+      <span class="c">↑ 一模一样，五个量一个都没变</span>
+
+<span class="c">// 指令条数都是 2 条，但硬件真正要处理的事务数差了 16.5 倍。</span></pre>
+      <p style="margin-bottom:0"><b>字节账（AI 0.250）和条数账（ldg 2.000）都看不出这个差别，
+        只有第 9 步看得出。</b>
+        <span style="color:var(--ink-3)">SASS 反汇编后来给了决定性的佐证：K1 和 K2 的指令构成逐项完全相同
+        （都是 30 FFMA / 59 LDG.32 / 216 条）——</span>
+        <span style="color:var(--crit);font-weight:650">所以那 8.21 倍里，
+        指令条数的贡献是严格的零。</span></p>
     </div>
   </div>
 
   <div class="sec">
-    <h3 id="s3-4">四、K3c / K4：同叫"粗化"，动的是两本不同的账<a class="up" href="#t3-4" title="回到目录">↑</a></h3>
-    <pre><span class="c">// K3c：一个线程算 4 个输出，但 4 个输出【横向排开】</span>
-for (int c = 0; c &lt; 4; ++c)
-    for (int k = 0; k &lt; TILE; ++k)
-        acc[c] += Mds[ty][k] * Nds[c][k][tx];
-<span class="c">// 每个 FMA 仍然要 1 条广播 + 1 条 32 路 —— 内层一条都没少</span>
-dist 12.720→ 1.000    bcast 1.000    ldg 0.062→0.039   <span class="c">// 只有 ldg 降了</span>
-<b>省的是"搬进 shared"那一侧 —— 字节账</b>，实测 1.08×
-
-<span class="c">// K4：一个线程算 8 个输出，8 个输出【纵向排开】</span>
-float nv = Nds[k][tx];                 <span class="a">// ← 提出来！读一次</span>
-for (int r = 0; r &lt; 8; ++r)
-    acc[r] += Mds[ty*8+r][k] * nv;     <span class="a">// ← 用 8 次</span>
-<span class="c">// 8 个 FMA 只发 1 条 32 路 + 8 条广播</span>
-dist 1.000 → <b>0.125</b>    bcast 1.000    ldg 0.062
-<b>省的是内层循环的指令条数 —— 条数账</b>，实测 3.36×</pre>
+    <h3 id="s3-4">四、K3c / K4：同叫"粗化"，动的却是两本不同的账<a class="up" href="#t3-4" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>两个都叫"线程粗化"，收益差了 28.8 倍。</b>
-      <span style="color:var(--crit);font-weight:650">区别就在那一行 <code>float nv = ...</code> ——
-      把贵的那类 load 提到循环外面。</span>
-      <span style="color:var(--ink-3)">K3c 的 4 个输出横向排开，各自要用 Nds 的不同列，提不出来；
-      K4 的 8 个输出纵向排开，共用同一个 Nds 元素，才提得出来。</span>
+      <b>两个 kernel 都让一个线程多算几个输出，但省下来的东西完全不同。</b>
+      <span style="color:var(--ink-3)">关键是看"多出来的输出"摊薄了哪一项。</span>
     </p>
+
+    <h4 style="font-size:15px;margin:26px 0 6px">K3c · 每线程 4 个输出（同一行上，跨 4 个 tile）</h4>
+    <pre>float p0 = 0.0f, p1 = 0.0f, p2 = 0.0f, p3 = 0.0f;   <span class="c">// ← 4 个累加器 = 4 个输出</span>
+for (int ph = 0; ph &lt; K / TILE; ++ph) {             <span class="c">// ← 128 个阶段</span>
+    Mds[ty][tx] = A[Row * K + aCol];                <span class="a">// ← M tile 每阶段只搬一次（1 格）</span>
+    for (int c = 0; c &lt; COARSE; ++c) {              <span class="c">// ← 粗化循环，4 轮</span>
+        Nds[ty][tx] = B[bRow * N + col];            <span class="c">// ← N tile 随列变，4 格</span>
+        __syncthreads();
+        for (int k = 0; k &lt; TILE; ++k)
+            acc += Mds[ty][k] * Nds[k][tx];         <span class="x">// ← 内层和 K3 一字不差！</span>
+        ...
+    }
+}</pre>
+    <pre><span class="c">第 1 步  几个输出？</span>
+  p0…p3 四个累加器 → <b>4 个输出</b>（同一行上，跨 4 个 tile）
+
+<span class="c">第 2 步  内层每轮：几个 FMA、几条 LDS？</span>
+  acc += Mds[ty][k] * Nds[k][tx];       <span class="c">// 和 K3 一字不差</span>
+  1 个 FMA、2 条 LDS  →  dist = 1 ÷ 1 = <b>1.000</b>   bcast = 1 ÷ 1 = <b>1.000</b>
+  <span class="x">← 条数账一分没省，这是 K3c 的全部问题所在</span>
+
+<span class="c">第 3 步  全局 load 摊到每个 FMA？</span>
+  每阶段每线程搬 1 格 M + 4 格 N = 5 格
+  每阶段做 4 个 c × 32 轮 = 128 个 FMA
+  →  ldg = 5 ÷ 128 = <b>0.039</b>                     <span class="c">// K3 是 0.062</span>
+
+<span class="c">第 4 步  bytesPerOut</span>
+  每阶段 5 格 ÷ 4 个输出 = 1.25 格/输出                 <span class="c">// K3 是 2 格</span>
+  128 阶段 × 1.25 × 4 字节 + 4 = <b>644 字节</b>
+  <span class="c">// 末尾那个 +4 不用再除以 4 —— 输出数和写回格数是 1:1 的：</span>
+  <span class="c">//   每线程 4 个输出 → 写回 4 格 = 16 字节 → 摊到每个输出仍是 4 字节。</span>
+
+<span class="c">第 5 步  AI</span>
+  8192 ÷ 644 = <b>12.720</b> FLOP/byte          <span class="c">// K3 是 7.969，提高 1.6 倍</span>
+  上限 = 12.720 × 1008 = <b>12823 GFLOP/s</b>
+  达成率 = 6690.6 ÷ 12823 = <b>52.2%</b>     <span class="x">// AI 越高，这个百分比反而越低</span>
+  <span class="c">// 6690.6 从哪来 —— 程序里就一行：</span>
+  <span class="c">//     double gflops = 2.0 * M * N * K / (ms / 1000.0) / 1e9;</span>
+  <span class="c">//     = 2 × 4096³ ÷ 0.020542 s ÷ 1e9，即第 6 步那个耗时的另一种写法</span>
+
+<span class="c">第 6 步  节拍</span>
+  32 × 128 × 2.52e9 × 0.020542 ÷ 4096³ = <b>3.09</b>   <span class="c">// K3 是 3.34</span>
+
+<span class="c">第 7 步  每条 load 周期</span>
+  load/FMA = 1.000 + 1.000 + 0.039 = <b>2.039</b>
+  3.09 ÷ 2.039 ≈ <b>1.51</b> 周期          <span class="c">// K3 是 1.62</span>
+
+<span class="c">第 8 步  模型预测</span>
+  2.69 × 1.000 + 0.53 × 1.000 + 1.94 × 0.039 = <b>3.295</b>
+  实测 3.09，误差 <span class="w">+6.6%</span>   <span class="c">// 它没参与标定，这是一次外推</span></pre>
+    <div class="callout warn">
+      <p class="k">账面结论</p>
+      <p><b>AI 提高 1.6 倍（字节账大动），条数账
+        2.062 → 2.039（几乎没动）—— 实测只快 1.08×。</b>
+        <span style="color:var(--ink-3)">把第 3、4 步那两行写成一个式子，就能看清粗化到底省了什么、
+        以及还剩多少可省。</span></p>
+      <pre>每阶段、每个输出摊到的格数 = (1 + COARSE) ÷ COARSE
+                              <span class="a">↑</span>       <span class="w">↑</span>
+                        <span class="a">M 搬 1 格</span>  <span class="w">N 搬 COARSE 格</span>
+
+  COARSE = 4：(1 + 4) ÷ 4 = <b>1.25 格</b>        <span class="c">// K3 相当于 COARSE=1：(1+1)÷1 = 2 格</span>
+
+<span class="a">// 分子那个 1 就是粗化的全部收益：同一行上的 COARSE 个输出共用同一块 M tile，</span>
+<span class="a">// 每阶段只搬一次。不粗化的话（4 个独立的 K3 block），这一格要被各搬一次，共 4 次。</span>
+<span class="w">// N 那一侧省不掉 —— COARSE 个输出的列号各不相同，每人都得要自己那一格。</span>
+
+<span class="c">再加下去还剩多少？让 COARSE 一路涨：</span>
+  COARSE → ∞ 时 (1 + COARSE) ÷ COARSE → 1     <span class="c">// M 那 1 格被摊成 0，只剩 N 的 1 格</span>
+  bytesPerOut → 128 阶段 × 1 格 × 4 字节 + 4 = <b>516 字节</b>
+  AI 上限     → 8192 ÷ 516 = <b>15.876</b>          <span class="c">// ≈ TILE ÷ 2 = 16</span>
+
+  COARSE = 4 已经拿到 12.720 = 上限的 <b>80.1%</b></pre>
+      <p style="margin-bottom:0"><span style="color:var(--crit);font-weight:650">
+        也就是说：<u>把 COARSE 从 4 加到无穷，AI 最多再涨两成</u>。</span>
+        <span style="color:var(--ink-3)">而已经拿到手的这 1.6 倍，只换来 1.08× ——
+        字节账本来就不是这条链上的瓶颈。</span>
+        <b>所以 K5 没有继续往字节账上使劲，而是换了个方向去砍条数账。</b></p>
+    </div>
+
+    <h4 style="font-size:15px;margin:26px 0 6px">K4 · 每线程 8 个输出（同一列上，连续 8 行）</h4>
+    <pre>float a0…a7 = 0.0f;                          <span class="c">// ← 8 个累加器 = 8 个输出</span>
+for (int k = 0; k &lt; TILE; ++k) {
+    const float n = Nds[k][tx];              <span class="a">// ← 贵的那条（32 路）只读一次</span>
+    a0 += Mds[i0    ][k] * n;                <span class="c">// ↓ 8 个 FMA 共用它</span>
+    a1 += Mds[i0 + 1][k] * n;                <span class="c">//   Mds 这 8 条全是广播（下标无 tx）</span>
+    ...
+    a7 += Mds[i0 + 7][k] * n;
+}</pre>
+    <pre><span class="c">第 1 步  几个输出？</span>   a0…a7 → <b>8 个输出</b>（同一列上，连续 8 行）
+
+<span class="c">第 2 步  内层每轮：几个 FMA、几条 LDS、各属哪类？</span>
+  一轮 k 里：1 条 Nds[k][tx]（含 tx → 32 路）+ 8 条 Mds[..][k]（无 tx → 广播）
+            8 个 FMA
+  →  dist  = 1 条 ÷ 8 个 FMA = <b>0.125</b>            <span class="x">← 这才是 K4 的全部收益</span>
+     bcast = 8 条 ÷ 8 个 FMA = <b>1.000</b>           <span class="c">// 和 K3 一样，没省</span>
+
+<span class="c">第 3 步  ldg</span>
+  每阶段每线程搬 8 格 M + 8 格 N = 16 格
+  每阶段 32 轮 × 8 个 FMA = 256 个 FMA
+  →  ldg = 16 ÷ 256 = <b>0.062</b>                      <span class="c">// 和 K3 相同</span>
+
+<span class="c">第 4 步  bytesPerOut</span>
+  每阶段 16 格 ÷ 8 个输出 = 2 格/输出                    <span class="c">// 和 K3 一模一样</span>
+  128 阶段 × 2 × 4 字节 + 4 = <b>1028 字节</b>
+
+<span class="c">第 5 步  AI</span>
+  8192 ÷ 1028 = <b>7.969</b> FLOP/byte
+  <span class="x">← 和 K3 的 7.969 逐字相同！字节账一个字都没动</span>
+  上限 8033，达成率 = 20770.6 ÷ 8033 = <b>258.6%</b>
+  <span class="c">// 达成率从 K3 的 77.0% 冲到 258.6% —— 不是因为字节变了，是因为速度变了</span>
+
+  <span class="a">// 20770.6 怎么来的（唯一一个量出来的数）：</span>
+  <span class="c">//   实测 GFLOP/s = 2·M·N·K ÷ 耗时(秒) ÷ 1e9</span>
+  <span class="c">//   137,438,953,472 ÷ 0.006617 ÷ 1e9 = 20770.6        —— 逐项拆解见 §3·二</span>
+  <span class="x">//   分子和 K3 是同一个数，分母从 22.225 ms 缩到 6.617 ms：</span>
+  <span class="x">//   20770.6 ÷ 6184.0 = 3.36，正好等于耗时之比 —— 这一步"算得"一点没多，纯粹是跑得快。</span>
+
+<span class="c">第 6 步  节拍</span>
+  32 × 128 × 2.52e9 × 0.006617 ÷ 4096³ = <b>0.99</b>   <span class="c">// K3 是 3.34</span>
+
+<span class="c">第 7 步  每条 load 周期</span>
+  load/FMA = 0.125 + 1.000 + 0.062 = <b>1.188</b>
+  0.99 ÷ 1.188 ≈ <b>0.84</b> 周期
+
+<span class="c">第 8 步  模型预测</span>
+  2.69 × 0.125 + 0.53 × 1.000 + 1.94 × 0.062 = <b>0.990</b>
+  实测 0.99，误差 -0.0%              <span class="c">// 它是标定点之一，必然吻合</span></pre>
+    <div class="callout crit">
+      <p class="k">把 K3c 和 K4 并排放，这一章的主论点就立住了</p>
+      <div class="tw"><table>
+        <thead><tr><th></th><th>输出/线程</th><th>AI（字节账）</th><th>load/FMA（条数账）</th><th>实测</th></tr></thead>
+        <tbody>
+          <tr><td class="cn"><b>K3</b> 基准</td><td class="en">1</td>
+              <td class="en">7.969</td><td class="en">2.062</td><td class="en">—</td></tr>
+          <tr><td class="cn"><b>K3c</b> 横向粗化</td><td class="en">4</td>
+              <td class="en"><b>12.720</b> ↑1.6×</td>
+              <td class="en">2.039 <span style="color:var(--ink-3)">几乎不变</span></td>
+              <td class="en">1.08×</td></tr>
+          <tr><td class="cn"><b>K4</b> 纵向粗化</td><td class="en">8</td>
+              <td class="en">7.969 <span style="color:var(--ink-3)">一字未变</span></td>
+              <td class="en"><b>1.188</b> ↓</td>
+              <td class="en"><b>3.36×</b></td></tr>
+        </tbody>
+      </table></div>
+      <p style="margin-bottom:0"><b>同样是"一个线程多算几个输出"，K3c 动字节账换来 1.08×，
+        K4 动条数账换来 3.36×。</b>
+        <span style="color:var(--crit);font-weight:650">区别就在那一行
+        <code>const float n = Nds[k][tx];</code> —— 把贵的那类 load 提到循环外面。</span>
+        <span style="color:var(--ink-3)">K3c 的 4 个输出横向排开，各自要用 Nds 的不同列，提不出来；
+        K4 的 8 个输出纵向排开，共用同一个 Nds 元素，才提得出来。</span></p>
+    </div>
   </div>
 
   <div class="sec">
     <h3 id="s3-5">五、K5 / K6：两个方向一起复用，再换成 128 位<a class="up" href="#t3-5" title="回到目录">↑</a></h3>
-    <pre><span class="c">// K5：8 行 × 4 列 = 32 个输出</span>
-for (int r = 0; r &lt; 8; ++r) m[r] = Ads[k][i0+r];      <span class="c">// 8 条广播</span>
-for (int c = 0; c &lt; 4; ++c) n[c] = Bds[k][tx+c*32];   <span class="c">// 4 条 32 路</span>
-for (r) for (c) acc[r][c] += m[r] * n[c];             <span class="c">// 32 个 FMA</span>
 
-dist  = 4 条 ÷ 32 FMA = <b>0.125</b>
-bcast = 8 条 ÷ 32 FMA = <b>0.250</b>      <span class="c">// 两个方向一起摊薄</span>
-ldg   = <b>0.039</b>
+    <h4 style="font-size:15px;margin:26px 0 6px">K5 · 8 行 × 4 列 = 32 个输出</h4>
+    <pre>float m[8], n[4], acc[8][4];
+for (int k = 0; k &lt; TILE; ++k) {
+    for (int r = 0; r &lt; 8; ++r) m[r] = Ads[k][i0 + r];      <span class="c">// 8 条广播</span>
+    for (int c = 0; c &lt; 4; ++c) n[c] = Bds[k][tx + c * 32]; <span class="c">// 4 条 32 路</span>
+    for (int r = 0; r &lt; 8; ++r)
+        for (int c = 0; c &lt; 4; ++c)
+            acc[r][c] += m[r] * n[c];                      <span class="c">// 32 个 FMA</span>
+}</pre>
+    <pre><span class="c">第 1 步  几个输出？</span>   acc[8][4] → <b>32 个输出</b>（8 行 × 4 列）
 
-<span class="c">// K6：把上面 12 条 32 位读换成 3 条 128 位读</span>
-float4 m01 = ((float4*)&amp;Ads[k][i0])[0];   <span class="c">// 2 条广播覆盖 8 个 m</span>
+<span class="c">第 2 步  内层每轮：几个 FMA、几条 LDS、各属哪类？</span>
+  一轮 k 里：4 条 Bds[k][tx+c*32]（含 tx → 32 路）
+            8 条 Ads[k][i0+r]（无 tx → 广播）
+            32 个 FMA
+  →  dist  = 4 条 ÷ 32 个 FMA = <b>0.125</b>          <span class="c">// 和 K4 相同</span>
+     bcast = 8 条 ÷ 32 个 FMA = <b>0.250</b>         <span class="x">← 这一项 K4 是 1.000，现在也摊薄了</span>
+  <span class="a">// 每个 m 用 4 次、每个 n 用 8 次 —— 两个方向一起复用，这是 K5 相对 K4 的全部改动</span>
+
+<span class="c">第 3 步  ldg</span>
+  每阶段每线程搬 8 格 A + 32 格 B = 40 格
+  每阶段 32 轮 × 32 个 FMA = 1024 个 FMA
+  →  ldg = 40 ÷ 1024 = <b>0.039</b>                     <span class="c">// 和 K3c 相同</span>
+
+<span class="c">第 4 步  bytesPerOut</span>
+  每阶段 40 格 ÷ 32 个输出 = 1.25 格/输出                <span class="c">// 和 K3c 一样</span>
+  128 阶段 × 1.25 × 4 + 4 = <b>644 字节</b>
+
+<span class="c">第 5 步  AI</span>
+  8192 ÷ 644 = <b>12.720</b>，上限 12823 GFLOP/s
+  达成率 = 34506.4 ÷ 12823 = <b>269.1%</b>
+
+  <span class="a">// 上限 = 算术强度 × 显存峰值带宽（口径见 §2·二）</span>
+  <span class="c">//   带宽 = 10501 MHz × 2（DDR 双沿）× 384 bit ÷ 8 = 1008.1 GB/s</span>
+  <span class="c">//   12.720 × 1008.1 = 12823 GFLOP/s</span>
+  <span class="c">//   （程序乘的是未截断的 8192÷644 和 1008.1；</span>
+  <span class="c">//     拿印出来的 12.720 × 1008 手算会差一个零头，那是四舍五入）</span>
+
+  <span class="a">// 34506.4 是实测吞吐，唯一一个量出来的数：</span>
+  <span class="c">//   实测 GFLOP/s = 2·M·N·K ÷ 耗时(秒) ÷ 1e9</span>
+  <span class="c">//   137,438,953,472 ÷ 0.003983 ÷ 1e9 = 34506.4        —— 逐项拆解见 §3·二</span>
+  <span class="x">//   分子和 K4 仍是同一个数，分母从 6.617 ms 缩到 3.983 ms：</span>
+  <span class="x">//   34506.4 ÷ 20770.6 = 1.66，正好等于耗时之比。</span>
+
+<span class="c">第 6 步  节拍</span>
+  32 × 128 × 2.52e9 × 0.003983 ÷ 4096³ = <b>0.60</b>   <span class="c">// K4 是 0.99</span>
+
+<span class="c">第 7 步  每条 load 周期</span>
+  load/FMA = 0.125 + 0.250 + 0.039 = <b>0.414</b>
+  0.60 ÷ 0.414 ≈ <b>1.45</b> 周期
+
+<span class="c">第 8 步  模型预测</span>
+  2.69 × 0.125 + 0.53 × 0.250 + 1.94 × 0.039 = <b>0.545</b>
+  实测 0.60，误差 <span class="w">-9.2%</span>   <span class="a">← 第二个外推点，同样在 ±10% 内</span></pre>
+    <p class="prose">
+      <b>K5 同时动了两本账：</b>
+      <span style="color:var(--ink-3)">字节账 7.969 → 12.720（和 K3c 同一个手法），
+      条数账 1.188 → 0.414（把广播也摊薄了）。</span>
+      <span style="color:var(--crit);font-weight:650">而 occupancy 从 75.0% 掉到 33.3%，
+      速度反而快 1.66× —— 寄存器分块和占用率本来就是对立的。</span>
+    </p>
+
+    <h4 style="font-size:15px;margin:26px 0 6px">K6 · 把 12 条 32 位读换成 3 条 128 位读</h4>
+    <pre>float4 m01 = ((float4*)&amp;Ads[k][i0])[0];      <span class="c">// 2 条广播覆盖 8 个 m</span>
 float4 m23 = ((float4*)&amp;Ads[k][i0])[1];
-float4 nv  = ((float4*)&amp;Bds[k][tx*4])[0]; <span class="c">// 1 条 32 路覆盖 4 个 n</span>
+float4 nv  = ((float4*)&amp;Bds[k][tx * 4])[0];  <span class="c">// 1 条 32 路覆盖 4 个 n</span></pre>
+    <pre><span class="c">第 1 步  几个输出？</span>   <b>32 个</b>                                  <span class="c">// 和 K5 相同</span>
 
-dist  = 1 条 ÷ 32 FMA = <b>0.031</b>
-bcast = 2 条 ÷ 32 FMA = <b>0.062</b>
-ldg   = <b>0.010</b>       <span class="c">// 字节数一个没变，AI 仍是 12.720</span></pre>
+<span class="c">第 2 步  内层每轮</span>
+  1 条 128 位 32 路 + 2 条 128 位广播，仍是 32 个 FMA
+  →  dist  = 1 ÷ 32 = <b>0.031</b>       <span class="c">// K5 是 0.125</span>
+     bcast = 2 ÷ 32 = <b>0.062</b>      <span class="c">// K5 是 0.250</span>
+
+<span class="c">第 3 步  ldg</span>   每阶段 10 条 float4 ÷ 1024 个 FMA = <b>0.010</b>
+
+<span class="c">第 4 步  bytesPerOut</span>
+  10 条 × 4 个 float = 40 个 float —— <b>和 K5 的 40 格一模一样</b>
+  →  644 字节，和 K5 同一个数
+  <span class="a">// 搬的字节一个没少，只是打包方式变了：40 个 float 从 40 条指令变成 10 条</span>
+
+<span class="c">第 5 步  AI</span>   8192 ÷ 644 = <b>12.720</b>   <span class="x">← 和 K5 逐字相同</span>
+             达成率 = 40928.8 ÷ 12823 = <b>319.2%</b>   <span class="c">// 七个里最高</span>
+
+  <span class="a">// 上限 12823 和 K5 也是同一个数 —— 它只由算术强度和带宽决定，和跑多快无关：</span>
+  <span class="c">//   12.720 × 1008.1 GB/s = 12823 GFLOP/s        // 带宽口径见 §2·二</span>
+
+  <span class="a">// 40928.8 是实测吞吐，唯一一个量出来的数：</span>
+  <span class="c">//   137,438,953,472 ÷ 0.003358 ÷ 1e9 = 40928.8        —— 逐项拆解见 §3·二</span>
+  <span class="x">//   分子和 K5 仍是同一个数，分母从 3.983 ms 缩到 3.358 ms：</span>
+  <span class="x">//   40928.8 ÷ 34506.4 = 1.19，正好等于耗时之比。</span>
+
+  <span class="c">// 所以这一节的三个"逐字相同"（AI、上限、分母）之外，只有耗时在动 ——</span>
+  <span class="c">// 达成率从 269.1% 涨到 319.2%，涨的全是分子。</span>
+
+<span class="c">第 6 步  节拍</span>   32 × 128 × 2.52e9 × 0.003358 ÷ 4096³ = <b>0.50</b>
+  <span class="c">// 4090 的物理地板是 0.25 —— K6 是它的 2 倍</span>
+
+<span class="c">第 7 步  每条 load 周期</span>
+  load/FMA = 0.031 + 0.062 + 0.010 = <b>0.104</b>
+  <span class="c">// 每线程每阶段：内层 32 步 × 3 条 128 位读 + 全局 10 条 float4，共 32×32 = 1024 个 FMA</span>
+  <span class="c">//   dist  = 32 步 × 1 条（Bds[k][tx*4]）      ÷ 1024 = 32 ÷ 1024 = 0.031</span>
+  <span class="c">//   bcast = 32 步 × 2 条（Ads[k][i0]、[i0+4]） ÷ 1024 = 64 ÷ 1024 = 0.062</span>
+  <span class="c">//   ldg   = A 的 2 条 + B 的 8 条            ÷ 1024 = 10 ÷ 1024 = 0.010</span>
+  <span class="c">//   合计 106 ÷ 1024 = 0.1035 → 0.104（三个数各自四舍五入再相加会得 0.103，差的是零头）</span>
+  0.50 ÷ 0.104 ≈ <b>4.85</b> 周期
+  <span class="x">← 突然跳到 4.85，因为"一条"的含义变了：现在一条搬 4 个 float</span>
+
+<span class="c">第 8 步  模型预测</span>
+  2.69 × 0.031 + 0.53 × 0.062 + 1.94 × 0.010 = <b>0.136</b>
+  实测 0.50，误差 <span class="x">-72.8%</span>
+  <span class="x">// 三个单价都是用 32 位 load 标定的，套到 128 位 load 上必然不准</span></pre>
     <div class="callout warn">
-      <p class="k">K6 的模型预测为什么不准</p>
-      <p><b>预测 0.136，实测 0.50 —— 差 3.7 倍。</b></p>
-      <p style="margin-bottom:0"><b>因为三个单价都是用 32 位 load 标定的，而 K6 用的是 128 位 load。</b>
-        <span style="color:var(--ink-3)">一条 128 位 load 搬 4 倍的数据，不可能和 32 位 load 同价。</span>
-        <span style="color:var(--crit);font-weight:650">反过来用实测反推：128 位的隐含倍率 =
-        0.50 ÷ 0.136 = <b>3.68</b> ——
-        接近 4 但不到，说明 128 位 load 确实比 4 条 32 位便宜，但省不到 4 倍。</span></p>
-    </div>
-    <div class="callout crit">
-      <p class="k">SASS 又给这个数字打了个折扣</p>
-      <p style="margin-bottom:0"><b>反汇编发现 K5 本来就有 64 条 <code>LDS.128</code> ——
-        编译器自己把它三分之一的 shared load 向量化了。</b>
-        <span style="color:var(--ink-3)">所以手推的 "K5 全是标量" 这个前提是错的，
-        K5 的 dist / bcast 被高估了。</span>
-        <span style="color:var(--crit);font-weight:650">真实的访存指令比是 264 ÷ 114 = 2.32 倍，
-        不是条数账说的 3.98 倍。</span>
-        <b>3.68 这个倍率里，混着这部分误差 —— 它是个上界，不是干净的单价。</b></p>
+      <p class="k">K6 的模型预测只能当下界，不能当预测</p>
+      <p><b>反过来用实测反推：128 位的隐含倍率 = 0.50 ÷ 0.136 = <b>3.68</b>。</b>
+        <span style="color:var(--ink-3)">接近 4 但不到，说明一条 128 位 load 确实比 4 条 32 位便宜，但省不到 4 倍。</span></p>
+      <p style="margin-bottom:0"><b>而 SASS 又给这个数字打了个折扣：</b>
+        <span style="color:var(--crit);font-weight:650">K5 本来就有 64 条 <code>LDS.128</code>，
+        编译器自己把它三分之一的 shared load 向量化了。</span>
+        <span style="color:var(--ink-3)">所以"K5 全是标量"这个前提是错的，K5 的 dist / bcast 被高估了。
+        真实的访存指令比是 264 ÷ 114 = 2.32 倍，而不是条数账说的 3.98 倍。</span>
+        <b>3.68 这个倍率里混着这部分误差 —— 它是个上界，不是干净的单价。</b></p>
     </div>
   </div>
 
@@ -628,31 +1154,31 @@ ldg   = <b>0.010</b>       <span class="c">// 字节数一个没变，AI 仍是 
       <th>节拍<br><span class="sub">周期/warp圈</span></th>
       <th>每条 load<br><span class="sub">周期</span></th></tr></thead>
     <tbody>
-      <tr><td class="cn"><b>K1</b></td><td class="en">0.000</td><td class="en">0.000</td><td class="en">2.000</td><td class="en">2.000</td><td class="en">32768 B</td><td class="en">0.250</td><td class="en"><b>31.76</b></td><td class="en">15.88</td></tr>
-      <tr><td class="cn"><b>K2</b></td><td class="en">0.000</td><td class="en">0.000</td><td class="en">2.000</td><td class="en">2.000</td><td class="en">32768 B</td><td class="en">0.250</td><td class="en"><b>3.88</b></td><td class="en">1.94</td></tr>
+      <tr><td class="cn"><b>K1</b></td><td class="en">0.000</td><td class="en">0.000</td><td class="en">2.000</td><td class="en">2.000</td><td class="en">32772 B</td><td class="en">0.250</td><td class="en"><b>31.83</b></td><td class="en">15.91</td></tr>
+      <tr><td class="cn"><b>K2</b></td><td class="en">0.000</td><td class="en">0.000</td><td class="en">2.000</td><td class="en">2.000</td><td class="en">32772 B</td><td class="en">0.250</td><td class="en"><b>3.88</b></td><td class="en">1.94</td></tr>
       <tr><td class="cn"><b>K3</b></td><td class="en">1.000</td><td class="en">1.000</td><td class="en">0.062</td><td class="en">2.062</td><td class="en">1028 B</td><td class="en">7.969</td><td class="en"><b>3.34</b></td><td class="en">1.62</td></tr>
       <tr><td class="cn"><b>K3C</b></td><td class="en">1.000</td><td class="en">1.000</td><td class="en">0.039</td><td class="en">2.039</td><td class="en">644 B</td><td class="en">12.720</td><td class="en"><b>3.09</b></td><td class="en">1.51</td></tr>
-      <tr><td class="cn"><b>K4</b></td><td class="en">0.125</td><td class="en">1.000</td><td class="en">0.062</td><td class="en">1.188</td><td class="en">1028 B</td><td class="en">7.969</td><td class="en"><b>0.99</b></td><td class="en">0.83</td></tr>
-      <tr><td class="cn"><b>K5</b></td><td class="en">0.125</td><td class="en">0.250</td><td class="en">0.039</td><td class="en">0.414</td><td class="en">644 B</td><td class="en">12.720</td><td class="en"><b>0.59</b></td><td class="en">1.44</td></tr>
-      <tr><td class="cn"><b>K6</b></td><td class="en">0.031</td><td class="en">0.062</td><td class="en">0.010</td><td class="en">0.104</td><td class="en">644 B</td><td class="en">12.720</td><td class="en"><b>0.50</b></td><td class="en">4.82</td></tr>
+      <tr><td class="cn"><b>K4</b></td><td class="en">0.125</td><td class="en">1.000</td><td class="en">0.062</td><td class="en">1.188</td><td class="en">1028 B</td><td class="en">7.969</td><td class="en"><b>0.99</b></td><td class="en">0.84</td></tr>
+      <tr><td class="cn"><b>K5</b></td><td class="en">0.125</td><td class="en">0.250</td><td class="en">0.039</td><td class="en">0.414</td><td class="en">644 B</td><td class="en">12.720</td><td class="en"><b>0.60</b></td><td class="en">1.45</td></tr>
+      <tr><td class="cn"><b>K6</b></td><td class="en">0.031</td><td class="en">0.062</td><td class="en">0.010</td><td class="en">0.104</td><td class="en">644 B</td><td class="en">12.720</td><td class="en"><b>0.50</b></td><td class="en">4.85</td></tr>
     </tbody>
   </table></div>
     <p class="prose">
       <b>三个单价怎么解出来的：拿 K2 / K3 / K4 三个实测点解三元一次方程组。</b>
     </p>
-    <pre>K2:  1.94? × 2.000                                    = 3.88   →  LDG = <b>1.940</b>
+    <pre>K2:  ldg?  × 2.000                                    = 3.88   →  LDG = <b>1.940</b>
 K3:  dist? × 1.000 + bcast? × 1.000 + 1.940 × 0.062   = 3.34
 K4:  dist? × 0.125 + bcast? × 1.000 + 1.940 × 0.062   = 0.99
                      ↓ 两式相减，bcast 消掉
      dist? × 0.875 = 3.34 − 0.99 − 0
                                         →  32 路 = <b>2.686</b>
-                                        →  广播 = <b>0.534</b>
+                                        →  广播  = <b>0.534</b>
 
 <span class="c">// 09-21 那一批解出的是 2.61 / 0.53 / 1.89 —— 换了机器、换了驱动，</span>
 <span class="c">// 三个单价的相对关系稳得住，绝对值差 3% 左右。</span></pre>
     <div class="callout link">
       <p class="k">外推验收：两个没参与标定的点</p>
-      <p style="margin-bottom:0"><b>K3c 误差 +6.6%，K5 误差 -7.6% —— 都在 ±10% 以内。</b>
+      <p style="margin-bottom:0"><b>K3c 误差 +6.6%，K5 误差 -9.2% —— 都在 ±10% 以内。</b>
         <span style="color:var(--ink-3)">这是条数账唯一能被证伪的地方：三个点定三个参数是必然吻合的，
         只有外推到没参与标定的点，模型才算被检验过。</span>
         <span style="color:var(--crit);font-weight:650">两个已知边界外的点（K1 的非合并、K6 的 128 位）
@@ -671,13 +1197,13 @@ K4:  dist? × 0.125 + bcast? × 1.000 + 1.940 × 0.062   = 0.99
       <th>③ 条数账<br><span class="sub">load/FMA</span></th>
       <th>实测节拍</th><th>条数账预测</th><th>误差</th><th>判定</th></tr></thead>
     <tbody>
-      <tr><td class="cn"><b>K1</b></td><td class="en"><span style="color:var(--crit);font-weight:700">258.0%</span></td><td class="en">33</td><td class="en">2.000</td><td class="en">31.76</td><td class="en">3.880</td><td class="en">-87.8%</td><td class="en"><span class="tag crit">请求账的地盘</span></td></tr>
-      <tr><td class="cn"><b>K2</b></td><td class="en"><span style="color:var(--crit);font-weight:700">2113.5%</span></td><td class="en">2</td><td class="en">2.000</td><td class="en">3.88</td><td class="en">3.880</td><td class="en">+0.0%</td><td class="en"><span class="tag good">标定点</span></td></tr>
+      <tr><td class="cn"><b>K1</b></td><td class="en"><span style="color:var(--crit);font-weight:700">257.4%</span></td><td class="en">33</td><td class="en">2.000</td><td class="en">31.83</td><td class="en">3.880</td><td class="en">-87.8%</td><td class="en"><span class="tag crit">请求账的地盘</span></td></tr>
+      <tr><td class="cn"><b>K2</b></td><td class="en"><span style="color:var(--crit);font-weight:700">2112.7%</span></td><td class="en">2</td><td class="en">2.000</td><td class="en">3.88</td><td class="en">3.880</td><td class="en">+0.0%</td><td class="en"><span class="tag good">标定点</span></td></tr>
       <tr><td class="cn"><b>K3</b></td><td class="en">77.0%</td><td class="en">—</td><td class="en">2.062</td><td class="en">3.34</td><td class="en">3.340</td><td class="en">+0.0%</td><td class="en"><span class="tag good">标定点</span></td></tr>
       <tr><td class="cn"><b>K3C</b></td><td class="en">52.2%</td><td class="en">—</td><td class="en">2.039</td><td class="en">3.09</td><td class="en">3.295</td><td class="en">+6.6%</td><td class="en"><span class="tag good">外推 ±10% 内</span></td></tr>
-      <tr><td class="cn"><b>K4</b></td><td class="en"><span style="color:var(--crit);font-weight:700">260.8%</span></td><td class="en">—</td><td class="en">1.188</td><td class="en">0.99</td><td class="en">0.990</td><td class="en">-0.0%</td><td class="en"><span class="tag good">标定点</span></td></tr>
-      <tr><td class="cn"><b>K5</b></td><td class="en"><span style="color:var(--crit);font-weight:700">270.6%</span></td><td class="en">—</td><td class="en">0.414</td><td class="en">0.59</td><td class="en">0.545</td><td class="en">-7.6%</td><td class="en"><span class="tag good">外推 ±10% 内</span></td></tr>
-      <tr><td class="cn"><b>K6</b></td><td class="en"><span style="color:var(--crit);font-weight:700">322.5%</span></td><td class="en">—</td><td class="en">0.104</td><td class="en">0.50</td><td class="en">0.136</td><td class="en">-72.8%</td><td class="en"><span class="tag warn">128 位未标定</span></td></tr>
+      <tr><td class="cn"><b>K4</b></td><td class="en"><span style="color:var(--crit);font-weight:700">258.6%</span></td><td class="en">—</td><td class="en">1.188</td><td class="en">0.99</td><td class="en">0.990</td><td class="en">-0.0%</td><td class="en"><span class="tag good">标定点</span></td></tr>
+      <tr><td class="cn"><b>K5</b></td><td class="en"><span style="color:var(--crit);font-weight:700">269.1%</span></td><td class="en">—</td><td class="en">0.414</td><td class="en">0.60</td><td class="en">0.545</td><td class="en">-9.2%</td><td class="en"><span class="tag good">外推 ±10% 内</span></td></tr>
+      <tr><td class="cn"><b>K6</b></td><td class="en"><span style="color:var(--crit);font-weight:700">319.2%</span></td><td class="en">—</td><td class="en">0.104</td><td class="en">0.50</td><td class="en">0.136</td><td class="en">-72.8%</td><td class="en"><span class="tag warn">128 位未标定</span></td></tr>
     </tbody>
   </table></div>
   <div class="sec">
@@ -712,7 +1238,7 @@ K4:  dist? × 0.125 + bcast? × 1.000 + 1.940 × 0.062   = 0.99
     <div class="callout link">
       <p class="k">实测之后应该这么说</p>
       <p style="margin-bottom:0"><b>"SGEMM 在 4090 上摸不到 FP32 峰值，<u>不是</u>因为带宽 ——
-        K6 的 roofline 达成率 322%，说明它早就不在那堵墙上了。</b>
+        K6 的 roofline 达成率 319%，说明它早就不在那堵墙上了。</b>
         <span style="color:var(--crit);font-weight:650">真正的墙在 LSU：算力地板是 0.25 周期/warp圈，
         K6 实测 0.50，差的那一倍是 3 条 128 位 shared load 占掉的发射槽。</span>
         <b>要再往上走，只能继续砍 load 条数（warptiling）或者换张量核心。"</b></p>
@@ -807,11 +1333,16 @@ decode b1      K1 → K6   <span class="x">3.4×</span>   <span class="c">← �
     </div>
     <div class="callout link">
       <p class="k">给下一阶段的接口</p>
-      <pre>decode b1   0.302 ms        decode b32  0.313 ms        耗时比 <span class="a">1.04×</span>
-                                                       吞吐比 <span class="a">32×</span></pre>
-      <p style="margin-bottom:0"><b>batch 32 和 batch 1 花一样的时间，吞吐差 32 倍。</b>
+      <pre>cuBLAS   decode b1   M=1    0.302 ms   449.6 GFLOP/s
+         decode b32  M=32   0.313 ms   13882.7 GFLOP/s
+
+  活多了 <span class="a">32×</span>（M 从 1 变成 32），耗时只多 <span class="a">1.04×</span>
+  →  实测吞吐比 = 13882.7 ÷ 449.6 = <b>30.9×</b>        <span class="c">// = 32 ÷ 1.04</span></pre>
+      <p style="margin-bottom:0"><b>batch 32 和 batch 1 几乎花一样的时间，吞吐却差 30.9 倍。</b>
         <span style="color:var(--ink-3)">这就是 continuous batching 必须存在的量化理由 ——
-        也和 01 阶段在 vLLM 吞吐曲线上看到的宏观现象对上了：那边是现象，这里是机制。</span></p>
+        也和 01 阶段在 vLLM 吞吐曲线上看到的宏观现象对上了：那边是现象，这里是机制。</span>
+        <span style="color:var(--crit);font-weight:650">注意 30.9 不是 32：
+        耗时那 1.04× 的零头正是"批到多大就开始付钱"的起点。</span></p>
     </div>
   </div>
 </section>

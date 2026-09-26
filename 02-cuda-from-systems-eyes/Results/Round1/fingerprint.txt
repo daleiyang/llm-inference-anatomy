@@ -21,6 +21,13 @@ NVIDIA_TF32_OVERRIDE=0   （cuBLAS 另有 cublasSetMathMode(CUBLAS_PEDANTIC_MATH
 
 # 口径
 FP32 峰值   128 SM × 128 core × 2 × 2.52 GHz = 82,575 GFLOP/s
-            （程序按设备报告的 clockRate 算；按加速时钟 2713 MHz 则为 88.9 TFLOP/s）
+            （程序按设备自报的 clockRate 算，报告主表用的就是这个口径）
+
+实测 SM 时钟  忙碌时中位 2640 MHz  → FP32 峰值 86,508 GFLOP/s
+            1 Hz 采样 85 个点（GPU 利用率 > 50%），稳态落在 2625–2655 MHz，
+            另有 6 个启动爬坡的瞬态样本（2205–2475）
+            标称 2520 / 上限 3105 / 实测 2640 —— 三者含义不同，见报告 02 §2·二
+            ⚠ 这个数【每台机器不同】：2026-09-21 那批（另一台 4090、driver 590.48.01）
+              跑在 2713 MHz。凡是由它推出来的数，不能跨批次搬用。
 显存带宽    10501 MHz × 2 × 384 bit ÷ 8 = 1008 GB/s
 L2          75.5 MB
