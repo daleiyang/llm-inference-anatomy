@@ -2,12 +2,17 @@
 
 # 02 · CUDA from a Systems Engineer's Eyes
 
-> **SGEMM 部分已完成。** 同一块 RTX 4090、同一个可执行文件、同一次开机，
+> **SGEMM 与归约两条线已完成。** 同一块 RTX 4090、同一个可执行文件、同一次开机，
 > 把一个 FP32 矩阵乘从 naive 改到 **cuBLAS 的 71.5%**，共 **63.1 倍**。
 >
 > 但这份记录的价值不在这两个数字，而在于：**教科书给的那本账（算术强度 → roofline）
 > 在七个 kernel 里失效了五次。** 我把它替换成了三本账，并且让每一级优化只动其中一本 ——
 > 于是"这一步的收益归谁所有"没有含糊的余地。
+>
+> 然后拿 **PMPP 第 10 章的六级归约**做反面对照 —— 一个**真的**受带宽限制的算子：
+> 算术强度恒为 0.25 FLOP/B（脊点的 **1/334**），一步也挪不动。
+> 结果是书里五步优化**只有一步打中瓶颈**，其余四步收益为零。
+> **同一套账，两种命运；差别只在瓶颈在哪一侧。**
 
 我写过内存池、lock-free hash table，也逐行读过 word2vec.c。这一阶段要回答的问题是：
 **那些 CPU 上的性能直觉，搬到 GPU 上还剩多少？**
@@ -27,10 +32,12 @@
 | **occupancy 越高越好吗？** | **反过来**。K5 把占用率从 75% 砍到 33.3%，速度涨 1.66 倍 | [报告 01 · §7](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/01-SGEMM六级优化-核心代码的演化.html) |
 | **"优化了 63 倍"是真的吗？** | **只在方阵上成立**。换成 decode 形状只剩 **3.4 倍**，<br>而且 K6 反而比 K4 **慢** | [报告 02 · §5](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/02-SGEMM实测与三本账.html) |
 | **cuBLAS 强在哪一侧？** | 只在**算力受限**那一侧。decode 上我们追平它，K4 甚至跑到 **102.6%** | [报告 02 · §5](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/02-SGEMM实测与三本账.html) |
+| **真·带宽受限长什么样？** | 归约：算术强度恒为 **0.25 FLOP/B = 脊点的 1/334**，六个版本一步也挪不动。<br>上限一秒钟就能算出来：`4N ÷ 1008 GB/s` | [报告 03 · §1](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/03-归约六级优化-一道纯带宽题.html) |
+| **那五步优化值多少？** | **只有一步打中瓶颈**（R3→R4 分段，每元素快 **292 倍**）。<br>其余四步收益为零 —— R4/R5/R6 全部收在下限的 **95%** | [报告 03 · §1](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/03-归约六级优化-一道纯带宽题.html) |
 
 ---
 
-## 六个最硬的发现
+## 七个最硬的发现
 
 ### 1 · 教科书那本账，七次里失效五次
 
@@ -132,7 +139,35 @@ decode 上我们几乎追平 cuBLAS，K4 甚至超过它 —— 这和事前预�
 原因不难想：**带宽墙对谁都一样高**，cuBLAS 那些精巧的分块调度在这里无处施展。
 **它的优势只在算力受限那一侧兑现。**
 
-### 6 · 给下一阶段的接口
+### 6 · 换一个真的受带宽限制的算子，同一套方法给出相反的结论
+
+归约（PMPP 第 10 章 R1–R6，N = 2²⁸ = 2.68 亿个 float）。
+和 SGEMM 最大的不同是：**这里没有复用可做，每个元素只读一次**。
+
+```
+算术强度   0.250 FLOP/B   ← 六个版本完全相同，而 4090 的脊点是 83.4
+                            0.250 ÷ 83.4 = 1/334 —— 不是"离得远"，是数学上挪不动
+
+下限 = 4N 字节 ÷ 1008 GB/s = 1.0652 ms      ← 这一章的上限，一秒钟就能算出来
+```
+
+于是这一章的成绩单只有一个百分比，所有含糊的地方全部暴露：
+
+| 这一步 | 书里衡量的 | 实测 |
+|---|---|---|
+| R1→R2 消除发散 | 资源利用率 29.5% → 66.4% | 净耗时 **4.40×**（但两者都只用 1 个 SM，微秒级，定量不可信） |
+| R2→R3 搬进 shared | 全局访问 ~N·log N → N+1 | **0.92×** —— 8 KB 工作集本来就全在 L1 里，甚至略负 |
+| **R3→R4 分段 + 原子加** | 书里只说"能处理任意长度" | **每元素快 292 倍** ← 唯一打中瓶颈的一步 |
+| R4→R5 线程粗化 | 同步与原子加都除以 4 | 1.1203 → 1.1211 ms，**零** |
+| R5→R6 warp shuffle | 最后 5 轮不走 shared | 1.1211 → 1.1212 ms，**零** |
+
+R4 之后达成率 **95.1%**，剩下那 5% 是 L2/DRAM 的现实开销 —— **没有地方可以变快了**。
+连"提高 occupancy"这条通用建议也只值 **0.1%**（66.7% 与 100% 打平）。
+
+**两条线正好照出对方的形状**：SGEMM 教你怎么把复用做出来，
+归约教你在**没有复用可做**的时候该看什么 —— 而推理里一大半算子属于后者。
+
+### 7 · 给下一阶段的接口
 
 ```
 cuBLAS   decode b1   M=1    0.302 ms   449.6 GFLOP/s
@@ -183,11 +218,13 @@ cuBLAS   decode b1   M=1    0.302 ms   449.6 GFLOP/s
 
 | # | 报告 | 回答什么 | 一句话 |
 |---|---|---|---|
-| **01** | [**核心代码的演化**](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/01-SGEMM六级优化-核心代码的演化.html) | 每一级改了哪一行、为什么那样改 | 9 张原理图，六级代码逐个拆 |
+| **01** | [**核心代码的演化**](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/01-SGEMM六级优化-核心代码的演化.html) | 每一级改了哪一行、为什么那样改 | 17 张原理图，六级代码逐个拆 |
 | **02** | [**实测与三本账**](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/02-SGEMM实测与三本账.html) | 数字从哪来、八个指标怎么算 | 从代码数出七个指标，再和实测对账 |
+| **03** | [**归约六级优化：一道纯带宽题**](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/03-归约六级优化-一道纯带宽题.html) | 没有复用可做的算子该看什么 | 五步优化只有一步打中瓶颈 |
 
 **建议读法**：先 01 建立"代码长什么样"的直觉，再 02 看"凭什么这么判断"。
 02 的 §3 是全套方法的核心 —— **八个指标里只有一个是量出来的，其余七个全部从代码数出来**。
+03 可以单独读：它换了一个**没有复用可做**的算子，把同一套账跑了一遍，结论正好相反。
 
 ---
 
@@ -215,14 +252,32 @@ cuBLAS   decode b1   M=1    0.302 ms   449.6 GFLOP/s
 ## 怎么复现
 
 ```bash
-# 测试机（RTX 4090）
+# 测试机（RTX 4090）—— src/ 和 Scripts/ 的内容放在同一个目录下跑
 nvcc -O3 -arch=sm_89 -lineinfo -Xptxas -v sgemm_all.cu -o sgemm_all -lcublas
 export NVIDIA_TF32_OVERRIDE=0
 bash run_p0.sh                  # 九个阶段，50~80 分钟
 
 # 本地
-python parse_results.py all_*.txt shapes_*.txt     # 文本 → CSV
+python parse_results.py --outdir Results/Round1/csv all_*.txt shapes_*.txt
 ```
+
+归约那条线独立于上面这一整套，单文件、无依赖：
+
+```bash
+nvcc -O3 -arch=sm_89 -lineinfo reduce_ch10.cu -o reduce_ch10
+# 用法：reduce_ch10 <r1|r2|r3|r4|r5|r6|none> <N> [ITERS] [BLOCK]
+
+./reduce_ch10 none 2048 1000          # 实验 A 的基线：空 kernel 的启动开销
+./reduce_ch10 r3   2048 1000          # 实验 A：单 block，N=2048，量微观差异
+./reduce_ch10 r4 268435456 11         # 实验 B：整卡，N=2²⁸，量带宽达成率
+./reduce_ch10 r5 268435456 11 1024    # 第四个参数是 BLOCK —— 动态 shared，不必重编译
+```
+
+**实验 A 必须减掉空 kernel 的基线**：N=2048 时 kernel 本身和启动开销同量级，
+不减就什么也比不出来。完整命令串见 [`Results/Reduction/reduce_20260921.txt`](Results/Reduction/reduce_20260921.txt) ——
+那是原样的终端输出，报告 03 的每个数字都由构建脚本从它现场解析。
+
+> 从开机到收工的完整命令串（含传文件、取回、关机）在 [`Scripts/build-and-bench.md`](Scripts/build-and-bench.md)。
 
 四条关键规矩：
 
@@ -244,28 +299,36 @@ python parse_results.py all_*.txt shapes_*.txt     # 文本 → CSV
 ```
 02-cuda-from-systems-eyes/
 ├── README.md                    # 本页
-├── Reports/                     # 2 份自包含 HTML 报告
+├── Reports/                     # 3 份自包含 HTML 报告
+│   ├── README.md                # 三份报告的分工与建议读法
 │   ├── 01-SGEMM六级优化-核心代码的演化.html
-│   └── 02-SGEMM实测与三本账.html
+│   ├── 02-SGEMM实测与三本账.html
+│   └── 03-归约六级优化-一道纯带宽题.html
 ├── src/
 │   ├── sgemm_all.cu             # 八个 kernel（K0 cuBLAS + K1–K6）+ 测试脚手架
+│   ├── reduce_ch10.cu           # 归约 R1–R6 + 空 kernel 基线
 │   ├── devinfo.cu               # 设备自查
 │   └── sgemm.cu                 # 开工前的空框架（kernel 留白），留作对照
 ├── Scripts/
+│   ├── build-and-bench.md       # 从开机到收工的完整命令串
 │   ├── run_p0.sh                # 总驱动，九个阶段
 │   ├── run_all.sh               # 计时引擎
 │   ├── sweep_shapes.sh          # 形状扫描
 │   ├── check_sass.sh            # 反汇编计数
 │   ├── collect_ncu.sh           # Nsight 采集（本轮因权限未成功）
 │   └── parse_results.py         # 文本 → CSV
-└── Results/Round1/              # 原始数据，一条没删
-    ├── all_20260924_180114.txt          # 计时主表（1555 行）
-    ├── all_20260924_180114_clocks.csv   # 1 Hz 时钟 / 温度 / 功耗采样
-    ├── shapes_20260924_180619.txt       # 形状扫描
-    ├── sass_20260924_180113{,_raw}.txt  # 指令统计 + 完整反汇编
-    ├── ncu_20260924_180816.log          # 权限失败的现场
-    ├── fingerprint.txt                  # 环境指纹
-    └── csv/bench_*.csv                  # 解析后：逐轮的是证据，中位数的是结论
+└── Results/
+    ├── README.md                # 每个文件是什么、两份 CSV 的分工
+    ├── Round1/                  # SGEMM（2026-09-24）原始数据，一条没删
+    │   ├── all_20260924_180114.txt          # 计时主表（1555 行）
+    │   ├── all_20260924_180114_clocks.csv   # 1 Hz 时钟 / 温度 / 功耗采样
+    │   ├── shapes_20260924_180619.txt       # 形状扫描
+    │   ├── sass_20260924_180113{,_raw}.txt  # 指令统计 + 完整反汇编
+    │   ├── ncu_20260924_180816.log          # 权限失败的现场
+    │   ├── fingerprint.txt                  # 环境指纹
+    │   └── csv/bench_*.csv                  # 解析后：逐轮的是证据，中位数的是结论
+    └── Reduction/               # 归约（2026-09-21，另一台 4090）
+        └── reduce_20260921.txt              # 原样终端输出，报告 03 现场解析
 ```
 
 ---
@@ -276,8 +339,10 @@ python parse_results.py all_*.txt shapes_*.txt     # 文本 → CSV
 - [x] 最快版本达到 cuBLAS 的 **70%+** —— 71.5%
 - [ ] 每一级都有 Nsight 指标佐证 —— **未完成**，实例无性能计数器权限（已用 SASS + 请求账 + 4097 实验替代）
 - [x] 算术强度的理论预测与实测对账，差异有解释 —— **对账结果是预测被推翻，解释见上**
+- [x] 六级归约全部通过 double 参照校验，R4 之后收在带宽下限的 **95%**
+- [x] 归约的五条预测在开跑前写死判决标准，事后逐条对账 —— **押中四条**，没押中的是 R2→R3
 - [ ] RMSNorm / online softmax 融合版 MBU 70%+ —— 代码与导学已完成，**待上机**
-- [x] SGEMM 两份报告产出
+- [x] SGEMM 两份 + 归约一份，共三份报告产出
 
 ---
 
@@ -290,6 +355,8 @@ python parse_results.py all_*.txt shapes_*.txt     # 文本 → CSV
 | **编译** | `nvcc -O3 -arch=sm_89 -lineinfo -Xptxas -v` · 七个 kernel 全部 0 spill |
 | **规模** | 8 个 kernel × 4 个尺寸 × 3 轮 + 4 组形状 + 边界 + racecheck，同批同二进制 |
 | **数据** | `Results/Round1/`，原始输出 1555 行 + 完整 SASS 反汇编 8981 行 |
+| **归约那一轮** | 2026-09-21，另一台 RTX 4090（口径相同）· 9 组测量：实验 A 单 block × 5 + 实验 B 整卡 × 3 + BLOCK 对照 × 1 |
+| **归约数据** | `Results/Reduction/reduce_20260921.txt`，171 行原样终端输出 |
 
 ---
 

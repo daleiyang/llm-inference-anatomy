@@ -17,9 +17,16 @@
 #       但审稿人问"你这 3 轮抖了多少"时，答案只在原始表里。
 #       中位表额外带一列 ms_spread_pct = (max-min)/median，跨批漂移一眼可见。
 #
-#   设计原则：解析器只做搬运，不做任何再计算 ——
-#       CSV 里每个数都必须能在原文里逐字找到。
-#       唯一的例外是 _median.csv 的中位数和 spread，那是聚合不是推导。
+#   设计原则：逐轮表（bench_<stamp>.csv）只做搬运，不做任何再计算 ——
+#       里面每个数都必须能在原文里逐字找到。
+#
+#       中位表（_median.csv）不一样，它有两类算出来的列：
+#         ① 聚合：ms 的中位数、ms_spread_pct；
+#         ② 由中位耗时【重算】的派生列 —— gflops / pct_peak / beat /
+#            cyc_per_load / roofline_pct。
+#       ② 必须重算而不能照抄第 1 轮：中位数不一定来自第 1 轮，照抄会让
+#       "ms 和由 ms 推出的数"自相矛盾（详见 median_rows 里的注释）。
+#       结构性的列（dist/bcast/ldg/ai/regs/occ）各轮完全相同，照抄即可。
 # =============================================================================
 import csv
 import glob
@@ -242,9 +249,32 @@ def median_rows(rows):
         base['ms'] = round(med, 4)
         # 跨轮漂移：(max-min)/median。报告里"绝对值 ±4.5%、比值 ±0.5%"那句话的出处。
         base['ms_spread_pct'] = round((max(ms) - min(ms)) / med * 100.0, 2) if med else ''
-        # GFLOP/s 不取各轮的中位数，而是由中位耗时反算 —— 保证 ms 和 gflops 自洽
-        if base['M'] and base['N'] and base['K'] and med:
-            base['gflops'] = round(2.0 * base['M'] * base['N'] * base['K'] / (med / 1000.0) / 1e9, 1)
+        # ⚠ 凡是"由耗时推出来"的列，都必须用中位耗时【重算】，不能留第 1 轮的值 ——
+        #   base 是第 1 轮的拷贝，而中位数不一定来自第 1 轮。
+        #   （2026-09-24 那批就踩了：k1 的 ms 取自第 3 轮，节拍却是第 1 轮的 31.76，
+        #    而用中位耗时算出来是 31.83。报告里印出的算式自己和自己不符。）
+        #   注意要从第一性原理重算，不能拿第 1 轮的值按比例缩放 ——
+        #   那个值本身已经取整到两位小数，缩放会把舍入误差放大。
+        #   结构性的列（dist/bcast/ldg/ai/regs/occ）各轮完全相同，照抄第 1 轮没问题。
+        r0 = group[0]
+        mnk = (base['M'] or 0) * (base['N'] or 0) * (base['K'] or 0)
+        if mnk and med:
+            sec = med / 1000.0
+            gf = 2.0 * mnk / sec / 1e9
+            base['gflops'] = round(gf, 1)
+            # 节拍 = 32 × SM数 × 时钟 × 耗时 ÷ (M·N·K)
+            if base.get('sm_count') and base.get('clock_ghz'):
+                beat = 32.0 * base['sm_count'] * base['clock_ghz'] * 1e9 * sec / mnk
+                base['beat'] = round(beat, 2)
+                if base.get('load_per_fma'):
+                    base['cyc_per_load'] = round(beat / base['load_per_fma'], 2)
+            # 占峰值：峰值由第 1 轮反推（它是个常数，和耗时无关）
+            if r0.get('pct_peak'):
+                peak = r0['gflops'] / (r0['pct_peak'] / 100.0)
+                base['pct_peak'] = round(gf / peak * 100.0, 2)
+            # roofline 达成率：上限是结构量，直接用
+            if base.get('roofline_gflops'):
+                base['roofline_pct'] = round(gf / base['roofline_gflops'] * 100.0, 1)
         base['rounds'] = len(group)
         out.append(base)
 

@@ -5,14 +5,17 @@
 沿用 01 阶段的版式：单文件、数据与 SVG 内嵌、无外部依赖、支持明暗主题。
 经 GitHub Pages 提供（仓库里直接点 `.html` 只会看到源码）。
 
-## SGEMM 部分 · 已完成
+## 已完成
 
 | # | 报告 | 回答什么 | 规模 |
 |---|---|---|---|
-| **01** | [核心代码的演化](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/01-SGEMM六级优化-核心代码的演化.html) | 每一级改了哪一行、为什么那样改、原理是什么 | 10 节 · 9 图 · 六级代码全文 |
-| **02** | [实测与三本账](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/02-SGEMM实测与三本账.html) | 数字从哪来、八个指标各自怎么算、哪本账真的准 | 8 节 · 8 表 · 八步推导 |
+| **01** | [核心代码的演化](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/01-SGEMM六级优化-核心代码的演化.html) | 每一级改了哪一行、为什么那样改、原理是什么 | 10 节 · 17 图 · 六级代码全文 |
+| **02** | [实测与三本账](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/02-SGEMM实测与三本账.html) | 数字从哪来、八个指标各自怎么算、哪本账真的准 | 8 节 · 14 表 · 八步推导 |
+| **03** | [归约六级优化：一道纯带宽题](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/03-归约六级优化-一道纯带宽题.html) | 没有复用可做的算子该看什么；五步优化只有一步打中瓶颈 | 10 节 · 10 图 · 7 表 · 六级代码全文 |
 
 **建议读法**：先 01 建立"代码长什么样"的直觉，再 02 看"凭什么这么判断"。
+03 可以单独读 —— 它换了一个算子（归约），用的是同一套方法：
+**先算上限、写死预测、再测、再逐条对账**。
 
 > **02 的 §3 是全套方法的核心**：八个指标里只有"耗时"是量出来的，
 > 其余七个（dist / bcast / ldg / load-per-FMA / bytesPerOut / 算术强度 / 节拍 / 每条 load 周期）
@@ -22,7 +25,7 @@
 
 | # | 报告 | 状态 |
 |---|---|---|
-| 03 | RMSNorm / online softmax · MBU 视角 | 代码（`fused_ops.cu`，11 个 kernel）与上机导学已完成，**等机器** |
+| 04 | RMSNorm / online softmax · MBU 视角 | 代码（`fused_ops.cu`，11 个 kernel）与上机导学已完成，**等机器** |
 
 ## 一处诚实标注
 

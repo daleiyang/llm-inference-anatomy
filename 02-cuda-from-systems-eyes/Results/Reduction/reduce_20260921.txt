@@ -1,0 +1,171 @@
+# 第 10 章 · 归约 —— 完整实测输出存档
+# 2026-09-21  RTX 4090 (sm_89)  128 SM  峰值带宽 1008 GB/s
+# 报告 03 里的每一个数字都出自这一份；对不上的话，以这里为准。
+# ======================================================================
+
+nvcc -O3 -arch=sm_89 -lineinfo devinfo.cu -o devinfo
+./devinfo >> result
+
+=== 设备 ===
+名称                  NVIDIA GeForce RTX 4090 (sm_89)
+SM 数量               128
+warp 大小             32
+
+=== 并发容量 ===
+每 SM 最大线程        1536
+每 SM 最大 warp       48
+每 block 最大线程     1024
+每 SM 寄存器          65536 (32-bit)
+每 block 寄存器       65536
+
+=== 内存层级 ===
+每 block shared       48 KB (可选入上限 99 KB)
+每 SM shared          100 KB
+L2                    72.0 MB
+全局显存              23.5 GB
+
+=== 时钟与带宽 ===
+显存时钟              10.50 GHz
+显存位宽              384 bit
+峰值带宽              1008 GB/s
+SM 时钟(标称)         2.52 GHz
+FP32 峰值(估算)       82.6 TFLOP/s   [128 核/SM × 128 SM × 2 × 2.52 GHz]
+
+=== roofline 脊点（本阶段的指北针）===
+FP32 脊点             81.9 FLOP/byte   [82.6 TFLOP/s ÷ 1008 GB/s]
+
+⚠️  上面的 SM 时钟是标称 boost。实际运行时可能因功耗墙降频，
+    请用 `nvidia-smi -q -d CLOCK` 看压测中的真实时钟再修正脊点。
+
+
+nvcc -O3 -arch=sm_89 -lineinfo reduce_ch10.cu -o reduce_ch10
+# ---- 实验 A：单 block，N = 2048 ----
+./reduce_ch10 none 2048 1000        # 先拿到启动开销基线
+
+=== 空 kernel · N = 2048 · block = 256 · grid = 1 ===
+耗时         0.0018 ms
+
+
+./reduce_ch10 r1   2048 1000
+
+=== R1 朴素 · N = 2048 · block = 1024 · grid = 1 ===
+校验：GPU 1028.377563  vs  CPU(double) 1028.377640  相对误差 7.42e-08  通过
+耗时         0.0040 ms
+下限         0.0000 ms   （4N 字节 ÷ 1008 GB/s）
+有效带宽        2.1 GB/s  达成率 0.2%
+          ↑ 注意：只用了 1/128 的 SM，这个达成率没有可比性
+
+
+./reduce_ch10 r2   2048 1000
+
+=== R2 收敛 · N = 2048 · block = 1024 · grid = 1 ===
+校验：GPU 1028.377686  vs  CPU(double) 1028.377640  相对误差 4.45e-08  通过
+耗时         0.0023 ms
+下限         0.0000 ms   （4N 字节 ÷ 1008 GB/s）
+有效带宽        3.5 GB/s  达成率 0.3%
+          ↑ 注意：只用了 1/128 的 SM，这个达成率没有可比性
+
+./reduce_ch10 r3   2048 1000
+
+=== R3 shared · N = 2048 · block = 1024 · grid = 1 ===
+校验：GPU 1028.377686  vs  CPU(double) 1028.377640  相对误差 4.45e-08  通过
+耗时         0.0025 ms
+下限         0.0000 ms   （4N 字节 ÷ 1008 GB/s）
+有效带宽        3.2 GB/s  达成率 0.3%
+          ↑ 注意：只用了 1/128 的 SM，这个达成率没有可比性
+
+
+# ---- 实验 B：整卡，N = 2^28 = 268435456 ----
+./reduce_ch10 r4 268435456 11
+
+=== R4 分段 · N = 268435456 · block = 256 · grid = 524288 ===
+校验：GPU 134213120.000000  vs  CPU(double) 134214240.000000  相对误差 8.34e-06  通过
+耗时         1.1203 ms
+下限         1.0652 ms   （4N 字节 ÷ 1008 GB/s）
+有效带宽      958.5 GB/s  达成率 95.1%
+原子加       524288 次（= block 数，全部打在同一个地址上）
+
+
+./reduce_ch10 r5 268435456 11
+
+=== R5 粗化 · N = 268435456 · block = 256 · grid = 131072 ===
+校验：GPU 134212856.000000  vs  CPU(double) 134214240.000000  相对误差 1.03e-05  通过
+耗时         1.1211 ms
+下限         1.0652 ms   （4N 字节 ÷ 1008 GB/s）
+有效带宽      957.8 GB/s  达成率 95.0%
+原子加       131072 次（= block 数，全部打在同一个地址上）
+
+
+./reduce_ch10 r6 268435456 11
+
+=== R6 shuffle · N = 268435456 · block = 256 · grid = 131072 ===
+校验：GPU 134212784.000000  vs  CPU(double) 134214240.000000  相对误差 1.08e-05  通过
+耗时         1.1212 ms
+下限         1.0652 ms   （4N 字节 ÷ 1008 GB/s）
+有效带宽      957.7 GB/s  达成率 95.0%
+原子加       131072 次（= block 数，全部打在同一个地址上）
+
+# ---- 附加实验：block 大小对 occupancy 的影响（§7·错法四）----
+./reduce_ch10 r5 268435456 11 1024     # 书里的默认值 → 66.7% occupancy
+
+=== R5 粗化 · N = 268435456 · block = 1024 · grid = 32768 ===
+校验：GPU 134214248.000000  vs  CPU(double) 134214240.000000  相对误差 5.96e-08  通过
+耗时         1.1224 ms
+下限         1.0652 ms   （4N 字节 ÷ 1008 GB/s）
+有效带宽      956.7 GB/s  达成率 94.9%
+原子加        32768 次（= block 数，全部打在同一个地址上）
+
+./reduce_ch10 r5 268435456 11 256      # → 100%
+
+=== R5 粗化 · N = 268435456 · block = 256 · grid = 131072 ===
+校验：GPU 134212760.000000  vs  CPU(double) 134214240.000000  相对误差 1.10e-05  通过
+耗时         1.1211 ms
+下限         1.0652 ms   （4N 字节 ÷ 1008 GB/s）
+有效带宽      957.8 GB/s  达成率 95.0%
+原子加       131072 次（= block 数，全部打在同一个地址上）
+
+# ---- 编译期检查：寄存器和 stack frame ----
+nvcc -O3 -arch=sm_89 -Xptxas -v -c reduce_ch10.cu 2>&1 | grep -A2 reduce_r
+# 每个 kernel 都应该是 0 bytes stack frame
+
+ptxas info    : Compiling entry function '_Z9reduce_r6PKfPf' for 'sm_89'
+ptxas info    : Function properties for _Z9reduce_r6PKfPf
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 20 registers, used 1 barriers, 368 bytes cmem[0]
+--
+ptxas info    : Compiling entry function '_Z9reduce_r5PKfPf' for 'sm_89'
+ptxas info    : Function properties for _Z9reduce_r5PKfPf
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 20 registers, used 1 barriers, 368 bytes cmem[0]
+--
+ptxas info    : Compiling entry function '_Z9reduce_r4PKfPf' for 'sm_89'
+ptxas info    : Function properties for _Z9reduce_r4PKfPf
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 10 registers, used 1 barriers, 368 bytes cmem[0]
+--
+ptxas info    : Compiling entry function '_Z9reduce_r3PKfPf' for 'sm_89'
+ptxas info    : Function properties for _Z9reduce_r3PKfPf
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 10 registers, used 1 barriers, 368 bytes cmem[0]
+--
+ptxas info    : Compiling entry function '_Z9reduce_r2PfS_' for 'sm_89'
+ptxas info    : Function properties for _Z9reduce_r2PfS_
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 10 registers, used 1 barriers, 368 bytes cmem[0]
+--
+ptxas info    : Compiling entry function '_Z9reduce_r1PfS_' for 'sm_89'
+ptxas info    : Function properties for _Z9reduce_r1PfS_
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 13 registers, used 1 barriers, 368 bytes cmem[0]
+
+# ---- 竞态检查（N 要小，否则慢到没法等）----
+compute-sanitizer --tool racecheck ./reduce_ch10 r6 2048 1
+
+========= COMPUTE-SANITIZER
+=== R6 shuffle · N = 2048 · block = 256 · grid = 1 ===
+校验：GPU 1028.377686  vs  CPU(double) 1028.377640  相对误差 4.45e-08  通过
+耗时         4.9746 ms
+下限         0.0000 ms   （4N 字节 ÷ 1008 GB/s）
+有效带宽        0.0 GB/s  达成率 0.0%
+原子加            1 次（= block 数，全部打在同一个地址上）
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
