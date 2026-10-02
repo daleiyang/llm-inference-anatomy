@@ -149,13 +149,13 @@
   <p class="eyebrow">02 · CUDA from a Systems Engineer’s Eyes · 报告 01</p>
   <h1>SGEMM 六级优化：核心代码的演化</h1>
   <p class="lede prose">
-    <strong>同一块 RTX 4090、同一个可执行文件、同一次开机，
-    把一个 FP32 矩阵乘从 naive 一路改到 cuBLAS 的 71.5%。</strong>
-    <b>这份报告只讲代码：每一级改了哪一行、为什么那样改、原理图长什么样。</b>
-    <span style="color:var(--ink-3)">每一级严格只引入一个新概念，
-    所以"这一步的收益归谁"没有含糊的余地。</span>
-    <span style="color:var(--crit);font-weight:650">最值钱的发现是：
-    收益最大的那两步（8.209× 和 3.359×），算术强度一个字都没变。</span>
+    <strong>同一块 RTX 4090、同一个可执行文件、同一次开机：
+    一个 FP32 矩阵乘从 naive 改到了 cuBLAS 的 71.5%。</strong>
+    <b>本报告只讲代码：每一级改了哪一行、为什么这样改、原理图是什么样。</b>
+    <span style="color:var(--ink-3)">每一级只引入一个新概念，
+    所以每一步的收益归谁很清楚。</span>
+    <span style="color:var(--crit);font-weight:650">最重要的发现：
+    收益最大的两步（8.209× 和 3.359×），算术强度完全没变。</span>
   </p>
 </header>
 
@@ -247,25 +247,25 @@
 <section>
 <h2 id="s1"><span class="num">读法</span>三本账，和一张总表<a class="up" href="#t1" title="回到目录">↑</a></h2>
   <p class="lede prose">
-    <strong>这份报告只讲代码怎么一步步变成那样，以及每一步的原理。</strong>
-    <b>数字从哪来、怎么量、八个指标各自怎么算，在
-    <a href="02-SGEMM实测与三本账.html">第 02 份报告</a>里。</b>
+    <strong>本报告只讲代码怎样一步步改成现在的样子，以及每一步的原理。</strong>
+    <b>数字的来源、测量方法和八个指标的算法，见
+    <a href="02-SGEMM实测与三本账.html">第 02 份报告</a>。</b>
   </p>
 
   <div class="sec">
     <h3 id="s1-1">一、为什么是三本账<a class="up" href="#t1-1" title="回到目录">↑</a></h3>
     <p class="prose">
       <b>教科书只给一本账：算术强度 → roofline。</b>
-      <span style="color:var(--crit);font-weight:650">而实测下来，这本账在七个 kernel 里失效五次 ——
-      达成率最高到过 2112.7%。</span>
-      <span style="color:var(--ink-3)">一个"达成率 2112.7%"的 kernel，说明它根本没在带宽墙上：
-      那些字节绝大部分命中了 4090 的 75.5 MB L2，压根没走到显存。</span>
+      <span style="color:var(--crit);font-weight:650">实测中，这本账在七个 kernel 里失效五次，
+      达成率最高到 2112.7%。</span>
+      <span style="color:var(--ink-3)">达成率 2112.7% 说明这个 kernel 不在带宽墙上：
+      它读的字节大部分命中了 4090 的 75.5 MB L2，没有走到显存。</span>
     </p>
     <div class="tw"><table>
       <thead><tr><th>账</th><th>量什么</th><th>什么时候它才是墙</th><th>这条链里管用几次</th></tr></thead>
       <tbody>
         <tr><td class="cn"><b>字节账</b></td><td>算术强度 → roofline 上限</td>
-            <td>DRAM 真的饱和时</td>
+            <td>显存带宽真的饱和时</td>
             <td><span class="tag crit">七次里失效五次</span></td></tr>
         <tr><td class="cn"><b>请求账</b></td><td>一条指令触发几个内存事务</td>
             <td>访存不合并时</td>
@@ -275,8 +275,8 @@
             <td><span class="tag good">K3 之后全靠它</span></td></tr>
       </tbody>
       <caption><b>账本没有对错，只有适用区间。</b>
-        <span style="color:var(--ink-3)">这条优化链最值钱的一点，是它把三本账各自的适用边界都撞了一遍 ——
-        每一级恰好只动其中一本，于是收益归谁所有没有含糊的余地。</span></caption>
+        <span style="color:var(--ink-3)">这条优化链最有价值的地方：它把三本账的适用边界都撞了一遍。
+        除 K5 同时动了条数账和字节账，其余每一级只动其中一本，所以收益归谁很清楚。</span></caption>
     </table></div>
   </div>
 
@@ -285,11 +285,11 @@
   <div class="tw"><table>
     <caption>六级 · 每一级只引入一个概念 · 实测取 2026-09-24 同批 N=4096</caption>
     <thead><tr><th>级</th><th>引入的概念</th><th>动了哪本账</th>
-      <th>算术强度</th><th>load/FMA</th><th>相邻提速</th><th>占 cuBLAS</th></tr></thead>
+      <th>算术强度</th><th>load/FMA</th><th>比上一级快</th><th>占 cuBLAS</th></tr></thead>
     <tbody>
       <tr><td class="cn"><b>K1</b> naive</td><td>一线程一输出，索引映射写反</td><td><span class="tag crit">基线</span></td><td class="en">0.250</td><td class="en">2.000</td><td class="en">基准</td><td class="en">1.13%</td></tr>
-      <tr><td class="cn"><b>K2</b> 合并</td><td>把 row/col 换回来，其余一字不改</td><td><span class="tag good">请求账</span></td><td class="en">0.250 <span style="color:var(--ink-3)">不变</span></td><td class="en">2.000 <span style="color:var(--ink-3)">不变</span></td><td class="en"> <b>8.21×</b></td><td class="en">9.30%</td></tr>
-      <tr><td class="cn"><b>K3</b> shared 分块</td><td>片上暂存，一块一块搬</td><td><span class="tag warn">字节账</span></td><td class="en">7.969 <b>↑32×</b></td><td class="en">2.062</td><td class="en">1.16×</td><td class="en">10.80%</td></tr>
+      <tr><td class="cn"><b>K2</b> 合并</td><td>把 x/y 的映射换回来，其余一字不改</td><td><span class="tag good">请求账</span></td><td class="en">0.250 <span style="color:var(--ink-3)">不变</span></td><td class="en">2.000 <span style="color:var(--ink-3)">不变</span></td><td class="en"> <b>8.21×</b></td><td class="en">9.30%</td></tr>
+      <tr><td class="cn"><b>K3</b> shared memory 分块</td><td>片上暂存，一块一块搬</td><td><span class="tag warn">字节账</span></td><td class="en">7.969 <b>↑32×</b></td><td class="en">2.062</td><td class="en">1.16×</td><td class="en">10.80%</td></tr>
       <tr><td class="cn"><b>K3c</b> 书上的粗化</td><td>Fig. 6.13：一线程 4 个输出，复用 M tile</td><td><span class="tag warn">字节账</span></td><td class="en">12.720 <b>↑1.6×</b></td><td class="en">2.039</td><td class="en">1.08×</td><td class="en">11.69%</td></tr>
       <tr><td class="cn"><b>K4</b> 1D 寄存器分块</td><td>一线程 8 行，N 元素进寄存器用 8 次</td><td><span class="tag good">条数账</span></td><td class="en">7.969 <span style="color:var(--crit);font-weight:650">和 K3 相同</span></td><td class="en">1.188 <b>↓</b></td><td class="en"> <b>3.10×</b></td><td class="en">36.29%</td></tr>
       <tr><td class="cn"><b>K5</b> 2D 寄存器分块</td><td>8 行 × 4 列 = 32 个输出，两个方向一起复用</td><td><span class="tag good">条数账</span>+<span class="tag warn">字节账</span></td><td class="en">12.720</td><td class="en">0.414 <b>↓</b></td><td class="en">1.66×</td><td class="en">60.28%</td></tr>
@@ -297,13 +297,13 @@
     </tbody>
   </table></div>
     <div class="callout">
-      <p class="k">两处最该停下来看的地方</p>
-      <p><b>① K2 的算术强度和 load/FMA 都和 K1 一模一样，却快了 8.209 倍。</b>
-        <span style="color:var(--ink-3)">两本账都说"没变"，时间却变了 —— 这就是第三本账（请求账）诞生的地方。</span></p>
-      <p style="margin-bottom:0"><b>② K4 的算术强度和 K3 逐字相同（7.969），却是整条链上最大的一步（3.359×）。</b>
-        <span style="color:var(--crit);font-weight:650">而算术强度真正涨了的 K3c（7.969 → 12.720），
-        只换来 8% 的提速。</span>
-        <span style="color:var(--ink-3)">教科书那条"提高算术强度就能更快"的因果链，在这里断得很干净。</span></p>
+      <p class="k">要细看的两处</p>
+      <p><b>① K2 的算术强度和 load/FMA 都和 K1 相同，却快 8.209 倍。</b>
+        <span style="color:var(--ink-3)">两本账都说"没变"，时间却变了。第三本账（请求账）就是从这里来的。</span></p>
+      <p style="margin-bottom:0"><b>② K4 的算术强度和 K3 相同（都是 7.969），却比 K3 快 3.359 倍，是整条链上第二大的一步（仅次于 K2）。</b>K4 是从 K3 改出来的，所以这里和 K3 比；总表「比上一级快」一列的 3.10× 是和上一行 K3c 比。
+        <span style="color:var(--crit);font-weight:650">算术强度真正涨了的 K3c（7.969 → 12.720），
+        只快了 8%。</span>
+        <span style="color:var(--ink-3)">教科书"提高算术强度就能更快"的因果链，在这里断得很干净。</span></p>
     </div>
   </div>
 </section>
@@ -333,10 +333,10 @@ __global__ void sgemm_k1(int M, int N, int K, float alpha,
   <div class="sec">
     <h3 id="s2-2">二、错在哪一个字<a class="up" href="#t2-2" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>算法完全正确，结果也完全正确。唯一的问题是 <code>row</code> 和 <code>col</code> 的分工。</b>
-      <span style="color:var(--ink-3)">同一个 warp 里 <code>threadIdx.x</code> 连号、<code>threadIdx.y</code> 相同。
-      K1 把 <code>threadIdx.x</code> 给了<u>行</u>，于是 32 个线程落在 A 的 32 个<u>不同行</u>上 ——
-      地址间隔 K 个 float，落在 32 个不同的 128 字节段里。</span>
+      <b>算法和结果都正确，唯一的问题是 <code>x</code>（行）和 <code>y</code>（列）的分工。</b>
+      <span style="color:var(--ink-3)">同一个 warp 里，<code>threadIdx.x</code> 连号，<code>threadIdx.y</code> 相同。
+      K1 把 <code>threadIdx.x</code> 给了<u>行</u>，所以 32 个线程落在 A 的 32 个<u>不同行</u>上。
+      它们的地址间隔 K 个 float，落在 32 个不同的 128 字节段里。</span>
     </p>
     <figure class="fig">
     <svg viewBox="0 0 720 400" role="img" aria-label="M 按行连续、N 按列跳跃的内存访问对比">
@@ -460,7 +460,7 @@ __global__ void sgemm_k1(int M, int N, int K, float alpha,
       </g>
     </svg>
     <figcaption class="cap">
-      矩阵格子里写的是<b>它在一维内存里的下标</b>（<code>row*4+col</code>），不是元素的值。
+      矩阵格子里写的是<b>元素在一维内存里的下标</b>（<code>row*4+col</code>），不是元素的值。
     </figcaption>
   </figure>
     <div class="callout crit">
@@ -499,11 +499,11 @@ __global__ void sgemm_k2(int M, int N, int K, float alpha,
 }</pre>
     <div class="callout link">
       <p class="k">和 K1 逐字对比，只差两行</p>
-      <pre>K1:  int row = blockIdx.x * blockDim.x + <span class="x">threadIdx.x</span>;
-     int col = blockIdx.y * blockDim.y + <span class="x">threadIdx.y</span>;
+      <pre>K1:  const int x = blockIdx.x * blockDim.x + <span class="x">threadIdx.x</span>;   // 行
+     const int y = blockIdx.y * blockDim.y + <span class="x">threadIdx.y</span>;   // 列
 
-K2:  int row = blockIdx.y * blockDim.y + <span class="a">threadIdx.y</span>;
-     int col = blockIdx.x * blockDim.x + <span class="a">threadIdx.x</span>;</pre>
+K2:  const int y = blockIdx.x * blockDim.x + <span class="a">threadIdx.x</span>;   // 列
+     const int x = blockIdx.y * blockDim.y + <span class="a">threadIdx.y</span>;   // 行</pre>
     </div>
   </div>
   <div class="sec">
@@ -590,7 +590,7 @@ K2:  int row = blockIdx.y * blockDim.y + <span class="a">threadIdx.y</span>;
           32 个 float 挨在一起 = 128 B → 正好 1 条 line，全用上</text>
       </g>
     </svg>
-    <figcaption class="cap"><strong>同一段循环体，只因为 <code>threadIdx.x</code> 被赋给了不同的变量，
+    <figcaption class="cap"><strong>循环体相同，只是 <code>threadIdx.x</code> 赋给了不同的变量，
       一个 warp 的 32 个地址就从"撒在近 500 KB 里"变成"挤在 128 B 里"。</strong>
       <b>代码没变，形状变了。</b></figcaption>
   </figure>
@@ -607,22 +607,21 @@ K1/K2          <span class="w">8.209×</span>             <span class="a">2.392�
 <span class="c">// 4097 上两者都不受跨度冲突影响，剩下的 2.392× 才是"不合并"本身的代价。</span>
 <span class="c">// 于是 8.209 ÷ 2.392 = 3.43 就是 2 的幂跨度的额外惩罚。</span>
 <span class="a">// 回乘检验：2.392 × 3.43 = 8.209，和实测逐位相同。</span></pre>
-      <p style="margin-bottom:0"><b>N=4096 时 A 的行跨度恰好 16384 字节 —— 2 的幂。</b>
-        <span style="color:var(--ink-3)">在"不合并"之上又叠了一层冲突。N=4097 把对齐打破，这一层就消失了。</span>
-        <b>但具体是哪个硬件结构在冲突（L2 slice 哈希？DRAM row buffer？），
-        我们没能指认出来</b><span style="color:var(--ink-3)">——
-        把地址逐位算一遍会发现，两种 N 在"行号"这一级的模式<u>完全相同</u>，
-        所以"32 个地址撞同一个 L2 set"这个顺手的解释站不住。
-        要判到具体结构需要 ncu 的 DRAM 指标，而这一批没有（见
-        <a href="02-SGEMM实测与三本账.html">报告 02 · §7</a>）。</span>
-        <span style="color:var(--crit);font-weight:650">对照组：同一个 4096→4097，其余 kernel 只慢 2.8%–7.1%，
-        cuBLAS 慢 15.7% —— 说明不是"4097 让谁都变快"，是只有 K1 被单独惩罚了。</span></p>
+      <p><b>N=4096 时，A 的行跨度正好是 16384 字节，是 2 的幂。</b>
+        <span style="color:var(--ink-3)">这在"不合并"之上又叠了一层冲突。N=4097 打破了对齐，这层冲突就消失了。</span></p>
+      <p><b>但我们没能指认出具体是哪个硬件结构在冲突（L2 slice 哈希？DRAM row buffer？）。</b>
+        <span style="color:var(--ink-3)">把地址逐位算一遍，两种 N 在"行号"这一级的模式<u>完全相同</u>，
+        所以"32 个地址撞同一个 L2 set"这个解释站不住。
+        要判断到具体结构，需要 ncu 的 DRAM 指标，而这一批数据没有（见
+        <a href="02-SGEMM实测与三本账.html">报告 02 · §7</a>）。</span></p>
+      <p style="margin-bottom:0"><span style="color:var(--crit);font-weight:650">对照组：同样从 4096 改到 4097，其余 kernel 只慢 2.8%–7.1%，
+        cuBLAS 慢 15.7%。所以不是"4097 让所有 kernel 都变快"，而是只有 K1 被单独惩罚了。</span></p>
     </div>
     <p class="prose">
       <b>所以"合并访存是性价比最高的一步"这句话要加个注：</b>
-      <span style="color:var(--ink-3)">那 8.209 倍里只有 2.392 倍是合并本身，
-      另外 3.43 倍是顺带治好的跨度冲突。</span>
-      <b>这是书里和多数教程都没提的。</b>
+      <span style="color:var(--ink-3)">那 8.209 倍里只有 2.392 倍来自合并本身，
+      另外 3.43 倍来自顺带治好的跨度冲突。</span>
+      <b>书里和多数教程都没提这一点。</b>
     </p>
   </div>
 </section>
@@ -667,9 +666,8 @@ __global__ void sgemm_k3(int M, int N, int K, float alpha,
   <div class="sec">
     <h3 id="s4-2">二、两块 tile 一个向右滑、一个向下滑<a class="up" href="#t4-2" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>下面那张图上标着"行 96–127 × 列 64–95"——这些号不是随便挑的，
-      是从 <code>blockIdx</code> 算出来的。</b>
-      <span style="color:var(--ink-3)">先把它落到一个具体的 block 上，图才看得懂。</span>
+      <b>下图标的"行 96–127 × 列 64–95"是从 <code>blockIdx</code> 算出来的，不是随便挑的。</b>
+      <span style="color:var(--ink-3)">先把它落到一个具体的 block 上，图才好懂。</span>
     </p>
     <pre><span class="c">// K3 沿用 K2 的映射（见 §3）：blockIdx.x → 列，blockIdx.y → 行</span>
 const int Col = blockIdx.x * TILE + tx;
@@ -683,14 +681,14 @@ Col = <span class="a">2</span> * 32 + tx = <span class="a">64</span> + tx    <sp
 <span class="x">// 注意 (2,3) 里的 2 是 x（列）、3 是 y（行）—— 和"行在前列在后"的习惯正好相反，</span>
 <span class="x">// 这是 K1 那个索引 bug 的同一个来源（§2·二）。</span></pre>
     <p class="prose">
-      <b>再盯住这个 block 里的一个线程 <code>(tx=5, ty=7)</code>，
+      <b>再看这个 block 里的线程 <code>(tx=5, ty=7)</code>，
       它负责 <code>C[103][69]</code></b>
       <span style="color:var(--ink-3)">（<code>Row = 96+7 = 103</code>，<code>Col = 64+5 = 69</code>）。
-      看它在 128 个阶段里搬什么、算什么：</span>
+      下表是它在 128 个阶段里搬什么、算什么：</span>
     </p>
     <div class="tw">
       <table>
-        <thead><tr><th></th><th>这个线程加载什么</th><th>然后它用什么算</th></tr></thead>
+        <thead><tr><th></th><th>这个线程搬什么</th><th>然后用什么算</th></tr></thead>
         <tbody>
           <tr><td class="cn"><b>ph = 0</b></td>
               <td class="en">Mds[7][5] ← A[103][<b>5</b>]<br>Nds[7][5] ← B[<b>7</b>][69]</td>
@@ -705,12 +703,12 @@ Col = <span class="a">2</span> * 32 + tx = <span class="a">64</span> + tx    <sp
               <td class="en">Mds[7][5] ← A[103][<b>4069</b>]<br>Nds[7][5] ← B[<b>4071</b>][69]</td>
               <td><span style="color:var(--ink-3)">= A[103][4064..4095] · B[4064..4095][69]</span></td></tr>
         </tbody>
-        <caption><strong>加载用的下标和计算用的下标完全不是一回事。</strong>
-          <b>加载时它搬的是 <code>A[Row][ph*32 + tx]</code> —— 第 5 列、第 37 列、第 4069 列……
-          用的时候它读的是整行 <code>Mds[7][0..31]</code>，
-          那 32 个数是它和另外 31 个线程<u>一起</u>搬来的。</b>
+        <caption><strong>搬运用的下标和计算用的下标完全不同。</strong>
+          <b>搬的时候，它搬的是 <code>A[Row][ph*32 + tx]</code>：第 5 列、第 37 列、第 4069 列……
+          算的时候，它读整行 <code>Mds[7][0..31]</code>。
+          这 32 个数是它和另外 31 个线程<u>一起</u>搬来的。</b>
           <span style="color:var(--good);font-weight:650">
-          「我搬一个，我用三十二个」—— 这一句就是 tiling 的全部。</span></caption>
+          「我搬一个，我用三十二个」——这一句就是分块的全部。</span></caption>
       </table>
     </div>
     <figure class="fig">
@@ -777,34 +775,34 @@ Col = <span class="a">2</span> * 32 + tx = <span class="a">64</span> + tx    <sp
       </defs>
     </svg>
     <figcaption class="cap"><strong>一个 block 的 128 个阶段</strong>：
-      <b>A 上的方块沿着自己那条行带<span style="color:var(--crit)">向右滑</span>，
-      B 上的方块沿着自己那条列带<span style="color:var(--accent)">向下滑</span></b>，
-      每滑一格就是一个阶段。
-      <span style="color:var(--ink-3)">两个方块每次都被搬进 shared memory，
-      供 block 里 1024 个线程共同使用。</span></figcaption>
+      <b>A 上的方块沿自己的行带<span style="color:var(--crit)">向右滑</span>，
+      B 上的方块沿自己的列带<span style="color:var(--accent)">向下滑</span></b>，
+      每滑一格是一个阶段。
+      <span style="color:var(--ink-3)">两个方块每次都搬进 shared memory，
+      供 block 里的 1024 个线程共用。</span></figcaption>
   </figure>
     <p class="prose">
-      <b>算术强度从 0.250 涨到 7.969，整整 32 倍</b>
-      <span style="color:var(--ink-3)">—— 因为 32×32 的 tile 里，每个搬进来的元素被 32 个线程用了 32 次。</span>
+      <b>算术强度从 0.250 涨到 7.969，涨了 32 倍。</b>
+      <span style="color:var(--ink-3)">原因：在 32×32 的 tile 里，每个搬进来的元素被 32 个线程用了 32 次。</span>
     </p>
     <div class="callout warn">
-      <p class="k">但实测只快了 1.162×</p>
-      <p><b>字节账涨 32 倍，时间只省 14%。为什么？</b></p>
+      <p class="k">但实测只快 1.162×</p>
+      <p><b>字节账涨了 32 倍，时间只省了 14%。为什么？</b></p>
       <pre>K2 的 roofline 达成率 = <span class="x">2112.7%</span>
 
 <span class="c">// 达成率超过 100% 二十倍，说明 K2 根本没在带宽墙上 ——</span>
 <span class="c">// 它那些"逻辑上要读的字节"绝大部分命中 L2，没走到 DRAM。</span>
 <span class="a">// 一个不受带宽限制的 kernel，你把它的 DRAM 算术强度提高 32 倍，换不来时间。</span></pre>
-      <p><b>那这 14% 从哪来的？用条数账算（三个单价的标定见报告 02 · §3）：</b></p>
+      <p><b>这 14% 可以用条数账算出来（三个单价的标定见报告 02 · §3）：</b></p>
       <pre>K2 = 2.000 条 LDG × 1.94 周期                       = 3.88 周期
 K3 = 1 条 32 路 LDS × 2.686
    + 1 条广播 LDS × 0.534
    + 0.062 条 LDG × 1.94                            = 3.34 周期
 
 预测 3.88 ÷ 3.34 = 1.162×        实测 1.162×   <span class="a">✓</span></pre>
-      <p style="margin-bottom:0"><b>K3 的 shared 分块在这台卡上不是靠省带宽赢的</b><span style="color:var(--ink-3)">，
-        是靠把 2 条全局 load（每条 1.94 周期）换成 1 条 32 路 + 1 条广播 shared load
-        （2.686 + 0.534）赢的。</span></p>
+      <p style="margin-bottom:0"><b>在这台卡上，K3 的 shared memory 分块不是靠省带宽赢的。</b><span style="color:var(--ink-3)">
+        它赢在把 2 条 global memory 的 load（每条 1.94 周期）换成 1 条 32 路和 1 条广播的 shared memory load
+        （2.686 + 0.534）。</span></p>
     </div>
   </div>
 </section>
@@ -866,11 +864,11 @@ __global__ void sgemm_k3c(int M, int N, int K, float alpha,
   <div class="sec">
     <h3 id="s5-2">二、省的是哪一块<a class="up" href="#t5-2" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>粗化后一个 block 横跨 <code>TILE × COARSE = 128</code> 列。</b>
-      <span style="color:var(--ink-3)">拿 <a href="#s4-2">§4·二</a> 那个例子接着看：
-      K3 的 <code>block(2,3)</code> 只管 行 96–127 × <u>列 64–95</u>；
-      K3c 的 <code>block(0,3)</code> 把 列 0–127 四个 tile 一起包了 ——
-      其中第三块正是前面那个 block。</span>
+      <b>粗化后，一个 block 横跨 <code>TILE × COARSE = 128</code> 列。</b>
+      <span style="color:var(--ink-3)">接着看 <a href="#s4-2">§4·二</a> 的例子：
+      K3 的 <code>block(2,3)</code> 只管行 96–127 × <u>列 64–95</u>；
+      K3c 的 <code>block(0,3)</code> 管列 0–127 共四个 tile，
+      其中第三块就是 K3 的那个 block。</span>
     </p>
     <figure class="fig">
 <svg viewBox="0 0 860 476" width="100%" role="img" aria-label="粗化前四个 block 各搬一份 M tile，粗化后一个 block 搬一份供四个输出 tile 共用；每个线程每阶段从搬 2 格变成搬 5 格，但负责的输出从 1 个变成 4 个，于是每个输出摊到的格数从 2 降到 1.25" style="max-width:860px;display:block;margin:0 auto;font-family:var(--font-body)" xmlns="http://www.w3.org/2000/svg">
@@ -962,43 +960,43 @@ __global__ void sgemm_k3c(int M, int N, int K, float alpha,
 </svg>
       <figcaption class="cap">
         <strong>图 · 粗化省下的是那三条多余的红箭头。</strong>
-        同一行的 4 个输出 tile 用的是<b>同一块 M</b>（行号相同），却用<b>各不相同的 N</b>（列号不同）。
-        粗化前 4 个 block 各搬一份 M；粗化后一个 block 搬一份、4 个输出共用。
-        <span style="color:var(--ink-3)">N 那一边省不掉，只能一块接一块地覆盖 <code>Nds</code>。</span>
+        同一行的 4 个输出 tile 共用<b>同一块 M</b>（行号相同），但各用<b>不同的 N</b>（列号不同）。
+        粗化前，4 个 block 各搬一份 M；粗化后，一个 block 只搬一份，4 个输出共用。
+        <span style="color:var(--ink-3)">N 这一边省不掉，只能一块接一块地覆盖 <code>Nds</code>。</span>
       </figcaption>
     </figure>
     <p class="prose">
-      <b>所以一个线程每阶段搬的格数反而<u>变多</u>了（2 → 5），但它负责的输出也从 1 个变成 4 个</b>
-      <span style="color:var(--ink-3)">—— 一除，每个输出摊到的格数从 2 降到 1.25，
-      算术强度 7.969 → 12.720，涨 1.6 倍。</span>
+      <b>一个线程每阶段搬的格数<u>变多</u>了（2 → 5），但它负责的输出从 1 个变成 4 个。</b>
+      <span style="color:var(--ink-3)">相除后，每个输出摊到的格数从 2 降到 1.25，
+      算术强度从 7.969 升到 12.720，涨到 1.6 倍。</span>
     </p>
     <div class="callout warn">
       <p class="k">又是同一个剧本</p>
-      <p style="margin-bottom:0"><b>字节账涨 1.6 倍，实测只快 1.082×。</b>
-        <span style="color:var(--ink-3)">条数账同样几乎没动（2.062 → 2.039）——
-        它省的是"搬进 shared"那一侧，而内层循环里每个 FMA 仍然要发
+      <p style="margin-bottom:0"><b>字节账涨到 1.6 倍，实测只快 1.082×。</b>
+        <span style="color:var(--ink-3)">因为条数账几乎没动（2.062 → 2.039）。
+        K3c 省的是"搬进 shared memory"那一侧；内层循环里每个 FMA 仍然要发
         1 条 32 路 + 1 条广播，一条都没少。</span>
         <span style="color:var(--crit);font-weight:650">
-        K3 → K3c 是整条链上唯一一次"只动字节账"的干净实验，结果是 8%。</span></p>
+        K3 → K3c 是整条链上唯一一次"只动字节账"的干净实验，结果只快 8%。</span></p>
     </div>
     <div class="callout crit">
-      <p class="k">顺带：书上 Fig. 6.13 那个写法会掉进 local memory</p>
-      <p style="margin-bottom:0"><b>书里用的是 <code>float Pvalue[COARSE_FACTOR]</code>，
-        而上面的代码用了 <code>p0…p3</code> 四个标量加轮转。</b>
-        <span style="color:var(--ink-3)">因为数组下标 <code>c</code> 是运行期变的，
-        而寄存器不能动态寻址 —— 编译器只好把 <code>Pvalue</code> 放进 local memory，
-        那东西物理上就在显存里。</span>
+      <p class="k">顺带：书上 Fig. 6.13 的写法会掉进 local memory</p>
+      <p style="margin-bottom:0"><b>书里用数组 <code>float Pvalue[COARSE_FACTOR]</code>，
+        上面的代码改用 <code>p0…p3</code> 四个标量加轮转。</b>
+        <span style="color:var(--ink-3)">数组下标 <code>c</code> 在运行期变化，
+        而寄存器不能动态寻址，编译器只好把 <code>Pvalue</code> 放进 local memory。
+        它物理上就在显存里。</span>
         <span style="color:var(--crit);font-weight:650">于是内层每做一次
-        <code>Pvalue[c] +=</code> 就要多一次片外读 + 一次片外写</span>
+        <code>Pvalue[c] +=</code>，就要多一次片外读和一次片外写</span>
         <span style="color:var(--ink-3)">，本来只该碰两条片内 LDS 的一行，凭空多出两条走显存的线。
-        换成标量之后累加全在寄存器里完成，<code>ptxas</code> 报 0 bytes spill。</span></p>
+        换成标量后，累加全在寄存器里完成，<code>ptxas</code> 报 0 bytes spill。</span></p>
     </div>
   </div>
 </section>
 
 <!-- ============ §6 K4 ============ -->
 <section>
-<h2 id="s6"><span class="num">K4</span>1D 寄存器分块：整条链上最大的一步<a class="up" href="#t6" title="回到目录">↑</a></h2>
+<h2 id="s6"><span class="num">K4</span>1D 寄存器分块：整条链上第二大的一步<a class="up" href="#t6" title="回到目录">↑</a></h2>
   <div class="sec">
     <h3 id="s6-1">一、代码<a class="up" href="#t6-1" title="回到目录">↑</a></h3>
     <pre>// ---------------------------------------------------------------------------
@@ -1059,9 +1057,9 @@ __global__ void sgemm_k4(int M, int N, int K, float alpha,
   <div class="sec">
     <h3 id="s6-2">二、复用从哪来：一个元素读一次，用 8 次<a class="up" href="#t6-2" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>还是 <a href="#s4-2">§4·二</a> 那个 <code>block(2,3)</code>：行 96–127 × 列 64–95。</b>
+      <b>继续用 <a href="#s4-2">§4·二</a> 的 <code>block(2,3)</code>：行 96–127 × 列 64–95。</b>
       <span style="color:var(--ink-3)">K3 里线程 <code>(tx=5, ty=7)</code> 只算 <code>C[103][69]</code> 一格；
-      现在把<u>同一列上</u>的 8 格 <code>C[96..103][69]</code> 交给一个线程。</span>
+      K4 把<u>同一列上</u>的 8 格 <code>C[96..103][69]</code> 交给一个线程。</span>
     </p>
     <figure class="fig">
 <svg viewBox="0 0 860 414" width="100%" role="img" aria-label="同一列上的 8 个输出各自要用 A 的不同一行，却共用 B 的同一列。K3 把这 8 格分给 8 个线程，B 的那个元素被读了 8 遍；K4 交给 1 个线程，B 读一次进寄存器就能喂 8 个乘加。每 8 个 FMA 的 shared load 从 8 条 32 路加 8 条广播，变成 1 条 32 路加 8 条广播。" style="max-width:860px;display:block;margin:0 auto;font-family:var(--font-body)" xmlns="http://www.w3.org/2000/svg">
@@ -1200,27 +1198,27 @@ __global__ void sgemm_k4(int M, int N, int K, float alpha,
 </svg>
       <figcaption class="cap">
         <strong>图 · 竖着排，复用就出现了。</strong>
-        这 8 个输出各自要用 A 的<b>不同一行</b>（省不掉），却共用 B 的<b>同一列</b>。
+        这 8 个输出各用 A 的<b>不同一行</b>（省不掉），但共用 B 的<b>同一列</b>。
         K3 把它们分给 8 个线程，<code>B[k][69]</code> 就被读了 8 遍；
-        K4 交给 1 个线程，读一次进寄存器，喂 8 个乘加。
+        K4 交给 1 个线程，读一次进寄存器，供 8 次乘加。
         <span style="color:var(--ink-3)">每 8 个 FMA 的 shared load：8 条 32 路 + 8 条广播 → 1 条 32 路 + 8 条广播。</span>
       </figcaption>
     </figure>
     <div class="callout link">
-      <p class="k">K3c 和 K4 其实是同一招的两个方向</p>
-      <p style="margin-bottom:0"><b>横着排（同一行、不同列）共用的是 A；竖着排（同一列、不同行）共用的是 B。</b>
-        <span style="color:var(--ink-3)"><a href="#s5-2">K3c</a> 选了横向，把省下的 A 留在 <u>shared</u> 里；
-        K4 选了纵向，把省下的 B 留在 <u>寄存器</u> 里。</span>
-        <span style="color:var(--crit);font-weight:650">差别不在方向，在于省下来的那份数据放在哪一层。</span>
-        <span style="color:var(--ink-3)">同一招的两个方向，收益却是 1.082× 和 3.359×。</span></p>
+      <p class="k">K3c 和 K4 是同一招的两个方向</p>
+      <p style="margin-bottom:0"><b>横着排（同一行、不同列）共用 A；竖着排（同一列、不同行）共用 B。</b>
+        <span style="color:var(--ink-3)"><a href="#s5-2">K3c</a> 选横向，把省下的 A 留在 <u>shared memory</u> 里；
+        K4 选纵向，把省下的 B 留在 <u>寄存器</u> 里。</span>
+        <span style="color:var(--crit);font-weight:650">差别不在方向，而在省下的那份数据放在哪一层。</span>
+        <span style="color:var(--ink-3)">两者分别快 1.082× 和 3.359×。</span></p>
     </div>
   </div>
   <div class="sec">
     <h3 id="s6-3">三、关键：两种 shared load 的单价差 5 倍<a class="up" href="#t6-3" title="回到目录">↑</a></h3>
     <p class="prose">
       <b>一条 load 是整个 warp 的指令：32 个线程各把自己的 <code>tx</code> 代进下标，算出 32 个地址。</b>
-      <span style="color:var(--ink-3)">这 32 个地址长什么样，决定了这条指令是便宜还是贵 ——
-      而 K4 砍掉的那 7 条，恰好全是贵的那一类。</span>
+      <span style="color:var(--ink-3)">这 32 个地址的分布决定这条指令便宜还是贵。
+      K4 砍掉的那 7 条全是贵的一类。</span>
     </p>
     <figure class="fig">
 <svg viewBox="0 0 860 290" width="100%" role="img" aria-label="同一条 shared load 指令，32 个线程各自把 tx 代进下标算出一个地址。广播：下标里没有 tx，32 个 lane 算出同一个地址，硬件取一次 4 字节复制给全 warp，约 0.53 周期。32 路：tx 的系数是 1，32 个连号地址正好落在 32 个不同 bank，一拍取回 128 字节，约 2.69 周期。系数大于等于 2 的写法只用到八分之一的 bank，要拆成 4 拍，更贵。" style="max-width:860px;display:block;margin:0 auto;font-family:var(--font-body)" xmlns="http://www.w3.org/2000/svg">
@@ -1475,20 +1473,20 @@ __global__ void sgemm_k4(int M, int N, int K, float alpha,
 </svg>
       <figcaption class="cap">
         <strong>图 · 同样叫 "shared load"，两条指令做的事差 32 倍。</strong>
-        广播只要读出 4 个字节、沿广播总线复制给 32 个 lane；
-        32 路要从 32 个 bank 各读一个字、拼成 128 字节返回。
-        <span style="color:var(--ink-3)">数据量差 32 倍，实测单价差 5 倍（0.534 : 2.686）—— 剩下的差距被固定开销填平了。</span>
+        广播只读出 4 个字节，沿广播总线复制给 32 个 lane；
+        32 路要从 32 个 bank 各读一个字，拼成 128 字节返回。
+        <span style="color:var(--ink-3)">数据量差 32 倍，实测单价只差 5 倍（0.534 : 2.686），其余差距被固定开销填平了。</span>
         <span style="color:var(--crit);font-weight:650">这两个单价是拿 K2、K3、K4 三个实测点反解出来的（推导见报告 02 · §4），不是官方规格。</span>
       </figcaption>
     </figure>
     <div class="callout link">
-      <p class="k">一眼判定法</p>
-      <p style="margin-bottom:0"><b>看 shared 下标里 <code>tx</code> 前面乘了什么：</b>
-        <span style="color:var(--ink-3)">没有 <code>tx</code> → 广播，硬件取一次复制给全 warp，
+      <p class="k">判定法</p>
+      <p style="margin-bottom:0"><b>看 shared memory 下标里 <code>tx</code> 前面乘了什么：</b>
+        <span style="color:var(--ink-3)">没有 <code>tx</code> → 广播，硬件取一次、复制给全 warp，
         本批实测单价 <b>0.534</b> 周期；系数是 1 → 干净的 32 路，32 个 bank 各服务一个地址，
         单价 <b>2.686</b> 周期；系数 ≥ 2 → 开始撞 bank，更贵。</span>
         <span style="color:var(--crit);font-weight:650">和 <a href="#s3-2">§3·二</a> 的合并判据是同一套，
-        只是对象换了：那边判的是全局内存的事务数，这边判的是 shared 的 bank 占用。</span></p>
+        只是对象不同：那边判 global memory 的事务数，这边判 shared memory 的 bank 占用。</span></p>
     </div>
     <pre>K3 每 8 个 FMA：8 条广播 + 8 条 32 路 = 8×0.534 + 8×2.686 = 25.76 周期
 K4 每 8 个 FMA：8 条广播 + 1 条 32 路 = 8×0.534 + 1×2.686 = 6.96 周期
@@ -1502,9 +1500,9 @@ K4 每 8 个 FMA：8 条广播 + 1 条 32 路 = 8×0.534 + 1×2.686 = 6.96 周�
     <h3 id="s6-4">四、几何：block 从 1024 缩到 128<a class="up" href="#t6-4" title="回到目录">↑</a></h3>
     <p class="prose">
       <b>tile 还是 32×32，但 block 只剩 <code>32×4 = 128</code> 个线程。</b>
-      <span style="color:var(--ink-3)">32 行按 <code>ty</code> 切成 4 条、每条 8 行；
-      线程 <code>(ty, tx)</code> 算自己那一条里第 <code>tx</code> 列的 8 个输出，
-      加载时也在自己那一条里、沿第 <code>tx</code> 列搬 <code>Mds</code> 和 <code>Nds</code> 各 8 格。</span>
+      <span style="color:var(--ink-3)">32 行按 <code>ty</code> 切成 4 条，每条 8 行。
+      线程 <code>(ty, tx)</code> 算自己那一条里第 <code>tx</code> 列的 8 个输出；
+      搬运时也在这一条里，沿第 <code>tx</code> 列给 <code>Mds</code> 和 <code>Nds</code> 各搬 8 格。</span>
     </p>
     <figure class="fig">
 <svg viewBox="0 0 860 516" width="100%" role="img" aria-label="block 是 32 乘 4。输出 tile 的 32 行按 ty 分成 4 条、每条 8 行，线程 (ty=0, tx=5) 负责第 96 到 103 行、第 69 列这 8 个输出，结果留在 8 个寄存器里。加载时它在自己那一条里沿第 5 列搬 Mds 和 Nds 各 8 格，共 16 格，相对位置原样不转置。换成 warp 视角，同一次迭代里 32 个 lane 取的是 A 同一行上连号的 32 个数，正好一条合并的 LDG。" style="max-width:860px;display:block;margin:0 auto;font-family:var(--font-body)" xmlns="http://www.w3.org/2000/svg">
@@ -1664,27 +1662,27 @@ K4 每 8 个 FMA：8 条广播 + 1 条 32 路 = 8×0.534 + 1×2.686 = 6.96 周�
 <text x="404.0" y="506.0" font-size="10" fill="var(--good)" font-weight="700">一个 warp 劈成 8 段，合并全毁。</text>
 </svg>
       <figcaption class="cap">
-        <strong>图 · 一个线程算什么、搬什么，以及换成 warp 视角后它长什么样。</strong>
-        ① 8 个累加器从头到尾待在寄存器里，128 个阶段跑完才写回 C 一次。
-        ② 两块 tile 共 32×32×2 = 2048 格，128 个线程平摊，每人 16 格，一格不能少
-        —— <b>搬运总量和 K3 一模一样</b>，这正是两者算术强度都等于 7.969 的原因。
+        <strong>图 · 一个线程算什么、搬什么，以及从 warp 视角看是什么样。</strong>
+        ① 8 个累加器从头到尾留在寄存器里，128 个阶段跑完才写回 C 一次。
+        ② 两块 tile 共 32×32×2 = 2048 格，128 个线程平摊，每人 16 格，一格不能少。
+        <b>搬运总量和 K3 完全相同</b>，所以两者的算术强度都是 7.969。
         ③ 单看一个线程，它取的 8 个 A 元素在内存里相隔 4096；
-        但同一次迭代里，一个 warp 的 32 个线程取的是同一行连着的 32 个数。
+        但在同一次迭代里，一个 warp 的 32 个线程取的是同一行连续的 32 个数。
       </figcaption>
     </figure>
     <div class="callout crit">
       <p class="k">为什么是"每线程管一列上的 8 行"，而不是"一行上的 8 列"</p>
-      <p style="margin-bottom:0"><b>因为 warp 是按 <code>threadIdx.x</code> 连号切的。</b>
-        <span style="color:var(--ink-3)">block 32×4 时，一个 warp = 同一个 <code>ty</code> 的 32 个线程，
-        <code>tx</code> 从 0 到 31 —— 所有全局地址都以 <code>tx</code> 结尾，32 个连号，全部合并。</span>
+      <p style="margin-bottom:0"><b>因为 warp 按 <code>threadIdx.x</code> 连号切分。</b>
+        <span style="color:var(--ink-3)">block 为 32×4 时，一个 warp 是同一个 <code>ty</code> 的 32 个线程，
+        <code>tx</code> 从 0 到 31。所有 global memory 地址都以 <code>tx</code> 结尾，32 个连号，全部合并。</span>
         <span style="color:var(--crit);font-weight:650">沿行方向粗化就得把 block 改成 4×32，
-        一个 warp 会跨 8 个 <code>ty</code>，合并被劈成 8 段。</span>
-        <span style="color:var(--ink-3)">何况那样共用的是 A，而 A 本来就走广播、不值得省。</span></p>
+        这时一个 warp 跨 8 个 <code>ty</code>，合并被劈成 8 段。</span>
+        <span style="color:var(--ink-3)">而且那样共用的是 A，A 本来就走广播，不值得省。</span></p>
     </div>
     <p class="prose">
-      <b>算术强度一个字没动（7.969 → 7.969），<code>dist</code> 从 1.000 掉到 0.125。</b>
-      <span style="color:var(--crit);font-weight:650">节拍 3.34 → 0.99，实测 3.359×。</span>
-      <span style="color:var(--ink-3)">整条链上最大的一步，字节账全程旁观。</span>
+      <b>算术强度没变（7.969 → 7.969），<code>dist</code> 从 1.000 降到 0.125。</b>
+      <span style="color:var(--crit);font-weight:650">节拍从 3.34 降到 0.99，实测快 3.359×。</span>
+      <span style="color:var(--ink-3)">节拍比上面的 shared memory 账多出约 0.12 周期，是 global memory load 那一项（每个 FMA 0.0625 条 × 1.94 周期）：3.22 + 0.12 = 3.34，0.87 + 0.12 = 0.99。这是整条链上第二大的一步（仅次于 K2），字节账全程旁观。</span>
     </p>
   </div>
 </section>
@@ -1769,8 +1767,8 @@ __global__ void sgemm_k5(int M, int N, int K, float alpha,
   <div class="sec">
     <h3 id="s7-2">二、8 × 4 = 32 个输出，每个 M 用 4 次、每个 N 用 8 次<a class="up" href="#t7-2" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>K4 只把 <code>n</code> 读进了寄存器，所以只能在<u>一个</u>方向上复用。</b>
-      <span style="color:var(--ink-3)">K5 两个方向一起来：每步 k 先读 8 个 <code>m</code> 和 4 个 <code>n</code>，
+      <b>K4 只把 <code>n</code> 读进寄存器，所以只能在<u>一个</u>方向上复用。</b>
+      <span style="color:var(--ink-3)">K5 两个方向一起复用：每步 k 先读 8 个 <code>m</code> 和 4 个 <code>n</code>，
       再做一次 8×4 的<b>外积</b>。</span>
       <span style="color:var(--crit);font-weight:650">12 条 load 换 32 个 FMA。</span>
     </p>
@@ -1895,10 +1893,10 @@ __global__ void sgemm_k5(int M, int N, int K, float alpha,
 </svg>
       <figcaption class="cap">
         <strong>图 · 一竖条 × 一横排 = 一次外积。</strong>
-        每个 <code>m</code> 沿着自己那一行横着用 4 次，每个 <code>n</code> 沿着自己那一列竖着用 8 次
-        —— 这就是"二维"的含义。
-        <span style="color:var(--ink-3)">32 个累加器全程住在寄存器里，128 个阶段跑完才写回 C 一次；
-        <code>acc[7][2]</code> 绑定的就是 <a href="#s4-2">§4·二</a> 那一格 <code>C[103][69]</code>。</span>
+        每个 <code>m</code> 沿自己那一行横着用 4 次，每个 <code>n</code> 沿自己那一列竖着用 8 次。
+        这就是"二维"的含义。
+        <span style="color:var(--ink-3)">32 个累加器全程留在寄存器里，128 个阶段跑完才写回 C 一次。
+        <code>acc[7][2]</code> 对应的就是 <a href="#s4-2">§4·二</a> 的那一格 <code>C[103][69]</code>。</span>
       </figcaption>
     </figure>
     <pre>归一到每 32 个 FMA：
@@ -1912,9 +1910,9 @@ K5   8 条广播 +  4 条 32 路  ≈ 15.0 周期      <span class="a">← 两�
   <div class="sec">
     <h3 id="s7-3">三、几何：输出块横向拉长 4 倍<a class="up" href="#t7-3" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>block 还是 <code>32×4 = 128</code> 个线程，一个字没改；变的是它负责多大一块输出。</b>
-      <span style="color:var(--ink-3)">32×32 拉成 32×128 —— 覆盖 <code>C[103][69]</code> 的于是变成
-      <code>block(0,3)</code>，正好就是 <a href="#s5-2">§5·二</a> K3c 那个 block。</span>
+      <b>block 还是 <code>32×4 = 128</code> 个线程，没有改；变的是它负责的输出块大小。</b>
+      <span style="color:var(--ink-3)">输出块从 32×32 拉成 32×128，于是覆盖 <code>C[103][69]</code> 的 block 变成
+      <code>block(0,3)</code>，正是 <a href="#s5-2">§5·二</a> 里 K3c 的那个 block。</span>
     </p>
     <figure class="fig">
 <svg viewBox="0 0 860 470" width="100%" role="img" aria-label="一个 block 仍是 32 乘 4 共 128 个线程，但它负责的输出块从 32 乘 32 拉成 32 乘 128。128 列分成 4 个 32 列的段，32 行按 ty 分成 4 条每条 8 行。线程 ty 等于 0、tx 等于 5 负责第 96 到 103 行，以及 4 个段里各自的第 5 列，也就是第 5、37、69、101 列，一共 32 个输出。四个输出列每隔 32 列取一个而不是连着取，这样段内仍然是段首加 tx，32 个线程连号。右边是一个 block 在 A、B、C 三张矩阵上各占的窗口：阶段循环只推进 K 方向。" style="max-width:860px;display:block;margin:0 auto;font-family:var(--font-body)" xmlns="http://www.w3.org/2000/svg">
@@ -2010,29 +2008,29 @@ K5   8 条广播 +  4 条 32 路  ≈ 15.0 周期      <span class="a">← 两�
 </svg>
       <figcaption class="cap">
         <strong>图 · 4 个输出列每隔 32 列取一个，不是连着取 4 个。</strong>
-        这样段内仍然是"段首 + <code>tx</code>"，32 个线程连号；
-        <span style="color:var(--crit);font-weight:650">连着取会让内层读 <code>Nds</code> 变成跨步 4，
+        这样每段内仍是"段首 + <code>tx</code>"，32 个线程连号。
+        <span style="color:var(--crit);font-weight:650">连着取，内层读 <code>Nds</code> 会变成跨步 4，
         只用到 1/4 的 bank，撞成 4 拍。</span>
-        <span style="color:var(--ink-3)">右边是同一个 block 在 A、B、C 上各占的窗口 ——
-        阶段循环只推进 K 方向，M 由 <code>blockIdx.y</code> 覆盖、N 由 <code>blockIdx.x</code> 覆盖。</span>
+        <span style="color:var(--ink-3)">右边是同一个 block 在 A、B、C 上各占的窗口：
+        阶段循环只推进 K 方向，M 由 <code>blockIdx.y</code> 覆盖，N 由 <code>blockIdx.x</code> 覆盖。</span>
       </figcaption>
     </figure>
     <div class="callout link">
       <p class="k">这一步是整条链上唯一一次两本账一起改善</p>
-      <p style="margin-bottom:0"><b>B 搬得多了 4 倍，但输出也多了 4 倍（打平）；而 A 一格没多。</b>
+      <p style="margin-bottom:0"><b>B 的搬运量变成 4 倍，输出也变成 4 倍，两者打平；A 一格没多。</b>
         <span style="color:var(--ink-3)">于是每个输出摊到的格数从 2.00 降到
-        <code>(1 + TN) / TN = 1.25</code>，算术强度 7.969 → 12.720。</span>
-        <span style="color:var(--crit);font-weight:650">K4 那一步是纯粹的条数账；
-        K3c 那一步是纯粹的字节账；只有 K5 两样都动了。</span></p>
+        <code>(1 + TN) / TN = 1.25</code>，算术强度从 7.969 升到 12.720。</span>
+        <span style="color:var(--crit);font-weight:650">K4 那一步只动条数账，
+        K3c 那一步只动字节账，只有 K5 两样都动了。</span></p>
     </div>
   </div>
   <div class="sec">
     <h3 id="s7-4">四、搬 40 格，用 384 格<a class="up" href="#t7-4" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>tile 横向拉长以后，加载分工也跟着变：A 那边一格没多（还是 8 格），
+      <b>tile 横向拉长后，搬运分工也跟着变：A 那边一格没多（还是 8 格），
       B 那边从 8 格变成 32 格。</b>
-      <span style="color:var(--ink-3)">每线程每阶段 40 格 —— 比 K4 的 16 格多了 2.5 倍，
-      但它负责的输出多了 4 倍。</span>
+      <span style="color:var(--ink-3)">每线程每阶段搬 40 格，是 K4（16 格）的 2.5 倍；
+      负责的输出则是 K4 的 4 倍。</span>
     </p>
     <figure class="fig">
 <svg viewBox="0 0 860 452" width="100%" role="img" aria-label="同一个阶段里，这个线程搬进 shared 的是 40 格：Mds 的第 5 列上 8 格，加 Nds 的前 8 行、第 5、37、69、101 这 4 列共 32 格。但它读出来用的是 384 格：Mds 的前 8 行全部 32 列共 256 格，加 Nds 的全部 32 行、那 4 列共 128 格。搬的形状是竖条，用的形状是横带，两者互相垂直，用到的 384 格里有 89.6% 是别的线程搬来的 —— 这就是协同加载。" style="max-width:860px;display:block;margin:0 auto;font-family:var(--font-body)" xmlns="http://www.w3.org/2000/svg">
@@ -2133,10 +2131,10 @@ K5   8 条广播 +  4 条 32 路  ≈ 15.0 周期      <span class="a">← 两�
 </svg>
       <figcaption class="cap">
         <strong>图 · "搬"的形状和"用"的形状互相垂直。</strong>
-        搬的时候分工要让同一个 warp 的地址连号，所以每人拿到的是一竖条；
-        用的时候要的却是"我这 8 行"和"我这 4 列"的<b>全部</b>，是一横带加四竖线。
-        <span style="color:var(--crit);font-weight:650">两个形状垂直，正是 tile 必须放在 shared
-        而不是寄存器里的原因 —— 也是那两道屏障不能省的原因。</span>
+        搬的时候，分工要让同一个 warp 的地址连号，所以每人拿到一竖条；
+        用的时候，每人要的却是"我这 8 行"和"我这 4 列"的<b>全部</b>，是一横带加四竖线。
+        <span style="color:var(--crit);font-weight:650">两个形状互相垂直，所以 tile 必须放在 shared memory
+        而不是寄存器里，那两次 <code>__syncthreads()</code> 也不能省。</span>
       </figcaption>
     </figure>
     <pre>每线程每阶段        K4        K5         为什么
@@ -2150,7 +2148,7 @@ K5   8 条广播 +  4 条 32 路  ≈ 15.0 周期      <span class="a">← 两�
   <div class="sec">
     <h3 id="s7-5">五、占用率下降，速度反而更快<a class="up" href="#t7-5" title="回到目录">↑</a></h3>
     <div class="tw"><table>
-      <thead><tr><th>kernel</th><th>每线程寄存器</th><th>occupancy</th><th>GFLOP/s</th><th>相邻提速</th></tr></thead>
+      <thead><tr><th>kernel</th><th>每线程寄存器</th><th>占用率</th><th>GFLOP/s</th><th>比上一级快</th></tr></thead>
       <tbody>
         <tr><td class="cn">K4</td><td class="en">54</td><td class="en">75.0%</td>
             <td class="en">20770.6</td><td class="en">—</td></tr>
@@ -2160,11 +2158,11 @@ K5   8 条广播 +  4 条 32 路  ≈ 15.0 周期      <span class="a">← 两�
         <tr><td class="cn">K6</td><td class="en">111</td><td class="en">33.3%</td>
             <td class="en">40928.8</td><td class="en">1.186×</td></tr>
       </tbody>
-      <caption><b>occupancy 砍掉一半以上，性能涨了 1.661 倍。</b>
-        <span style="color:var(--ink-3)">多数教程说"提高 occupancy"，这里正确答案是<u>降低</u>它，
+      <caption><b>占用率砍掉一半以上，反而快 1.661 倍。</b>
+        <span style="color:var(--ink-3)">多数教程建议提高占用率（occupancy）；这里正确做法是<u>降低</u>它，
         换取每线程更多的寄存器复用。</span>
-        <span style="color:var(--crit);font-weight:650">七个 kernel 全部 0 bytes stack frame / 0 spill ——
-        K6 用到 111 个寄存器仍未溢出（上限 255）。</span></caption>
+        <span style="color:var(--crit);font-weight:650">七个 kernel 全部 0 bytes stack frame / 0 spill。
+        K6 用到 111 个寄存器，仍未溢出（上限 255）。</span></caption>
     </table></div>
   </div>
 </section>
@@ -2175,11 +2173,11 @@ K5   8 条广播 +  4 条 32 路  ≈ 15.0 周期      <span class="a">← 两�
   <div class="sec">
     <h3 id="s8-1">一、代码<a class="up" href="#t8-1" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>沿用同一个例子逐行读：<code>block(0,3)</code> 的线程
+      <b>下面逐行读代码，仍用同一个例子：<code>block(0,3)</code> 的线程
       <code>(ty=0, tx=5)</code>，第 <code>ph=1</code> 阶段。</b>
-      <span style="color:var(--ink-3)">注释里的具体数字都是这个线程的 ——
-      <code>tid = 5</code>、行 <code>96..103</code>、列 <code>20..23</code>，
-      和下面三张图用的是同一组。</span>
+      <span style="color:var(--ink-3)">注释里的数字都属于这个线程：
+      <code>tid = 5</code>、行 <code>96..103</code>、列 <code>20..23</code>。
+      下面三张图也用这组数字。</span>
     </p>
     <pre>01  __global__ void sgemm_k6(int M, int N, int K, float alpha,
 02                           const float *A, const float *B, float beta, float *C) {
@@ -2270,8 +2268,8 @@ K5   8 条广播 +  4 条 32 路  ≈ 15.0 周期      <span class="a">← 两�
     <h3 id="s8-2">二、12 条变 3 条<a class="up" href="#t8-2" title="回到目录">↑</a></h3>
     <p class="prose">
       <b>一条 128 位 load 一次搬 4 个 float。</b>
-      <span style="color:var(--ink-3)">K5 每步 k 发 12 条 32 位读，K6 发 3 条 128 位读 ——
-      搬的还是那 48 个字节，换来的还是那 32 个 FMA。</span>
+      <span style="color:var(--ink-3)">K5 每步 k 发 12 条 32 位读，K6 发 3 条 128 位读。
+      两者搬的都是 48 个字节，换来的都是 32 个 FMA。</span>
     </p>
     <figure class="fig">
 <svg viewBox="0 0 860 404" width="100%" role="img" aria-label="同一步 k，K5 要发 8 条 32 位广播读加 4 条 32 位 32 路读，一共 12 条指令；K6 把它们合成 2 条 128 位广播读加 1 条 128 位 32 路读，一共 3 条指令。两边搬的都是 48 个字节，换来的都是 32 个 FMA，所以算术强度一点没变，省下的全是指令条数。" style="max-width:860px;display:block;margin:0 auto;font-family:var(--font-body)" xmlns="http://www.w3.org/2000/svg">
@@ -2393,20 +2391,20 @@ K5   8 条广播 +  4 条 32 路  ≈ 15.0 周期      <span class="a">← 两�
 </svg>
       <figcaption class="cap">
         <strong>图 · 同一排格子，括号从 8 个变成 2 个。</strong>
-        格子是 shared 里的 float，括号是"几条指令读走它们"。
-        <span style="color:var(--ink-3)">字节数一个都没省（算术强度仍是 12.720），省的全是指令条数 ——
+        格子是 shared memory 里的 float，括号表示几条指令读走它们。
+        <span style="color:var(--ink-3)">字节数一个没省（算术强度仍是 12.720），省的全是指令条数。
         所以 K6 是整条链上最干净的一次"纯条数账"实验。</span>
         <span style="color:var(--crit);font-weight:650">但 12 → 3 是手推的，
-        <a href="#s8-5">§8·五</a> 的反汇编把它推翻了一半。</span>
+        <a href="#s8-8">§8·八</a> 的反汇编推翻了其中一半。</span>
       </figcaption>
     </figure>
   </div>
   <div class="sec">
     <h3 id="s8-3">三、第 07–13 行：两个 built-in 变量推出全部坐标<a class="up" href="#t8-3" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>K6 和 K5 的区别，从这七行就能看完。</b>
-      <span style="color:var(--ink-3)">行的算法一字未改 —— K6 的粗化仍然只发生在列方向；
-      真正变的只有两处：多了一个 <code>tid</code>，以及 <code>col0</code> 的算法。</span>
+      <b>K6 和 K5 的区别，看这七行就够了。</b>
+      <span style="color:var(--ink-3)">行的算法一字未改，K6 相对 K5 的改动只发生在列方向。
+      变的只有两处：多了一个 <code>tid</code>；<code>col0</code> 的算法变了。</span>
     </p>
     <figure class="fig">
 <svg viewBox="0 0 860 352" width="100%" role="img" aria-label="从 blockIdx 等于 0 和 3、threadIdx 等于 tx 5 和 ty 0，推出这个线程的全部坐标：tid 等于 5、i0 等于 0、Row0 等于 96、colBase 等于 0、col0 等于 20。其中 tid 和 col0 两行是 K6 才有的：tid 让加载改成按第几个 float4 分工，col0 把输出列从隔 32 一个并成连着的 4 个。右边对比同一个线程在本 block 输出块上占的位置：K6 是一条 4 列宽的带，K5 是每隔 32 列一条的四条细线。" style="max-width:860px;display:block;margin:0 auto;font-family:var(--font-body)" xmlns="http://www.w3.org/2000/svg">
@@ -2473,27 +2471,27 @@ K5   8 条广播 +  4 条 32 路  ≈ 15.0 周期      <span class="a">← 两�
 </svg>
       <figcaption class="cap">
         <strong>图 · 绿色两行是 K6 才有的。</strong>
-        <code>tid</code> 让加载改成按"第几个 <code>float4</code>"分工；
+        <code>tid</code> 让搬运改成按"第几个 <code>float4</code>"分工；
         <code>col0</code> 把输出列从"隔 32 一个"并成"连着的 4 个"。
-        <span style="color:var(--crit);font-weight:650">后面所有向量化都建立在这一步上 ——
-        也正因为它，<a href="#s4-2">§4·二</a> 那一格 <code>C[103][69]</code> 换了主人。</span>
+        <span style="color:var(--crit);font-weight:650">后面所有向量化都建立在这一步上。
+        也因为这一步，<a href="#s4-2">§4·二</a> 那一格 <code>C[103][69]</code> 换了主人。</span>
       </figcaption>
     </figure>
     <div class="callout crit">
       <p class="k">这一改的方向，和 K5 当初的要求正好相反</p>
-      <p style="margin-bottom:0"><b>K5 特意让 4 列"每隔 32 取一个"，为的是避开读 <code>Nds</code> 时的 bank 冲突；
-        K6 必须改回连着的 4 列，否则 <code>n[0..3]</code> 在 shared 里不连续、合不成一条 <code>float4</code>。</b>
-        <span style="color:var(--ink-3)">同一件事，两版的最优解相反 ——
-        一个是 32 位访问的 bank 规则，一个是 128 位访问的对齐规则。</span>
-        <span style="color:var(--crit);font-weight:650">这类"相反要求"只能靠 <code>ncu</code> 量，推不出来。</span></p>
+      <p style="margin-bottom:0"><b>K5 特意让 4 列"每隔 32 取一个"，为的是避开读 <code>Nds</code> 时的 bank 冲突。
+        K6 必须改回连着的 4 列，否则 <code>n[0..3]</code> 在 shared memory 里不连续，合不成一条 <code>float4</code>。</b>
+        <span style="color:var(--ink-3)">同一件事，两版的最优解相反：
+        K5 守的是 32 位访问的 bank 规则，K6 守的是 128 位访问的对齐规则。</span>
+        <span style="color:var(--crit);font-weight:650">这类「相反要求」的实际代价只能靠 <code>ncu</code> 量，推理定不了量。</span></p>
     </div>
   </div>
   <div class="sec">
     <h3 id="s8-4">四、第 04 行：A 的 tile 为什么必须转置存<a class="up" href="#t8-4" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>向量化的前提只有一条：要用的那几个数在内存里得连着。</b>
-      <span style="color:var(--ink-3)">K5 的 <code>Mds[行][k]</code> 不满足 ——
-      所以 K6 不是"加个 <code>float4</code>"就完了，得先动数据摆放。</span>
+      <b>向量化只有一个前提：要用的那几个数在内存里必须连着。</b>
+      <span style="color:var(--ink-3)">K5 的 <code>Mds[行][k]</code> 不满足这一条。
+      所以 K6 不能只"加个 <code>float4</code>"，要先改数据的摆放。</span>
     </p>
     <figure class="fig">
 <svg viewBox="0 0 860 316" width="100%" role="img" aria-label="K5 把 A 的 tile 按 Mds 行 k 存，同一步 k 要用的 8 个 m 在 shared 的线性地址里每隔 32 个 float 才出现一次，合不成一条 128 位读；改成 Ads k 行之后这 8 个数连成一片，2 条 float4 就读完。代价是搬进 shared 的时候要横着读、竖着写。" style="max-width:860px;display:block;margin:0 auto;font-family:var(--font-body)" xmlns="http://www.w3.org/2000/svg">
@@ -2562,10 +2560,10 @@ K5   8 条广播 +  4 条 32 路  ≈ 15.0 周期      <span class="a">← 两�
 <text x="40.0" y="310.0" font-size="10.5" fill="var(--crit)" font-weight="600">代价：搬进 shared 的时候要"横着读、竖着写" —— 那一步会撞 bank。</text>
 </svg>
       <figcaption class="cap">
-        <strong>图 · 同一步 k 要用的 8 个 m，在 shared 的线性地址里是散的还是连的。</strong>
-        <code>Mds[行][k]</code> 下它们每隔 32 个 <code>float</code> 才出现一次；
-        转置成 <code>Ads[k][行]</code> 才连成一片，2 条 <code>float4</code> 读完。
-        <span style="color:var(--crit);font-weight:650">代价是搬进 shared 时要横读竖写，那一步会撞 bank。
+        <strong>图 · 同一步 k 要用的 8 个 m，在 shared memory 的线性地址里是散的还是连的。</strong>
+        按 <code>Mds[行][k]</code> 存，它们每隔 32 个 <code>float</code> 才出现一次；
+        转置成 <code>Ads[k][行]</code> 后才连成一片，2 条 <code>float4</code> 读完。
+        <span style="color:var(--crit);font-weight:650">代价是搬进 shared memory 时要横读竖写，这一步会撞 bank。
         怎么撞的、有哪三条退路，见 <a href="#s8-5">§8·五</a>；
         它在反汇编里留下的痕迹（<code>STS</code> 从 40 条降到 16 条）见 <a href="#s8-8">§8·八</a>。</span>
       </figcaption>
@@ -2574,13 +2572,13 @@ K5   8 条广播 +  4 条 32 路  ≈ 15.0 周期      <span class="a">← 两�
   <div class="sec">
     <h3 id="s8-5">五、第 23–50 行：10 条 float4<a class="up" href="#t8-5" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>K4、K5 的加载分工都是"我搬我自己那几行 / 那几列"，K6 不是。</b>
-      <span style="color:var(--ink-3)">向量化要求"连续 4 个 <code>float</code> 归同一个线程、地址 16 字节对齐"，
-      所以加载改成按 <code>tid</code> 线性铺 <code>float4</code>。</span>
-      <span style="color:var(--crit);font-weight:650">一个线程搬的数据，和它自己要算的输出不再有对应关系。</span>
+      <b>K4、K5 的搬运分工都是"我搬我自己那几行 / 那几列"，K6 不是。</b>
+      <span style="color:var(--ink-3)">向量化要求连续 4 个 <code>float</code> 归同一个线程，并且地址 16 字节对齐。
+      所以 K6 改成按 <code>tid</code> 线性铺 <code>float4</code>。</span>
+      <span style="color:var(--crit);font-weight:650">一个线程搬的数据，和它自己要算的输出不再对应。</span>
     </p>
     <p class="prose">
-      <b>这听上去像"随便撒的"，其实是最容易数清楚的一种分法：给 tile 里每一条 <code>float4</code> 编个号，128 个线程按号领。</b>
+      <b>这种分法最容易数清楚：给 tile 里每一条 <code>float4</code> 编个号，128 个线程按号领。</b>
     </p>
     <figure class="fig">
 <svg viewBox="0 0 860 460" width="100%" role="img" aria-label="A 的 tile 是 32 行乘 32 列，每 4 个连号的 float 打成一条 float4，每行 8 条，一共 256 条，128 个线程各领 2 条。线程 5 领到的是 idx4 等于 5 和 133 两条。三步映射每一步都是一一对应：编号 idx4 等于 tid 加 s 乘 128，走遍 0 到 255；还原成位置 r 等于 idx4 除以 8、c 等于 idx4 模 8 再乘 4，商与余数唯一；每条 float4 铺满 Ads 的 4 格，256 乘 4 正好等于 Ads 的全部格子。所以既不可能漏掉一格，也不可能两个线程写同一格。" style="max-width:860px;display:block;margin:0 auto;font-family:var(--font-body)" xmlns="http://www.w3.org/2000/svg">
@@ -2638,9 +2636,9 @@ K5   8 条广播 +  4 条 32 路  ≈ 15.0 周期      <span class="a">← 两�
 </svg>
       <figcaption class="cap">
         <strong>图 · 数一遍就清楚了：256 条 <code>float4</code>，128 个线程各领 2 条。</strong>
-        三步映射每一步都是<b>一一对应</b>（编号 → 位置 → <code>Ads</code> 的格子），
-        所以既不可能漏掉一格，也不可能两个线程撞在同一格上。
-        <span style="color:var(--ink-3)">"每个线程搬哪几格"根本不用去想 ——
+        三步映射每一步都是<b>一一对应</b>（编号 → 位置 → <code>Ads</code> 的格子）。
+        所以不会漏掉一格，也不会有两个线程撞在同一格上。
+        <span style="color:var(--ink-3)">不用逐个去想每个线程搬哪几格：
         只要总数对得上、映射是一一的，覆盖就自动成立。</span>
       </figcaption>
     </figure>
@@ -2840,17 +2838,17 @@ K5   8 条广播 +  4 条 32 路  ≈ 15.0 周期      <span class="a">← 两�
 </svg>
       <figcaption class="cap">
         <strong>图 · A 侧横读竖写，B 侧读写都是整条。</strong>
-        A 侧全局那边 8 个 lane 一组读满 128 字节、完全合并，
-        <b>但转置写进 <code>Ads[c+i][r]</code> 时 <code>bank = r mod 32</code>，而一个 warp 只有 4 个不同的 <code>r</code></b>
-        —— 32 个线程挤 4 个 bank。
+        A 侧在 global memory 那边 8 个 lane 一组读满 128 字节，完全合并。
+        <b>但转置写进 <code>Ads[c+i][r]</code> 时 <code>bank = r mod 32</code>，而一个 warp 只有 4 个不同的 <code>r</code></b>，
+        所以 32 个线程挤在 4 个 bank 上。
         <span style="color:var(--ink-3)">B 侧没有这个问题：一个 warp 的 32 个 lane 各拿 4 列，
         合起来正好是一整行 512 字节。</span>
       </figcaption>
     </figure>
     <div class="callout crit">
-      <p class="k">转置写入撞 bank —— 这是 K6 最可能翻车的地方，而本报告没量</p>
-      <p><b>根因是两个方向垂直：全局那边要"按行连续读"才能合并，shared 这边要"按列写"才能转置。</b>
-        <span style="color:var(--ink-3)">和 <a href="#s4-2">§4</a> 里 corner turning 那对矛盾是同一类。</span></p>
+      <p class="k">转置写入撞 bank：这是 K6 最可能出问题的地方，本报告没有量</p>
+      <p><b>根因是两个方向垂直：global memory 那边要"按行连续读"才能合并，shared memory 这边要"按列写"才能转置。</b>
+        <span style="color:var(--ink-3)">这和 <a href="#s4-2">§4</a> 里 corner turning 那对矛盾是同一类。</span></p>
       <pre><span class="c">// 三条候选退路，按省事程度排</span>
 A  padding：<span class="a">__shared__ float Ads[TILE][TILE + 4];</span>
    <span class="c">// 必须加 4 不是 1 —— 加 1 行首就不再 16 字节对齐，内层那两条 float4 读会挂。</span>
@@ -2861,7 +2859,7 @@ C  A 侧干脆不转置、不向量化，内层退回 8 条 32 位广播读，�
    <span class="a">// 广播本来就便宜（0.534 周期），A 侧向量化的收益最小 —— 这是最省事的退路。</span></pre>
       <p style="margin-bottom:0"><b>不要先猜，先量：</b>
         <code>ncu --metrics l1tex__data_bank_conflicts_pipe_lsu_shared.sum</code>
-        <span style="color:var(--ink-3)">跑一次 K5、一次 K6，K6 明显更高再按 A → C 的顺序试。</span>
+        <span style="color:var(--ink-3)">K5、K6 各跑一次。如果 K6 明显更高，再按 A → C 的顺序试。</span>
         <span style="color:var(--crit);font-weight:650">这台机器上 <code>ncu</code> 起不来，所以上面整段是推断，没有证据。</span></p>
     </div>
   </div>
@@ -2869,7 +2867,7 @@ C  A 侧干脆不转置、不向量化，内层退回 8 条 32 位广播读，�
     <h3 id="s8-6">六、第 54–67 行：一步 k<a class="up" href="#t8-6" title="回到目录">↑</a></h3>
     <p class="prose">
       <b>K6 的全部收益只发生在这 14 行里。</b>
-      <span style="color:var(--ink-3)">前面那些改造（转置、连续 4 列、线性 <code>tid</code>）都只是为了让这三条读成立。</span>
+      <span style="color:var(--ink-3)">前面的改造（转置、连续 4 列、线性 <code>tid</code>）都只为让这三条读成立。</span>
     </p>
     <figure class="fig">
 <svg viewBox="0 0 860 308" width="100%" role="img" aria-label="内层第 k 等于 7 步：从 Ads 的第 7 行取两条 float4，得到 m 的 8 个值，对应全局第 96 到 103 行；从 Bds 的第 7 行取一条 float4，得到 n 的 4 个值，对应全局第 20 到 23 列。三条 128 位读一共 48 字节，换来 8 乘 4 共 32 个 FMA —— K5 搬同样 48 字节要发 12 条指令。" style="max-width:860px;display:block;margin:0 auto;font-family:var(--font-body)" xmlns="http://www.w3.org/2000/svg">
@@ -2928,22 +2926,22 @@ C  A 侧干脆不转置、不向量化，内层退回 8 条 32 位广播读，�
 <text x="270.0" y="290.0" font-size="12" fill="var(--good)" text-anchor="middle" font-weight="700">3 条 128 位读 · 48 字节 · 32 个 FMA</text>
 </svg>
       <figcaption class="cap">
-        <strong>图 · 三条 128 位读各从 shared 的哪一行取。</strong>
+        <strong>图 · 三条 128 位读各从 shared memory 的哪一行取。</strong>
         <code>Ads</code> 的第 k 行取 2 条（广播），<code>Bds</code> 的第 k 行取 1 条（32 路），共 48 字节。
-        <span style="color:var(--ink-3)">第 59–61 行那两句"拆成标量"看着像在拷贝 12 个数，
-        其实一条指令都不产生 —— <code>float4</code> 的四个分量本来就躺在 4 个连号寄存器里，
-        那里只是给它们起个名字好写下面的双重循环。</span>
+        <span style="color:var(--ink-3)">第 59–61 行那两句"拆成标量"看着像在拷贝 12 个数，但不产生任何指令。
+        <code>float4</code> 的四个分量本来就在 4 个连号寄存器里，
+        这两句只是给它们起名字，方便写下面的双重循环。</span>
         <span style="color:var(--crit);font-weight:650">前提仍是两层 <code>#pragma unroll</code>：
-        不展开，<code>m[r]</code> 的下标不是常量，一样掉进 local memory。</span>
+        不展开，<code>m[r]</code> 的下标就不是常量，一样会掉进 local memory。</span>
       </figcaption>
     </figure>
   </div>
   <div class="sec">
     <h3 id="s8-7">七、第 72–83 行：写回<a class="up" href="#t8-7" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>写回没有任何"计算"，纯粹是把寄存器里 32 个已经算完的数，按初始化时定好的坐标送回去。</b>
+      <b>写回除了 <code>alpha</code>、<code>beta</code> 的缩放，没有别的计算，只是把寄存器里已经算完的 32 个数，按初始化时定好的坐标送回去。</b>
       <span style="color:var(--ink-3)">所以这一段最容易出的错不是算错，而是坐标公式和前面三处
-      （搬 B、读 <code>Bds</code>、写回）不一致 —— 那会写到别人的格子上。</span>
+      （搬 B、读 <code>Bds</code>、写回）不一致。不一致就会写到别人的格子上。</span>
     </p>
     <figure class="fig">
 <svg viewBox="0 0 860 402" width="100%" role="img" aria-label="写回以 r 等于 3 为例：acc 第 3 行的四个数先算成 out 的 x、y、z、w 四个分量，再一条 128 位写落到 C 第 99 行、第 20 到 23 列。八行各一条，共 8 条 128 位写，K5 则是 32 条 32 位写，搬的字节一样多。beta 乘旧值要先把 C 读回来，所以写回其实是读改写。同一个线程在两版里负责的格子不是同一批：K5 是四条隔 32 列的细竖线，K6 是一条宽 4 列的竖带，合起来覆盖的 128 列相同。" style="max-width:860px;display:block;margin:0 auto;font-family:var(--font-body)" xmlns="http://www.w3.org/2000/svg">
@@ -3024,31 +3022,31 @@ C  A 侧干脆不转置、不向量化，内层退回 8 条 32 位广播读，�
 </svg>
       <figcaption class="cap">
         <strong>图 · 一行的完整动作：4 个累加器 → <code>out</code> 的四个分量 → 一条 128 位写。</strong>
-        顺序不能错，<code>acc[r][j]</code> 对应 C 的第 <code>col0+j</code> 列。
-        <span style="color:var(--ink-3)">下半是同一个线程在两版里负责的格子 ——
-        K5 四条细竖线、K6 一条宽 4 列的竖带，合起来覆盖的 128 列完全一样。</span>
+        顺序不能错：<code>acc[r][j]</code> 对应 C 的第 <code>col0+j</code> 列。
+        <span style="color:var(--ink-3)">下半是同一个线程在两版里负责的格子：
+        K5 是四条细竖线，K6 是一条 4 列宽的竖带，合起来覆盖的 128 列完全一样。</span>
         <span style="color:var(--crit);font-weight:650">注意边界粒度：K6 不能只写半条 <code>float4</code>，
-        判的是 <code>col0 + 4 > N</code>，这就是它要求 <code>N % 4 == 0</code> 的原因。</span>
+        判的是 <code>col0 + 4 > N</code>。这就是它要求 <code>N % 4 == 0</code> 的原因。</span>
       </figcaption>
     </figure>
     <div class="callout">
-      <p class="k">一个记账上的小账没算：beta 的那次读</p>
-      <p style="margin-bottom:0"><b><code>C = alpha*acc + beta*C</code> 里的 <code>beta*C</code> 要先把 C 读回来 ——
+      <p class="k">没算的一笔小账：beta 的那次读</p>
+      <p style="margin-bottom:0"><b><code>C = alpha*acc + beta*C</code> 里的 <code>beta*C</code> 要先把 C 读回来。
         所以写回其实是"读 → 改 → 写"，每个输出是 4 B 读 + 4 B 写。</b>
-        <span style="color:var(--ink-3)">而本报告的 <code>bytesPerOut</code> 只算了写的那 4 B。
-        摊到 644 B 上不到 1%，但如果以后跑 <code>beta ≠ 0</code> 的基准，这笔要补上。</span>
-        <span style="color:var(--crit);font-weight:650">顺带：这也是"写回只发生一次"的价值 ——
-        128 个阶段里 C 只被碰这一次；要是每个阶段都往 C 里累加，这 8 B 就要乘 128 倍，
+        <span style="color:var(--ink-3)">本报告的 <code>bytesPerOut</code> 只算了写的那 4 B。
+        漏掉的 4 B 摊到 644 B 上不到 1%；但以后如果跑 <code>beta ≠ 0</code> 的基准，要补上这一笔。</span>
+        <span style="color:var(--crit);font-weight:650">这也说明了"写回只发生一次"的价值：
+        128 个阶段里 C 只被碰这一次。如果每个阶段都往 C 里累加，这 8 B 就要乘 128 倍，
         算术强度会被打回原形。</span></p>
     </div>
   </div>
   <div class="sec">
     <h3 id="s8-8">八、SASS 验证：float4 真的编成 128 位了吗<a class="up" href="#t8-8" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>这是整条链上唯一一条纯靠推理、没有直接证据的断言。</b>
-      <span style="color:var(--ink-3)">编译器完全有权把 <code>float4</code> 拆成 4 条 32 位 load ——
-      <code>ptxas -v</code> 只报寄存器和 spill，报不了指令形态。</span>
-      <b>反汇编数一遍（<code>cuobjdump -sass</code>，静态条数）：</b>
+      <b>"float4 编成了 128 位"是一条纯靠推理、没有直接证据的断言。</b>
+      <span style="color:var(--ink-3)">编译器完全可以把 <code>float4</code> 拆成 4 条 32 位 load，
+      而 <code>ptxas -v</code> 只报寄存器和 spill，看不到指令形态。</span>
+      <b>所以用反汇编数一遍（<code>cuobjdump -sass</code>，静态条数）：</b>
     </p>
     <pre>kernel     FFMA  LDS.128   LDS.32  LDG.128   LDG.32      STS  STG.128   STG.32    TOTAL
 k5         1056       <span class="w">64</span>      128        -       72       40        -       32     1856
@@ -3065,12 +3063,12 @@ k6         1056       <span class="a">96</span>        -       <span class="a">1
 <span class="x">// 而手推的条数账说 load/FMA 从 0.414 降到 0.104，比值 3.98× —— 高估了。</span>
 <span class="x">// 根源就是手推时假设 K5 全是标量 load，没料到编译器已经替它向量化了三分之一。</span>
 <span class="c">// 两者 FFMA 条数完全相同（1056），说明展开程度一样，静态条数可以直接比。</span></pre>
-      <p style="margin-bottom:0"><b>顺带一个没预测到的旁证：K1 和 K2 的 SASS 逐项相同</b>
+      <p style="margin-bottom:0"><b>另有一个没预测到的旁证：K1 和 K2 的 SASS 逐项相同</b>
         <span style="color:var(--ink-3)">（都是 30 FFMA / 59 LDG.32 / 216 条总计）。
-        它们只差一个索引映射，指令构成一模一样。</span>
+        两者只差一个索引映射，指令构成完全一样。</span>
         <span style="color:var(--crit);font-weight:650">所以 K1→K2 那 8.209× 里，
-        指令条数的贡献是严格的零，100% 来自访存行为。</span>
-        <b>这是"请求账必须独立于条数账"最干净的一个证据。</b></p>
+        指令条数的贡献严格为零，100% 来自访存行为。</span>
+        <b>这是"请求账必须独立于条数账"最干净的证据。</b></p>
     </div>
   </div>
 </section>
@@ -3099,7 +3097,7 @@ k6         1056       <span class="a">96</span>        -       <span class="a">1
         <tr><td class="cn">K5→K6</td><td class="en">不变 12.72</td><td class="en">不变</td>
             <td class="en"><b>0.414 → 0.104</b></td><td class="en">1.186×</td></tr>
       </tbody>
-      <caption><strong>收益大的每一步都动了请求账或条数账；只动字节账的两步，收益都在 10% 上下。</strong></caption>
+      <caption><strong>收益大的每一步都动了请求账或条数账；只动字节账的两步，收益只有 8%–16%。</strong></caption>
     </table></div>
   </div>
   <div class="sec">
@@ -3108,19 +3106,19 @@ k6         1056       <span class="a">96</span>        -       <span class="a">1
       <p class="k">把六级压成六句</p>
       <p style="margin-bottom:0">
         <b>K1</b> 索引映射写反，一条 LDG 被拆成 32 个请求。<br>
-        <b>K2</b> 换回来。8.209 倍里 2.392 倍是合并，3.43 倍是顺带治好的 2 的幂跨度冲突。<br>
-        <b>K3</b> shared 分块。算术强度涨 32 倍，但 K2 本来就不在带宽墙上，所以只换来 14%
-        —— 真正的收益来自 LDG 换成了更便宜的 shared load。<br>
-        <b>K3c</b> 书上的粗化。只动字节账的干净实验，8%。<br>
-        <b>K4</b> 一个 N 元素进寄存器用 8 次。算术强度一动没动，<code>dist</code> 掉到 1/8，3.359 倍。<br>
+        <b>K2</b> 把映射换回来，快 8.209 倍：其中 2.392 倍来自合并，3.43 倍来自顺带治好的 2 的幂跨度冲突。<br>
+        <b>K3</b> 用 shared memory 分块。算术强度涨 32 倍，但 K2 本来就不在带宽墙上，所以只快 16%；
+        真正的收益来自 LDG 换成了更便宜的 shared memory load。<br>
+        <b>K3c</b> 是书上的粗化，只动字节账的干净实验，快 8%。<br>
+        <b>K4</b> 让一个 N 元素进寄存器后用 8 次。算术强度没变，<code>dist</code> 降到 1/8，快 3.359 倍。<br>
         <b>K5</b> 两个方向一起复用。占用率砍到 33.3%，反而快 1.661 倍。<br>
-        <b>K6</b> float4。字节不变，条数 ÷4，1.186 倍 —— 而 SASS 告诉我们 K5 本来就被编译器
+        <b>K6</b> 用 float4。字节不变，条数 ÷4，快 1.186 倍。但 SASS 显示编译器本来就把 K5
         向量化了三分之一，所以真实的条数比只有 2.32 倍，不是 4 倍。
       </p>
     </div>
     <p class="prose">
-      <b>最终：<span style="color:var(--accent);font-weight:700">K1 → K6 共 63.1 倍，做到 cuBLAS 的 71.5%。</span></b>
-      <span style="color:var(--ink-3)">对标 siboehm 在 A6000 上的 93%，差的 21 个点主要是 warptiling
+      <b>最终：<span style="color:var(--accent);font-weight:700">K1 → K6 共快 63.1 倍，做到 cuBLAS 的 71.5%。</span></b>
+      <span style="color:var(--ink-3)">siboehm 在 A6000 上做到 93%。差的 21 个点主要是 warptiling
       和 double buffering。</span>
     </p>
   </div>
@@ -3149,8 +3147,8 @@ k6         1056       <span class="a">96</span>        -       <span class="a">1
     <p style="margin-bottom:0"><b>K1 出自 PMPP 第 3 章 Fig. 3.11，K2 是第 4 章的修正，
       K3 是第 5 章的分块，K3c 是第 6 章 Fig. 6.13。</b>
       <span style="color:var(--ink-3)">K4 / K5 / K6 书上没有，是照着 siboehm 那篇的思路自己写的。
-      全部合并进同一个可执行文件、同一次开机跑 —— 因为"K6 是 cuBLAS 的百分之多少"这类比值，
-      只有在同一个二进制下才成立。</span></p>
+      所有 kernel 合并进同一个可执行文件，在同一次开机里跑。
+      因为"K6 是 cuBLAS 的百分之多少"这类比值，只有在同一个二进制下才成立。</span></p>
   </div>
 </section>
 
