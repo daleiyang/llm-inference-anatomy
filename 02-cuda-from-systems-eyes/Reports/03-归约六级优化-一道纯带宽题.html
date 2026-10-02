@@ -149,13 +149,13 @@
   <p class="eyebrow">02 · CUDA from a Systems Engineer’s Eyes · 报告 03</p>
   <h1>归约六级优化：一道纯带宽题</h1>
   <p class="lede prose">
-    <strong>同一块 RTX 4090。归约没有复用可做 —— 每个元素只读一次，
+    <strong>仍是同一块 RTX 4090。归约没有复用可做：每个元素只读一次，
     所以上限一秒钟就能算出来：4N ÷ 1008 GB/s。</strong>
-    <b>于是这一章唯一的成绩单是一个百分比，所有含糊的地方全部暴露。</b>
+    <b>于是这一章只有一张成绩单：一个百分比。含糊的地方都会暴露。</b>
     <span style="color:var(--ink-3)">书按顺序给了五个 kernel，每一步都有一套漂亮的分析。
-    开跑之前我写死了五条预测和判决标准。</span>
-    <span style="color:var(--crit);font-weight:650">结果：五步优化里只有一步打中了瓶颈，
-    它让每个元素快了 292 倍；其余四步的收益是零。</span>
+    开跑前，我先写死了五条预测和判决标准。</span>
+    <span style="color:var(--crit);font-weight:650">结果：五步优化只有一步打中了瓶颈，
+    它让每个元素快 292 倍；其余四步的收益是零。</span>
   </p>
 </header>
 
@@ -208,14 +208,14 @@
       <ol>
         <li id="t6-1"><a href="#s6-1">一、代码</a></li>
         <li id="t6-2"><a href="#s6-2">二、先自己吃掉几个，再爬树</a></li>
-        <li id="t6-3"><a href="#s6-3">三、书的推理对，前提不在</a></li>
+        <li id="t6-3"><a href="#s6-3">三、书的推理对，但墙在另一侧</a></li>
       </ol>
     </div>
     <div class="grp">
       <a class="l1" id="t7" href="#s7"><span class="n">R6</span>warp shuffle：书里没有的一版</a>
       <ol>
         <li id="t7-1"><a href="#s7-1">一、代码</a></li>
-        <li id="t7-2"><a href="#s7-2">二、它到底省了什么</a></li>
+        <li id="t7-2"><a href="#s7-2">二、它省了什么</a></li>
         <li id="t7-3"><a href="#s7-3">三、第 02、06–07 行：几个数字</a></li>
         <li id="t7-4"><a href="#s7-4">四、第 13–14 行：32 件事</a></li>
         <li id="t7-5"><a href="#s7-5">五、第 19–24 行：收尾那个 warp</a></li>
@@ -233,7 +233,7 @@
     <div class="grp">
       <a class="l1" id="t9" href="#s9"><span class="n">意外</span>两个计划外的发现</a>
       <ol>
-        <li id="t9-1"><a href="#s9-1">一、occupancy 打平</a></li>
+        <li id="t9-1"><a href="#s9-1">一、占用率（occupancy）打平</a></li>
         <li id="t9-2"><a href="#s9-2">二、52 万次原子加没声音</a></li>
       </ol>
     </div>
@@ -254,9 +254,9 @@
   <div class="sec">
     <h3 id="s1-1">一、上限一秒钟算出来<a class="up" href="#t1-1" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>一次 N 元素的求和归约，必须做的事只有一件：把 N 个 float 从显存读进来。</b>
-      <span style="color:var(--ink-3)">4N 字节，一次，不可能更少。写只有 grid 数那么多次
-      4 字节原子加，相对 1 GiB 可以忽略。</span>
+      <b>N 元素的求和归约只有一件必须做的事：把 N 个 float 从显存读进来。</b>
+      <span style="color:var(--ink-3)">读 4N 字节，只读一次，不可能更少。写只有原子加：
+      次数等于 grid 数，每次 4 字节，和 1 GiB 相比可以忽略。</span>
     </p>
     <pre>下限时间 = 4N 字节 ÷ 1008 GB/s
 
@@ -266,9 +266,9 @@ N = 任意           →   永远是这条线
 <span class="c">// 报告 01/02 那套"算术强度 → roofline"的推导，在这里退化成一条水平线。</span>
 <span class="c">// 省掉了所有争论 —— 但也意味着任何"减少指令条数"的优化都动不了它。</span></pre>
     <p class="prose">
-      <b>所以这一章唯一有意义的成绩单是一个百分比：实测时间 ÷ 下限时间。</b>
-      <span style="color:var(--crit);font-weight:650">上限简单到可以在纸上一秒算出来，
-      于是所有含糊的地方全部暴露。</span>
+      <b>所以这一章唯一有意义的成绩单是一个百分比：下限时间 ÷ 实测时间（达成率）。</b>
+      <span style="color:var(--crit);font-weight:650">这个下限简单到在纸上一秒就能算出来，
+      所以含糊的地方都会暴露。</span>
     </p>
   </div>
   <div class="sec">
@@ -304,9 +304,9 @@ N = 任意           →   永远是这条线
 </svg>
       <figcaption class="cap">
         <strong>图 · 六个版本全部落在同一条竖线上，一步也挪不动。</strong>
-        SGEMM 能往右走，是因为 A 的一行要和 B 的很多列相乘 —— 读一次能用很多次；
+        SGEMM 能往右走，是因为 A 的一行要和 B 的很多列相乘，读一次能用很多次。
         归约里每个元素只参与一次加法，<b>没有复用可做</b>。
-        <span style="color:var(--crit);font-weight:650">不是"还没想到办法"，是数学上就没有。</span>
+        <span style="color:var(--crit);font-weight:650">这不是"还没想到办法"，是数学上就没有。</span>
       </figcaption>
     </figure>
     <pre>浮点运算数 = N − 1        <span class="c">// 归约树总操作数，和串行一样</span>
@@ -329,10 +329,10 @@ K5 二维粗化 SGEMM   12.720
     <thead><tr><th>这一步</th><th>做了什么</th><th>书里衡量的</th><th>实际收益</th><th>说明</th></tr></thead>
     <tbody>
       <tr><td class="cn"><b>R1 → R2</b></td><td>消除控制 / 访存发散</td><td class="en">资源利用率 29.5% → 66.4%</td><td class="en"><span class="tag warn">微秒级</span></td><td class="en">定性有效，定量不可信</td></tr>
-      <tr><td class="cn"><b>R2 → R3</b></td><td>搬进 shared</td><td class="en">全局访问 ~N·log N → N+1</td><td class="en"><span class="tag crit">零</span></td><td class="en">8 KB 工作集全在 L1 里，甚至略负</td></tr>
+      <tr><td class="cn"><b>R2 → R3</b></td><td>搬进 shared memory</td><td class="en">显存访问 ~N·log N → N+1</td><td class="en"><span class="tag crit">零</span></td><td class="en">8 KB 工作集全在 L1 里；收益甚至略负</td></tr>
       <tr><td class="cn"><b>R3 → R4</b></td><td>分段 + 原子加</td><td class="en">书里只说"能处理任意长度"</td><td class="en"><span class="tag good">每元素快 292 倍</span></td><td class="en"><b>唯一打中瓶颈的一步</b></td></tr>
-      <tr><td class="cn"><b>R4 → R5</b></td><td>线程粗化</td><td class="en">同步次数与原子加都除以 4</td><td class="en"><span class="tag crit">零</span></td><td class="en">1.1203 → 1.1211 ms</td></tr>
-      <tr><td class="cn"><b>R5 → R6</b></td><td>warp shuffle（书里没有）</td><td class="en">最后 5 轮不走 shared</td><td class="en"><span class="tag crit">零</span></td><td class="en">1.1211 → 1.1212 ms</td></tr>
+      <tr><td class="cn"><b>R4 → R5</b></td><td>线程粗化</td><td class="en"><code>__syncthreads()</code> 次数与原子加都除以 4</td><td class="en"><span class="tag crit">零</span></td><td class="en">1.1203 → 1.1211 ms</td></tr>
+      <tr><td class="cn"><b>R5 → R6</b></td><td>warp shuffle（书里没有）</td><td class="en">最后 5 轮不走 shared memory</td><td class="en"><span class="tag crit">零</span></td><td class="en">1.1211 → 1.1212 ms</td></tr>
     </tbody>
   </table></div>
     <figure class="fig">
@@ -374,9 +374,9 @@ K5 二维粗化 SGEMM   12.720
 </svg>
       <figcaption class="cap">
         <strong>图 · 书用 23 页讲前三步，2 页讲第四步。</strong>
-        在这台 4090 上，前者贡献 0%，后者贡献 100%。
-        <span style="color:var(--ink-3)">这不是说书错了 —— R1→R3 那套分析在
-        <u>一个 SM 内部</u>每一条都对，它只是在衡量另一样东西，
+        在这台 4090 上，前三步贡献 0%，第四步贡献 100%。
+        <span style="color:var(--ink-3)">这不是说书错了。R1→R3 的分析在
+        <u>一个 SM 内部</u>每一条都对；它衡量的是另一样东西，
         而那样东西在这张卡上不是最紧的约束。</span>
       </figcaption>
     </figure>
@@ -384,25 +384,25 @@ K5 二维粗化 SGEMM   12.720
   <div class="sec">
     <h3 id="s1-4">四、跑之前写死的五条预测<a class="up" href="#t1-4" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>判决标准在跑之前就定死，所以 <a href="#s8-2">§8·二</a> 那一栏没有商量余地。</b>
-      <span style="color:var(--ink-3)">这是报告 02 §3 那套"先算上限、再测、再对账"的直接复用。</span>
+      <b>判决标准在开跑前定死，所以 <a href="#s8-2">§8·二</a> 那一栏没有商量余地。</b>
+      <span style="color:var(--ink-3)">这个做法直接沿用报告 02 §3 的"先算上限、再测、再对账"。</span>
     </p>
       <div class="tw"><table>
     <caption>五条预测 · 判决标准在跑之前就定死</caption>
     <thead><tr><th>#</th><th>预测</th><th>判决标准</th><th>理由</th></tr></thead>
     <tbody>
       <tr><td class="cn"><b>①</b></td><td>R1 → R2 有明显加速</td><td class="en">净耗时之比 &gt; 2×</td><td class="en">两者都只用 1 个 SM，但请求条数确实少了</td></tr>
-      <tr><td class="cn"><b>②</b></td><td>R2 → R3 再快一截</td><td class="en">净耗时之比 &gt; 1.5×</td><td class="en">全局访问降到 N+1，往下限走</td></tr>
+      <tr><td class="cn"><b>②</b></td><td>R2 → R3 再快一截</td><td class="en">净耗时之比 &gt; 1.5×</td><td class="en">显存访问降到 N+1，向下限靠近</td></tr>
       <tr><td class="cn"><b>③</b></td><td>R3 → R4 是数量级的跳变</td><td class="en">每元素耗时之比 &gt; 50×</td><td class="en"><b>本章的主赌注</b> —— 第一次动到真正的瓶颈</td></tr>
-      <tr><td class="cn"><b>④</b></td><td>R4 → R5 收益很小</td><td class="en">加速 &lt; 1.2×</td><td class="en">字节账一分没变，只能来自启动开销 + 原子加</td></tr>
+      <tr><td class="cn"><b>④</b></td><td>R4 → R5 收益很小</td><td class="en">加速 &lt; 1.2×</td><td class="en">字节账没变，收益只能来自启动开销和原子加</td></tr>
       <tr><td class="cn"><b>⑤</b></td><td>R5 → R6 收益更小</td><td class="en">加速 &lt; 1.1×</td><td class="en">如果 R5 已经到八成带宽，这一步基本看不见</td></tr>
     </tbody>
   </table></div>
     <div class="callout link">
       <p class="k">赌注一句话</p>
       <p style="margin-bottom:0"><b>真正动瓶颈的只有 R3 → R4 那一步，其余四步的收益会在 4090 上迅速收敛到零。</b>
-        <span style="color:var(--ink-3)">书里的分析每一条都对，它只是在衡量
-        <u>一个 SM 内部的执行资源</u>，而那样东西在这张卡上不是最紧的约束。</span></p>
+        <span style="color:var(--ink-3)">书里的分析每一条都对。它衡量的是
+        <u>一个 SM 内部的执行资源</u>，而这在这张卡上不是最紧的约束。</span></p>
     </div>
   </div>
 </section>
@@ -426,9 +426,9 @@ __global__ void reduce_r1(float *input, float *output) {
   <div class="sec">
     <h3 id="s2-2">二、谁在算，谁在陪跑<a class="up" href="#t2-2" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>设计遵循"owner computes"：每个位置归唯一一个线程所有，只有它能写。</b>
-      <span style="color:var(--ink-3)">线程 t 认领 <code>input[2t]</code> ——
-      也就是偶数位置。<code>stride</code> 从 1 开始翻倍，
+      <b>R1 的设计遵循"owner computes"：每个位置只归一个线程所有，只有它能写。</b>
+      <span style="color:var(--ink-3)">线程 t 认领 <code>input[2t]</code>，
+      即偶数位置。<code>stride</code> 从 1 开始翻倍，
       条件 <code>threadIdx.x % stride == 0</code> 挑出这一轮的活跃线程。</span>
     </p>
     <figure class="fig">
@@ -654,7 +654,7 @@ __global__ void reduce_r1(float *input, float *output) {
         时间自上而下，每一行是 <code>for</code> 循环的一轮；深色格子是这一轮被写入的位置。
         <span style="color:var(--ink-3)">第 1 轮偶数位置拿到成对的和（0–1、2–3…），
         第 2 轮下标是 4 的倍数的位置拿到四个相邻元素的和（0–3、4–7…）。</span>
-        <span style="color:var(--crit);font-weight:650">问题一眼可见：owner 之间越来越远，
+        <span style="color:var(--crit);font-weight:650">问题在于：owner 之间越来越远，
         活跃线程撒在每个 warp 里。</span>
       </figcaption>
     </figure>
@@ -662,22 +662,22 @@ __global__ void reduce_r1(float *input, float *output) {
   <div class="sec">
     <h3 id="s2-3">三、利用率：255 ÷ 864 = 29.5%<a class="up" href="#t2-3" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>"执行资源利用率"衡量的是：硬件为你腾出来的线程槽位，有多少真的产出了结果。</b>
-      <span style="color:var(--ink-3)">它是一个分数 —— 分子是<u>产出</u>，分母是<u>占用</u>。
-      两个量分别怎么数，下面拆开看。</span>
+      <b>"执行资源利用率"衡量的是：硬件腾出的线程槽位里，有多少真的产出了结果。</b>
+      <span style="color:var(--ink-3)">它是一个分数：分子是<u>产出</u>，分母是<u>占用</u>。
+      下面分别数这两个量。</span>
     </p>
     <div class="callout link">
       <p class="k">分母的关键：占用以 warp 为单位，不以线程为单位</p>
       <p style="margin-bottom:0"><b>一个 warp 只要还有<u>一个</u>线程活着，就占满 32 个槽位。</b>
-        <span style="color:var(--ink-3)">这是 SIMD 硬件的本性：32 个 lane 步调一致，
-        不干活的那些只是被掩码挡住，槽位照占不误。</span>
-        <span style="color:var(--crit);font-weight:650">所以分母要数的是"<u>活跃 warp</u> 数"，
-        而不是"活跃线程数"—— 这一条是整个计算的支点。</span></p>
+        <span style="color:var(--ink-3)">原因在 SIMD 硬件：32 个 lane 步调一致，
+        不干活的 lane 只是被掩码挡住，槽位照样占着。</span>
+        <span style="color:var(--crit);font-weight:650">所以分母数的是"<u>活跃 warp</u> 数"，
+        不是"活跃线程数"。这一条是整个计算的支点。</span></p>
     </div>
     <p class="prose">
-      <b>取 N = 256：启动 N/2 = 128 个线程 = 4 个 warp（warp <i>w</i> 装 <code>tid</code> 32<i>w</i> … 32<i>w</i>+31）。</b>
-      <span style="color:var(--ink-3)">循环里 <code>stride</code> 从 1 翻倍到 128，一共 8 轮；
-      每轮的活跃线程由 <code>tid % stride == 0</code> 挑出来。</span>
+      <b>取 N = 256：启动 N/2 = 128 个线程，即 4 个 warp（warp <i>w</i> 装 <code>tid</code> 32<i>w</i> … 32<i>w</i>+31）。</b>
+      <span style="color:var(--ink-3)"><code>stride</code> 从 1 翻倍到 128，共 8 轮；
+      每轮由 <code>tid % stride == 0</code> 挑出活跃线程。</span>
     </p>
     <pre>stride         1     2     4     8    16    32    64   128
 
@@ -699,16 +699,16 @@ __global__ void reduce_r1(float *input, float *output) {
   <span class="c">// 硬件掏出去的槽位里，只有不到三成产出了一次加法。</span></pre>
     <div class="callout crit">
       <p class="k">浪费从哪来：分子固定，分母被"陪跑"撑大</p>
-      <p style="margin-bottom:0"><b>分子 255 是任何归约实现都躲不掉的下限 —— 它不会变。</b>
-        <span style="color:var(--ink-3)">所以要提高利用率，只能压分母。
-        而分母之所以是 864，是因为前 6 轮里<u>每一个</u> warp 都还留着至少一个活跃线程：
-        第 6 轮明明只剩 4 个线程在干活，却仍然占着 4×32 = 128 个槽位。</span>
-        <span style="color:var(--crit);font-weight:650">根子在 owner 的摆法：
-        <code>2t</code> 让活跃线程均匀撒在每个 warp 里，谁也退不了休。</span></p>
+      <p style="margin-bottom:0"><b>分子 255 是任何归约实现都躲不掉的下限，它不会变。</b>
+        <span style="color:var(--ink-3)">所以要提高利用率，只能压低分母。
+        分母是 864，因为前 6 轮里<u>每一个</u> warp 都至少留着一个活跃线程：
+        第 6 轮只有 4 个线程在干活，却仍占着 4×32 = 128 个槽位。</span>
+        <span style="color:var(--crit);font-weight:650">根源在 owner 的摆法：
+        <code>2t</code> 让活跃线程均匀撒在每个 warp 里，哪个 warp 都退不了休。</span></p>
     </div>
     <p class="prose">
-      <b>下一节的 R2 只改了三处，分子一个数都没动，分母却从 864 掉到 384 ——
-      利用率 29.5% → <a href="#s3-2">66.4%</a>。</b>
+      <b>下一节的 R2 只改了三处：分子一个数都没动，分母从 864 降到 384，
+      利用率从 29.5% 升到 <a href="#s3-2">66.4%</a>。</b>
     </p>
   </div>
 </section>
@@ -734,7 +734,7 @@ __global__ void reduce_r2(float *input, float *output) {
     <p class="prose">
       <b>owner 从 <code>2*threadIdx.x</code> 换成 <code>threadIdx.x</code>，
       <code>stride</code> 从 <code>blockDim.x</code> 开始减半，条件从 <code>%</code> 换成 <code>&lt;</code>。</b>
-      <span style="color:var(--crit);font-weight:650">加法次数一个不多一个不少 ——
+      <span style="color:var(--crit);font-weight:650">加法次数不变，
       变的只是"谁来干"。</span>
     </p>
     <figure class="fig">
@@ -957,19 +957,19 @@ __global__ void reduce_r2(float *input, float *output) {
 </svg>
       <figcaption class="cap">
         <strong>图 · 对照原书 Figure 10.8 重画。</strong>
-        <span style="color:var(--warn);font-weight:650">⚠ 注意操作数被重排了 ——
+        <span style="color:var(--warn);font-weight:650">⚠ 注意：操作数被重排了。
         要结果不变，运算必须同时满足<u>结合律</u>和<u>交换律</u>。</span>
-        <span style="color:var(--ink-3)">R1 只是在改变加括号的方式，R2 动的是加数的顺序。
-        这也是后面 FlashAttention 能把 softmax 分块做、再合并的同一个前提。</span>
+        <span style="color:var(--ink-3)">R1 只改变加括号的方式，R2 改变的是加数的顺序。
+        后面 FlashAttention 能把 softmax 分块算再合并，靠的也是这个前提。</span>
       </figcaption>
     </figure>
   </div>
   <div class="sec">
     <h3 id="s3-3">三、两本账：利用率 66.4%，请求 141 → 36<a class="up" href="#t3-3" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>还是 N = 256：128 个线程 = 4 个 warp，<code>stride</code> 从 128 减半到 1，一共 8 轮。</b>
-      <span style="color:var(--ink-3)">把 <a href="#s2-3">§2·三</a> 那张表照着再列一遍 ——
-      多加最后一行，两本账就都能从这张表里读出来。</span>
+      <b>仍取 N = 256：128 个线程，即 4 个 warp；<code>stride</code> 从 128 减半到 1，共 8 轮。</b>
+      <span style="color:var(--ink-3)">下表照 <a href="#s2-3">§2·三</a> 的表再列一遍，
+      末尾多加一行。两本账都能从这张表里读出来。</span>
     </p>
     <pre>stride       128    64    32    16     8     4     2     1
 
@@ -981,11 +981,11 @@ __global__ void reduce_r2(float *input, float *output) {
 <span class="c">//                 每条访问      2  2  2  2  2  1  1  1  ← 为什么是 2，见下面那一栏</span></pre>
     <div class="callout link">
       <p class="k">"每 warp 几条请求"这一行是什么意思</p>
-      <p><b>一条 load / store 是整个 warp 一起发的一条指令。硬件拿到的是
-        <u>这条指令里每个活跃 lane 各自算出的那个地址</u> —— 最多 32 个地址 ——
-        然后看它们落在几条 128 字节的线上，就发几条请求。</b>
-        <span style="color:var(--ink-3)">判据只有这一个：<b>这组地址覆盖了几条线</b>。
-        地址连号就挤在一条线里，地址分散就得多取几条，而且每条里都有用不上的字节。</span></p>
+      <p><b>一条 load / store 是整个 warp 一起发出的一条指令。硬件拿到
+        <u>每个活跃 lane 各自算出的地址</u>，最多 32 个；
+        这些地址落在几条 128 字节的线上，就发几条请求。</b>
+        <span style="color:var(--ink-3)">判据只有一个：<b>这组地址覆盖了几条线</b>。
+        地址连号，就挤在一条线里；地址分散，就要多取几条，每条里还有用不上的字节。</span></p>
       <pre><span class="c">// 一"线" = 128 字节 = 32 个 float。下标和线号的换算：</span>
 线 0 = input[0…31]   线 1 = input[32…63]   线 2 = input[64…95]   线 4 = input[128…159]   …
 
@@ -1003,10 +1003,10 @@ __global__ void reduce_r2(float *input, float *output) {
     读 input[i+128]    地址 128, … 159      连号 → 线 4          <b>1 条</b>
     写 input[i]        地址 0, 1, … 31      连号 → 线 0          <b>1 条</b>
     <span class="c">// 三条各取回 128 字节，一个字节都不浪费。地址落在哪条线不要紧，要紧的是"只落在一条"</span></pre>
-      <p style="margin-bottom:0"><b>所以这一行完全由"活跃 lane 这一刻请求的地址"决定，
+      <p style="margin-bottom:0"><b>所以这一行只由"活跃 lane 这一刻请求的地址"决定，
         和它们平时"拥有"哪些位置无关。</b>
-        <span style="color:var(--crit);font-weight:650">活跃 lane 变少时这个数会不会变，
-        要看剩下的那些地址还跨不跨线 —— R1 一直跨到只剩 1 个 lane 才塌成 1 条，
+        <span style="color:var(--crit);font-weight:650">活跃 lane 变少时这个数变不变，
+        要看剩下的地址还跨不跨线。R1 一直跨线，直到只剩 1 个 lane 才降到 1 条；
         下面逐轮看。</span></p>
     </div>
     <pre><span class="a">账一 · 执行资源利用率</span>
@@ -1023,10 +1023,10 @@ __global__ void reduce_r2(float *input, float *output) {
   <span class="x">141 ÷ 36 = 3.9 倍</span></pre>
     <div class="callout">
       <p class="k">逐轮看一遍 R1：为什么中间几轮还是 2，到 stride = 32 才变 1</p>
-      <p><b>每一轮，warp 0 里还活着的 lane 各请求一个地址；下表看这组地址落在哪几条线上。</b>
+      <p><b>每一轮，warp 0 里活着的 lane 各请求一个地址；下表看这组地址落在哪几条线上。</b>
         <span style="color:var(--ink-3)">活跃 lane 由 <code>tid % stride == 0</code> 挑出。
         下表以三条访问里的第一条（读 <code>input[i]</code>）为例，
-        另外两条的结论一样。</span></p>
+        另外两条结论相同。</span></p>
       <pre>stride   warp 0 还活着的 tid   它们 owner 的下标      落在哪几条线   请求
    1     0,1,…,31（32 个）     0,2,…,62             线0 + 线1        2
    2     0,2,…,30（16 个）     0,4,…,60             线0 + 线1        2
@@ -1042,19 +1042,19 @@ __global__ void reduce_r2(float *input, float *output) {
 
 <span class="c">// 一轮里其实有三条访问（读 input[i]、读 input[i+stride]、写 input[i]），各判各的，</span>
 <span class="c">// 但三条的结论在这里完全一致，所以上面那笔账才能直接乘 3。</span></pre>
-      <p><b>R2 那一行全是 1，同样一句话就够：</b>
+      <p><b>R2 那一行全是 1，原因一句话就能说清：</b>
         <span style="color:var(--good);font-weight:650">活跃 lane 是 <code>tid &lt; stride</code>
-        挑出来的一段连号，请求的地址就是 <code>input[0…stride−1]</code> ——
-        最宽 32 个 float = 128 字节 = 正好一条线。</span>
-        <span style="color:var(--ink-3)">lane 变少只会让这段更短，永远跨不到第二条。</span></p>
+        挑出的一段连号，请求的地址就是 <code>input[0…stride−1]</code>，
+        最宽 32 个 float = 128 字节，正好一条线。</span>
+        <span style="color:var(--ink-3)">lane 变少只会让这段更短，永远跨不到第二条线。</span></p>
       <p style="margin-bottom:0"><b>⚠ 要当心的是模型本身，不是这套算术。</b>
         <span style="color:var(--ink-3)">现代 GPU 的 L1/L2 按 32 字节 sector 计数，
-        和"一块 128 字节 = 一条请求"并不一一对应。方向是对的，倍数别当硬件上的精确值用。</span></p>
+        和"一块 128 字节 = 一条请求"不是一一对应。方向是对的，但倍数不要当成硬件上的精确值。</span></p>
     </div>
     <p class="prose">
       <b>N 越大，两边差得越多。</b>
-      <span style="color:var(--ink-3)">R1 的浪费正比于 warp 总数，R2 的浪费是个常数
-      —— 尾巴上那几轮只剩一个 warp 在发散。</span>
+      <span style="color:var(--ink-3)">R1 的浪费正比于 warp 总数；R2 的浪费是常数，
+      因为只有尾巴上那几轮剩一个 warp 在发散。</span>
     </p>
     <pre>N = 2048（1024 线程 = 32 个 warp）
 
@@ -1251,9 +1251,9 @@ __global__ void reduce_r3(const float *input, float *output) {
 </svg>
       <figcaption class="cap">
         <strong>图 · 对照原书 Figure 10.10 重画。</strong>
-        每个线程读两个全局元素、加完直接写进 shared —— 归约树的第 1 轮就这么做掉了，
+        每个线程从 global memory 读两个元素，相加后直接写进 shared memory，归约树的第 1 轮就此做完。
         所以循环从 <code>blockDim.x/2</code> 起步，<code>__syncthreads()</code> 也挪到了循环头。
-        <span style="color:var(--ink-3)">顺带一个好处：<code>input</code> 不再被改写 ——
+        <span style="color:var(--ink-3)">另一个好处：R3 不再改写 <code>input</code>。
         R1/R2 都是原地归约，跑完输入就毁了。</span>
       </figcaption>
     </figure>
@@ -1261,10 +1261,9 @@ __global__ void reduce_r3(const float *input, float *output) {
   <div class="sec">
     <h3 id="s4-3">三、请求账 36 → 9：字节账到此触底<a class="up" href="#t4-3" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>请求账再算一次 —— 和 <a href="#s3-3">§3·三</a> 同一套数法，
-      但这回简单到几乎不用数。</b>
-      <span style="color:var(--ink-3)">因为 R3 碰全局内存的地方<u>只剩三处</u>：
-      开头那两条读，和结尾那一次写。中间的归约树全在片上，一次都不出去。</span>
+      <b>R3 访问 global memory 的地方<u>只剩三处</u>，请求账很好算。</b>
+      <span style="color:var(--ink-3)">三处是开头的两条读和结尾的一次写，中间的归约树全在片上。
+      数法和 <a href="#s3-3">§3·三</a> 相同。</span>
     </p>
     <pre><span class="c">// N = 256 → 128 个线程 = 4 个 warp。全局访问就这三条：</span>
 
@@ -1283,21 +1282,21 @@ __global__ void reduce_r3(const float *input, float *output) {
 
 <span class="x">请求数   R2 = 36   →   R3 = 9      又少 4 倍</span></pre>
     <div class="callout link">
-      <p class="k">这 4 倍是从哪省下来的</p>
-      <p style="margin-bottom:0"><b>不是"每条请求变便宜了"，而是<u>根本不再反复出去</u>。</b>
-        <span style="color:var(--ink-3)">R2 的 36 条里，每一轮归约都要把部分和写回全局、
-        下一轮再读回来 —— 8 轮 × 3 次访问，条条都走全局。
-        R3 把第 1 轮和搬运合并成一次，此后 <code>s[]</code> 一直待在片上。</span>
-        <span style="color:var(--crit);font-weight:650">全局访问从"每轮都有"降到"只有开头和结尾"，
-        这就是 N + 1 —— 字节账到此触底，后面三步一个字节也省不掉了。</span></p>
+      <p class="k">请求数只剩 R2 的 1/4，省在哪里</p>
+      <p style="margin-bottom:0"><b>不是每条请求变便宜了，而是数据<u>不再反复进出 global memory</u>。</b>
+        <span style="color:var(--ink-3)">R2 的 36 条请求里，每一轮归约都把部分和写回 global memory，
+        下一轮再读回来：8 轮、每轮 3 次访问，全部走 global memory。
+        R3 把第 1 轮和搬运合成一步，之后 <code>s[]</code> 一直在片上。</span>
+        <span style="color:var(--crit);font-weight:650">global memory 访问从"每轮都有"降到"只在开头和结尾"，即 N + 1 次。
+        字节账到此触底，后面三步一个字节也省不掉。</span></p>
     </div>
     <div class="callout crit">
-      <p class="k">剧透：这一步在 N=2048 上<u>没有</u>带来加速，反而略慢</p>
-      <p style="margin-bottom:0"><b>8 KB 的工作集本来就整个躺在 L1 里，
-        R3 省掉的那些"全局访问"一次 DRAM 都没碰过。</b>
-        <span style="color:var(--ink-3)">书说"全局访问从 ~N·log N 降到 N+1"，这话没错 ——
-        但它数的是<u>访问次数</u>，不是 <u>DRAM 流量</u>。</span>
-        <span style="color:var(--crit);font-weight:650">完整的判决在 <a href="#s8-3">§8·三</a>。</span></p>
+      <p class="k">剧透：在 N=2048 上，这一步<u>没有</u>变快，反而略慢</p>
+      <p style="margin-bottom:0"><b>8 KB 的工作集本来就全在 L1 里，
+        R3 省掉的那些 global memory 访问一次也没到过显存。</b>
+        <span style="color:var(--ink-3)">书说 global memory 访问从 ~N·log N 降到 N+1，这没错。
+        但它数的是<u>访问次数</u>，不是<u>显存流量</u>。</span>
+        <span style="color:var(--crit);font-weight:650">完整分析见 <a href="#s8-3">§8·三</a>。</span></p>
     </div>
   </div>
 </section>
@@ -1409,9 +1408,9 @@ __global__ void reduce_r4(const float *input, float *output) {
 </svg>
       <figcaption class="cap">
         <strong>图 · 对照原书 Figure 10.12 重画。</strong>
-        输入切成若干段，每段 <code>2*blockDim.x</code> 个元素，每个 block 独立跑完自己那一段的树，
-        再用 <code>atomicAdd</code> 把部分和累到同一个 <code>output</code> 上。
-        <span style="color:var(--ink-3)">跨 block 没有屏障可用，所以只能这样两层。</span>
+        输入切成若干段，每段 <code>2*blockDim.x</code> 个元素。每个 block 独立跑完自己那一段的树，
+        再用 <code>atomicAdd</code> 把部分和加到同一个 <code>output</code> 上。
+        <span style="color:var(--ink-3)"><code>__syncthreads()</code> 管不到 block 之间，所以只能分这两层。</span>
       </figcaption>
     </figure>
     <figure class="fig">
@@ -1685,9 +1684,9 @@ __global__ void reduce_r4(const float *input, float *output) {
 <text x="36.0" y="312.0" font-size="11.5" fill="var(--crit)" font-weight="700" font-family="var(--font-mono)">数据量 ×131,072，耗时只 ×448　→　每元素 1.2207 ns → 0.0042 ns，快 292 倍</text>
 </svg>
       <figcaption class="cap">
-        <strong>图 · 书里只说 R4"能处理任意长度"—— 没提它顺带把并行度乘了 128。</strong>
-        <code>__syncthreads()</code> 只在 block 内有效，而一个 block 只能待在一个 SM 上；
-        所以 R1/R2/R3 无论怎么优化，用的都是 4090 的 <b>1/128</b>。
+        <strong>图 · 书里只说 R4"能处理任意长度"，没提它同时把并行度乘了 128。</strong>
+        R1/R2/R3 无论怎么优化，都只用到 4090 的 <b>1/128</b>：
+        <code>__syncthreads()</code> 只在 block 内有效，而一个 block 只能待在一个 SM 上。
       </figcaption>
     </figure>
   </div>
@@ -1702,7 +1701,7 @@ R4：处理 268435456 个元素，耗时 1.1203 ms   →  每元素 <b>0.0042 ns
 
 <span class="x">// 128 个 SM 闲着的时候，你在那一个 SM 里做什么优化都是徒劳。</span></pre>
     <p class="prose">
-      <b>R4 一步就把达成率推到 95.1%。这个百分比只有一个公式，两种等价写法：</b>
+      <b>R4 一步把达成率推到 95.1%。</b>达成率只有一个公式，有两种等价写法：
     </p>
     <pre><span class="a">达成率 = 下限时间 ÷ 实测时间  =  (4N ÷ 峰值带宽) ÷ 耗时</span>
 <span class="a">       = 有效带宽 ÷ 峰值带宽  =  (4N ÷ 耗时) ÷ 峰值带宽</span>
@@ -1721,18 +1720,17 @@ R4：处理 268435456 个元素，耗时 1.1203 ms   →  每元素 <b>0.0042 ns
    达成率 = 1.0652 ÷ 1.1203 = <b>95.1%</b></pre>
     <div class="callout link">
       <p class="k">这个"达成率"和报告 01/02 里那个不是一回事</p>
-      <p style="margin-bottom:0"><b>报告 02 的 roofline 达成率，分母是
-        <code>算术强度 × 带宽</code> —— 一个<u>推</u>出来的算力上限，所以会出现 2112% 这种被证伪的数。</b>
-        <span style="color:var(--crit);font-weight:650">这里的分母直接就是带宽本身。</span>
-        <span style="color:var(--ink-3)">因为归约的算术强度恒为 0.25、一步也动不了
-        （<a href="#s1-2">§1·二</a>），roofline 退化成一条水平线，分母就简化成了峰值带宽。
-        这也是为什么这一章的成绩单能这么干净 —— 它没有"假设"可以被证伪。</span></p>
+      <p style="margin-bottom:0"><b>这里的分母就是带宽本身。</b>
+        <span style="color:var(--ink-3)">报告 02 的 roofline 达成率，分母是
+        <code>算术强度 × 带宽</code>，是<u>推</u>出来的算力上限，所以会出现 2112% 这种被证伪的数。
+        归约的算术强度恒为 0.25，一步也动不了（<a href="#s1-2">§1·二</a>），
+        所以 roofline 退化成一条水平线，分母简化成峰值带宽。</span>
+        <span style="color:var(--crit);font-weight:650">因此这一章的成绩单很干净：它没有可被证伪的"假设"。</span></p>
     </div>
     <p class="prose">
-      <b>1008 GB/s 是理论峰值，STREAM 类基准通常只能到 85–93%，
-      而归约是纯顺序读，所以能更贴墙。</b>
-      <span style="color:var(--crit);font-weight:650">换句话说：R4 跑完，
-      墙上已经没有空间留给 R5 和 R6 了。</span>
+      <span style="color:var(--crit);font-weight:650">R4 跑完，墙上已经没有空间留给 R5 和 R6 了。</span>
+      <b>1008 GB/s 是理论峰值。STREAM 类基准通常只能到 85–93%，
+      归约是纯顺序读，所以能更贴墙。</b>
     </p>
   </div>
 </section>
@@ -1857,15 +1855,15 @@ __global__ void reduce_r5(const float *input, float *output) {
 </svg>
       <figcaption class="cap">
         <strong>图 · 对照原书 Figure 10.14 重画。</strong>
-        上半那三步之所以能"不碰 shared、不用同步"，是因为部分和一直累在寄存器
-        <code>sum</code> 里，等四个元素全吃完才写进 shared —— 线程之间压根没有依赖。
+        上半那三步不碰 shared memory、不用同步，因为部分和一直累在寄存器
+        <code>sum</code> 里，四个元素全加完才写进 shared memory，线程之间没有依赖。
         <span style="color:var(--warn);font-weight:650">⚠ 我们的 <code>reduce_ch10.cu</code>
-        用的是 4，比图里又多一倍（每线程 8 个元素、粗化循环 7 步）。</span>
+        用的是 4，是图里的 2 倍（每线程 8 个元素、粗化循环 7 步）。</span>
       </figcaption>
     </figure>
   </div>
   <div class="sec">
-    <h3 id="s6-3">三、书的推理对，前提不在<a class="up" href="#t6-3" title="回到目录">↑</a></h3>
+    <h3 id="s6-3">三、书的推理对，但墙在另一侧<a class="up" href="#t6-3" title="回到目录">↑</a></h3>
     <figure class="fig">
 <svg viewBox="0 0 860 440" width="100%" role="img" aria-label="原书 Figure 10.16 的对比。场景是 32 个元素、每个 block 8 个线程。不粗化时每个 block 只吃 16 个元素，所以要两个 block：每个 block 先用一步让 8 个线程各把自己的 2 个元素加起来，这一步满载；再用三步爬 8 到 4 到 2 到 1 的归约树，这三步一半线程退休，而且每步都要一次屏障和一次 shared 读写。两个 block 串起来共八步，两满六欠。粗化两倍后一个 block 吃下全部 32 个元素：先用三步让每个线程把自己的 4 个元素加起来，三步都满载、全程在寄存器里，再爬同样的三层树。共六步，三满三欠 —— 归约树只付了一遍。在 4090 上 block 确实会被硬件串行，账面收益成立，但实测收益是零，因为这个 kernel 卡在 DRAM 带宽上，省下的屏障和 shared 访问被等访存的时间盖住了。" style="max-width:860px;display:block;margin:0 auto;font-family:var(--font-body)" xmlns="http://www.w3.org/2000/svg">
 <defs><marker id="k4ar" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="context-stroke"/></marker></defs>
@@ -1928,17 +1926,17 @@ __global__ void reduce_r5(const float *input, float *output) {
 </svg>
       <figcaption class="cap">
         <strong>图 · 对照原书 Figure 10.16 重画。</strong>
-        账面上确实省了：8 步 → 6 步，欠载步数 6 → 3，屏障和 shared 访问都减半。
-        <span style="color:var(--ink-3)">书这套推理的前提是"硬件资源不够、block 会被串行"——
-        而这个前提在 4090 上<u>确实成立</u>：R4 要跑 52 万个 block，同时只驻留得下几百个。</span>
-        <span style="color:var(--crit);font-weight:650">可实测收益还是零 ——
+        账面上确实省了：8 步 → 6 步，欠载步数 6 → 3，<code>__syncthreads()</code> 和 shared memory 访问都减半。
+        <span style="color:var(--ink-3)">书这套推理的前提是"硬件资源不够、block 会被串行"。
+        这个前提在 4090 上<u>确实成立</u>：R4 要跑 52 万个 block，同时只驻留得下几百个。</span>
+        <span style="color:var(--crit);font-weight:650">但实测收益还是零，
         因为省下的是"算"的时间，而这个 kernel 的墙在"搬"那一侧。</span>
       </figcaption>
     </figure>
     <p class="prose">
-      <b>字节账一分没变 —— 这一步动的全是开销账。</b>
-      <span style="color:var(--crit);font-weight:650">实测收益：0.999×，
-      也就是零（1.1203 → 1.1211 ms）。</span>
+      <b>字节账一分没变，这一步改的全是开销账。</b>
+      <span style="color:var(--crit);font-weight:650">实测是 R4 的 0.999×，
+      即收益为零（1.1203 → 1.1211 ms）。</span>
     </p>
   </div>
 </section>
@@ -1949,12 +1947,12 @@ __global__ void reduce_r5(const float *input, float *output) {
   <div class="sec">
     <h3 id="s7-1">一、代码<a class="up" href="#t7-1" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>带行号逐行读。四个阶段已经标在注释里：</b>
+      <b>按行号逐行读。注释里标了四个阶段：</b>
       <span style="color:var(--ink-3)">① 粗化循环（和 R5 一字不差）→
       ② warp 内 5 轮 shuffle → ③ 每个 warp 交一个数 →
-      ④ 头一个 warp 收尾。</span>
-      <span style="color:var(--crit);font-weight:650">真正新的只有 ②③④，
-      而它们加起来只省下一件事：屏障从 8 次降到 1 次。</span>
+      ④ 第一个 warp 收尾。</span>
+      <span style="color:var(--crit);font-weight:650">新增的只有 ②③④，
+      它们只省下一件事：<code>__syncthreads()</code> 从 8 次降到 1 次。</span>
     </p>
     <pre>01  __global__ void reduce_r6(const float *input, float *output) {
 02      extern __shared__ float warp_s[];        // 只要 blockDim.x/32 个 float —— R5 要 blockDim.x 个
@@ -1983,7 +1981,7 @@ __global__ void reduce_r5(const float *input, float *output) {
 25  }</pre>
   </div>
   <div class="sec">
-    <h3 id="s7-2">二、它到底省了什么<a class="up" href="#t7-2" title="回到目录">↑</a></h3>
+    <h3 id="s7-2">二、它省了什么<a class="up" href="#t7-2" title="回到目录">↑</a></h3>
     <figure class="fig">
 <svg viewBox="0 0 860 352" width="100%" role="img" aria-label="R6 warp shuffle：归约树的最后 5 层本来就困在一个 warp 里，R6 用 __shfl_down_sync 让这 5 轮全部在寄存器里完成，偏移依次是 16、8、4、2、1，活跃 lane 每轮减半，既不访问 shared 也不需要屏障。每个 warp 只把一个数交给 shared，再由第一个 warp 收尾。全 kernel 只剩一次同步。实测收益是零，因为 R4 已经站在带宽墙上。" style="max-width:860px;display:block;margin:0 auto;font-family:var(--font-body)" xmlns="http://www.w3.org/2000/svg">
 <defs><marker id="k4ar" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="context-stroke"/></marker></defs>
@@ -2242,42 +2240,42 @@ __global__ void reduce_r5(const float *input, float *output) {
 </svg>
       <figcaption class="cap">
         <strong>图 · 省掉的正是 <a href="#s3-3">§3·三</a> 那张表尾巴上的一串 1。</strong>
-        R2 的"活跃 warp"那行是 <code>4 2 1 1 1 1 1 1</code> —— 尾巴上一共<b>六个 1</b>，
-        从 <code>stride = 32</code> 起整棵树就只剩一个 warp 了。
+        R2 的"活跃 warp"那行是 <code>4 2 1 1 1 1 1 1</code>，尾巴上一共<b>六个 1</b>：
+        从 <code>stride = 32</code> 起，整棵树只剩一个 warp。
         <span style="color:var(--ink-3)">第一个 1 那轮还是满员的 32 个 lane，不发散；</span>
-        <b>真正难看的是<u>后五个</u></b>：warp 内只剩 16、8、4、2、1 个 lane 在干活，
-        却还在一轮轮地走 shared、过屏障。
-        <span style="color:var(--ink-3)">R6 让这 5 轮改走寄存器；每个 warp 只交一个数给 shared，
-        再由 warp 0 收尾 —— 全 kernel 只剩一次 <code>__syncthreads()</code>。</span>
+        <b>问题出在<u>后五个</u></b>：warp 内只剩 16、8、4、2、1 个 lane 在干活，
+        却每轮还要访问 shared memory、调一次 <code>__syncthreads()</code>。
+        <span style="color:var(--ink-3)">R6 让这 5 轮改走寄存器；每个 warp 只交一个数给 shared memory，
+        再由 warp 0 收尾。全 kernel 只剩一次 <code>__syncthreads()</code>。</span>
       </figcaption>
     </figure>
     <p class="prose">
-      <b>这是整条链上唯一一个书里没有的版本，也是唯一一个"理论上该有收益"的收尾优化。</b>
-      <span style="color:var(--crit);font-weight:650">实测收益：1.000×，同样是零
+      <b>R6 是整条链上唯一一个书里没有的版本，也是唯一一个"理论上该有收益"的收尾优化。</b>
+      <span style="color:var(--crit);font-weight:650">实测收益同样为零：1.000×
       （1.1211 → 1.1212 ms）。</span>
-      <span style="color:var(--ink-3)">因为 R4 已经站在带宽墙上了 ——
-      省掉多少指令都没有地方可以变快。</span>
+      <span style="color:var(--ink-3)">原因是 R4 已经站在带宽墙上，
+      省掉再多指令也没有地方可以变快。</span>
     </p>
     <div class="callout link">
       <p class="k">收益是零，但这套原语值得单独学</p>
       <p style="margin-bottom:0"><b><code>__shfl_*_sync</code> 是 vLLM 的
         <code>layernorm_kernels.cu</code>、FlashAttention 的 warp 级归约里的标配。</b>
-        <span style="color:var(--ink-3)">这个 kernel 上兑现不了，是因为它的墙在别处；
-        换一个不受带宽限制的算子，同一套写法就是实打实的收益。</span>
-        <span style="color:var(--crit);font-weight:650">下面按行号把它读一遍 ——
-        先分清几个数字，再看一条 shuffle 指令到底在做什么，
-        然后是收尾那个 warp，最后和 R5 的 shared 树逐项对上。</span></p>
+        <span style="color:var(--ink-3)">它在这个 kernel 上没有收益，是因为这里的墙是带宽；
+        换一个不受带宽限制的算子，同一套写法就有实际收益。</span>
+        <span style="color:var(--crit);font-weight:650">下面按行号读一遍：
+        先分清几个数字，再看一条 shuffle 指令做了什么，
+        然后看收尾的 warp，最后和 R5 的 shared memory 树逐项对照。</span></p>
     </div>
   </div>
   <div class="sec">
     <h3 id="s7-3">三、第 02、06–07 行：先把几个数字分清<a class="up" href="#t7-3" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>第 06–07 行那三个位运算全都建立在一件事上：32 = 2⁵。</b>
-      <span style="color:var(--ink-3)">"除以 32"就是右移 5 位，"模 32"就是留下低 5 位。
-      换个角度看更清楚 —— 线程编号的二进制本来就被切成了两段：
-      高位段是 warp 号，低 5 位段是 lane 号。</span>
-      <span style="color:var(--crit);font-weight:650">这两行不是什么技巧，
-      是在读这个数本来就有的结构。</span>
+      <b>第 06–07 行的三个位运算都基于一件事：32 = 2⁵。</b>
+      <span style="color:var(--ink-3)">"除以 32"就是右移 5 位，"模 32"就是保留低 5 位。
+      换句话说，线程编号的二进制本来就分成两段：
+      高位段是 warp 号，低 5 位是 lane 号。</span>
+      <span style="color:var(--crit);font-weight:650">这两行不是技巧，
+      只是读出这个数本来的结构。</span>
     </p>
     <pre><span class="c">// 拿 t = 77 摊开（BLOCK = 256）</span>
 t      = 0b …0100 1101   (77)
@@ -2292,29 +2290,29 @@ t = 77 :   0000010  01101          验算：2 × 32 + 13 = 77 ✓
       <p class="k">为什么这几个变量一律写成 <code>unsigned int</code></p>
       <p><b>对 <code>unsigned</code>，<code>% 32</code> 和 <code>&amp; 31</code>
         编译出的机器码完全一样</b><span style="color:var(--ink-3)">——
-        写位运算纯粹是表意习惯（"我在取 lane"比"我在取余数"直白）。
+        写位运算只是表意习惯（"我在取 lane"比"我在取余数"直白）。
         <b>换成 <code>signed int</code> 就不等价了：</b></span></p>
       <pre>-1 % 32  ==  -1        而   -1 &amp; 31  ==  31
 -1 / 32  ==   0        而   -1 &gt;&gt; 5  ==  -1     <span class="c">// 算术右移向负无穷取整，除法向零取整</span></pre>
-      <p style="margin-bottom:0"><b>所以对 <code>signed</code> 编译器不敢做这个替换，
+      <p style="margin-bottom:0"><b>所以对 <code>signed</code>，编译器不能做这个替换，
         必须插额外指令处理符号位。</b>
         <span style="color:var(--crit);font-weight:650">这条对整份 CUDA 代码都成立：
-        凡是从 <code>threadIdx</code> / <code>blockIdx</code> 派生的下标一律用 <code>unsigned</code></span>
-        <span style="color:var(--ink-3)">—— 不只是语义对，也是为了让这些除法和取模真的免费。</span></p>
+        从 <code>threadIdx</code> / <code>blockIdx</code> 派生的下标一律用 <code>unsigned</code></span>
+        <span style="color:var(--ink-3)">——这样语义正确，这些除法和取模也真正免费。</span></p>
     </div>
     <div class="callout warn">
       <p class="k">这么切为什么是"对的"，以及多维 block 的经典 bug</p>
-      <p style="margin-bottom:0"><b>硬件规则是：把 block 内线程按<u>线性编号</u>排好，
-        每 32 个连续编号切一刀 —— 这个划分固定、改不了。</b>
+      <p style="margin-bottom:0"><b>硬件规则：把 block 内的线程按<u>线性编号</u>排好，
+        每 32 个连续编号切一刀。这个划分是固定的，改不了。</b>
         <span style="color:var(--ink-3)">一维 block 的线性编号就是 <code>threadIdx.x</code>，
-        所以能直接写 <code>t &amp; 31</code> / <code>t &gt;&gt; 5</code>。</span>
+        所以可以直接写 <code>t &amp; 31</code> / <code>t &gt;&gt; 5</code>。</span>
         <span style="color:var(--crit);font-weight:650">多维 block 必须先线性化：
-        <code>threadIdx.x + blockDim.x*threadIdx.y + blockDim.x*blockDim.y*threadIdx.z</code>
-        —— 在二维 block 里直接拿 <code>threadIdx.x &amp; 31</code> 当 lane 是错的。</span></p>
+        <code>threadIdx.x + blockDim.x*threadIdx.y + blockDim.x*blockDim.y*threadIdx.z</code>。
+        在二维 block 里直接把 <code>threadIdx.x &amp; 31</code> 当 lane 是错的。</span></p>
     </div>
     <p class="prose">
-      <b>再看第 02 行那个 <code>extern</code>：它是被 CUDA 借用的关键字，
-      和 C 里"符号定义在别的编译单元"毫无关系。</b>
+      <b>第 02 行的 <code>extern</code> 是 CUDA 借用的关键字，
+      和 C 里"符号定义在别的编译单元"的含义无关。</b>
     </p>
     <pre><span class="c">// 静态：大小写死在代码里，编译期确定 —— 书里 Fig. 10.13 / 10.15 的写法</span>
 __shared__ float input_s[BLOCK_DIM];     <span class="c">// BLOCK_DIM 必须是编译期常量</span>
@@ -2322,10 +2320,10 @@ __shared__ float input_s[BLOCK_DIM];     <span class="c">// BLOCK_DIM 必须是�
 <span class="c">// 动态：大小留空，运行期才确定 —— 本报告 R3–R6 的写法</span>
 extern __shared__ float warp_s[];        <span class="a">// 注意数组没有维度：是 float[] 不是 float[8]</span></pre>
     <p class="prose">
-      <span style="color:var(--ink-3)">没有维度的数组是<b>不完整类型</b>，标准 C 里只有
-      <code>extern</code> 声明才允许这么写 —— CUDA 借用的正是这个语法位置，用来表达另一件事：</span>
-      <b>"这块 shared 有多大，不由 kernel 决定，由启动它的人在运行时给。"</b>
-      <span style="color:var(--ink-3)">给的地方就是 <code>&lt;&lt;&lt; &gt;&gt;&gt;</code> 的第三个参数：</span>
+      <span style="color:var(--ink-3)">没有维度的数组是<b>不完整类型</b>。标准 C 只允许
+      <code>extern</code> 声明这样写，CUDA 借这个语法位置表达另一件事：</span>
+      <b>"这块 shared memory 有多大，不由 kernel 决定，由启动方在运行时给出。"</b>
+      <span style="color:var(--ink-3)">给出大小的地方是 <code>&lt;&lt;&lt; &gt;&gt;&gt;</code> 的第三个参数：</span>
     </p>
     <pre>reduce_r6&lt;&lt;&lt;grid, block, <span class="a">smem</span>&gt;&gt;&gt;(in, out);
                          <span class="a">^^^^</span> 动态 shared 的<b>字节数</b>，省略则为 0
@@ -2339,7 +2337,7 @@ size_t smem = (kind == K_R6) ? (block.x / 32) * sizeof(float)   <span class="c">
 <span class="x">&lt;&lt;&lt;grid, block&gt;&gt;&gt;                 // ✗ 干脆忘了第三个参数 → 0 字节 → 第 16 行立即越界</span>
 <span class="c">// 两种都能编译、都能跑，只是结果错或随机崩。compute-sanitizer --tool memcheck 能抓到。</span></pre>
     <div class="callout">
-      <p class="k">一个限制：整个 kernel 只有<u>一块</u>动态 shared</p>
+      <p class="k">一个限制：整个 kernel 只有<u>一块</u>动态 shared memory</p>
       <pre>extern __shared__ float a[];
 extern __shared__ int   b[];      <span class="x">// a 和 b 是同一块内存，不是两块</span>
 
@@ -2347,21 +2345,21 @@ extern __shared__ int   b[];      <span class="x">// a 和 b 是同一块内存�
 extern __shared__ char smem[];
 float* a = (float*)smem;
 int*   b = (int*)(smem + n * sizeof(float));</pre>
-      <p style="margin-bottom:0"><b>数组名和类型本质上只是个"视角"</b>
-        <span style="color:var(--ink-3)">—— 它代表的永远是那块内存的起始地址，类型只决定你怎么解释里面的字节。
-        R6 用动态写法是为了 <code>BLOCK</code> 能在命令行上换而不必重编译；
-        代价就是多出"忘传第三个参数"这个出错面。</span></p>
+      <p style="margin-bottom:0"><b>数组名和类型只是一个"视角"</b>
+        <span style="color:var(--ink-3)">——数组名代表的总是那块内存的起始地址，类型只决定怎么解释里面的字节。
+        R6 用动态写法，是为了在命令行上换 <code>BLOCK</code> 而不必重编译；
+        代价是多了"忘传第三个参数"这个出错点。</span></p>
     </div>
   </div>
   <div class="sec">
     <h3 id="s7-4">四、第 13–14 行：一行代码 = 32 件同时发生的事<a class="up" href="#t7-4" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>卡住的地方多半在第 13–14 行。先立一条：<code>sum</code> 不是一个变量，是 32 个变量。</b>
+      <b>难点多半在第 13–14 行。先记住一条：<code>sum</code> 不是一个变量，是 32 个变量。</b>
       <span style="color:var(--ink-3)">第 09 行 <code>float sum = input[i];</code>
-      在每个线程里都执行了一遍 —— 一个 warp 32 个线程，就有 32 个互不相干的 <code>sum</code>，
-      各自躺在各自的寄存器里。它们同名，但不是同一个东西。</span>
-      <span style="color:var(--crit);font-weight:650">这条不立住，第 14 行里出现两次的
-      <code>sum</code> 怎么读都是死结。</span>
+      在每个线程里各执行一遍。一个 warp 有 32 个线程，就有 32 个互不相干的 <code>sum</code>，
+      各自在自己的寄存器里。它们同名，但不是同一个东西。</span>
+      <span style="color:var(--crit);font-weight:650">不先明确这一点，第 14 行出现两次的
+      <code>sum</code> 就读不通。</span>
     </p>
     <pre><span class="c">// off = 16 时，第 14 行展开后是这 32 条语句，【同时】发生（下标 = lane 号）：</span>
 
@@ -2377,39 +2375,39 @@ lane 31 :  sum₃₁ =  sum₃₁ + sum₃₁        <span class="x">← 以上 
 <span class="c">// __shfl_down_sync(0xffffffffu, sum, 16) 对 lane i 而言，返回值就是 sum(i+16)。</span>
 <span class="c">// 仅此而已 —— 它不改任何人的值，只是让 lane i 能读到 lane i+16 的寄存器。</span></pre>
     <div class="callout link">
-      <p class="k">三个参数各自的角色 —— <code>var</code> 最容易搞反</p>
+      <p class="k">三个参数各自的角色：<code>var</code> 最容易搞反</p>
       <pre>__shfl_down_sync( mask , var , delta )
                     │      │      └─ 我要往后数几个 lane 去取
                     │      └──────── <b>我摆出来给别人看的值</b>（不是我要取的值）
                     └─────────────── 哪些 lane 在这里汇合，第 i 位对应 lane i
 
 <span class="c">// 32 个 lane 各自摆出自己的 sum，然后各自按 delta 去取别人摆出来的那份。</span></pre>
-      <p><b>越界的 lane 拿到的是<u>它自己的值</u> —— 不是 0，也不是未定义。</b>
+      <p><b>越界的 lane 拿到的是<u>它自己的值</u>，不是 0，也不是未定义值。</b>
         <span style="color:var(--ink-3)"><code>i + delta ≥ 32</code> 时源 lane 不会绕回，
         CUDA 文档的说法是 "the upper delta lanes will remain unchanged"。
-        正因为它定义良好，才能确信不会有 NaN 或陷阱值污染 lane 0 的结果。</span></p>
-      <p style="margin-bottom:0"><b>⚠ <code>mask</code> 是一个<u>承诺</u>，不是一个筛选。</b>
-        <span style="color:var(--ink-3)">你在说"这些 lane 我保证都会执行到这条指令"，
-        不是"只让这些 lane 干活"。承诺了 32 个却只到了 8 个 → 未定义行为，不报错，换个架构就变。</span>
+        这个行为有明确定义，所以可以确认不会有 NaN 或陷阱值污染 lane 0 的结果。</span></p>
+      <p style="margin-bottom:0"><b>⚠ <code>mask</code> 是一个<u>承诺</u>，不是筛选条件。</b>
+        <span style="color:var(--ink-3)">它的意思是"这些 lane 保证都会执行到这条指令"，
+        不是"只让这些 lane 干活"。承诺了 32 个、实际只到了 8 个，是未定义行为：不报错，换个架构结果就变。</span>
         <span style="color:var(--crit);font-weight:650">所以第 19 行写
-        <code>if (warp == 0)</code> 是安全的（一个 warp 的 32 个 lane 要么全进要么全不进），
-        写成 <code>if (t &lt; 8)</code> 就不安全 —— 那是把一个 warp 切碎了。</span></p>
+        <code>if (warp == 0)</code> 是安全的（一个 warp 的 32 个 lane 要么全进、要么全不进）；
+        写成 <code>if (t &lt; 8)</code> 就不安全，因为它把一个 warp 切碎了。</span></p>
     </div>
     <div class="callout">
       <p class="k">"lane 0 读 sum₁₆ 时，lane 16 会不会已经把自己改了？"</p>
-      <p style="margin-bottom:0"><b>不会。一个 warp 的 32 个线程是 lock-step 的：
-        硬件先把 32 个 lane 的 <code>sum</code> 全部快照出来，再各自做加法写回。</b>
-        <span style="color:var(--ink-3)">等号右边读到的全是这一轮开始前的旧值，
-        所以不存在"谁先谁后"。也因此不需要额外的 <code>__syncwarp()</code> ——
-        <code>__shfl_*_sync</code> 自带 warp 内汇合，<code>mask</code> 就是干这个的。</span>
-        <span style="color:var(--crit);font-weight:650">这正是它比 shared 快的根本原因：
-        shared 那条路是"我写内存 → 屏障 → 你读内存"，shuffle 是<u>寄存器直连</u>。</span></p>
+      <p style="margin-bottom:0"><b>不会。这是 <code>__shfl_*_sync</code> 这条指令的语义保证的：
+        参与的 lane 先在这条指令上汇合，每个 lane 读到的都是伙伴在这条指令之前的 <code>sum</code>，再各自做加法写回。</b>
+        <span style="color:var(--ink-3)">等号右边读到的都是这一轮开始前的旧值，
+        所以不存在"谁先谁后"。也因此不需要额外的 <code>__syncwarp()</code>：
+        <code>__shfl_*_sync</code> 自带 warp 内汇合，<code>mask</code> 就是为此而设。</span>
+        <span style="color:var(--crit);font-weight:650">这是 shuffle 比 shared memory 快的根本原因：
+        shared memory 那条路是"我写内存 → <code>__syncthreads()</code> → 你读内存"，shuffle 是<u>寄存器直连</u>。</span></p>
     </div>
   </div>
   <div class="sec">
     <h3 id="s7-5">五、第 19–24 行：收尾那一个 warp<a class="up" href="#t7-5" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>先看清走到第 19 行时手里还剩什么。</b>
+      <b>先看清执行到第 19 行时还剩什么。</b>
     </p>
     <pre>warp_s[0] = warp 0 那 32 个 lane 的和
   ⋮                                        <span class="c">// BLOCK=256 → nWarps = 8</span>
@@ -2419,20 +2417,20 @@ warp_s[7] = warp 7 那 32 个 lane 的和
 <span class="c">// 那个值已经在第 16 行存进 shared 了。</span>
 <span class="a">// 所以第三段只剩一句话要做：把 shared 里这 8 个数归约成 1 个。</span></pre>
     <p class="prose">
-      <b>① 第 19 行 <code>if (warp == 0)</code> —— 只剩 8 个数，一个 warp 的 32 个 lane 绰绰有余；
-      其余 7 个 warp（224 个线程）到这里直接退出，不再占任何资源。</b>
+      <b>① 第 19 行 <code>if (warp == 0)</code>：只剩 8 个数，一个 warp 的 32 个 lane 足够；
+      其余 7 个 warp（224 个线程）到这里直接退出，不再占用执行资源。</b>它们所在 block 的 shared memory 和 block 槽位，要等整个 block 结束才释放。
       <span style="color:var(--ink-3)"><code>warp == 0</code> 等价于 <code>t &lt; 32</code>，
-      分支边界正好压在 warp 边界上 —— 所以下一行那个 <code>0xffffffffu</code> 的承诺是真的
-      （<a href="#s7-4">§7·四</a>），而且分支发生在 warp <u>之间</u>，warp 内部没人走两条路，
+      分支边界正好落在 warp 边界上。所以第 22 行那个 <code>0xffffffffu</code> 的承诺成立
+      （<a href="#s7-4">§7·四</a>）；而且分支发生在 warp <u>之间</u>，warp 内没有线程走两条路，
       不产生发散。</span>
-      <span style="color:var(--crit);font-weight:650">"最后一个 warp 收尾，其他人下班"是个通用模式，
+      <span style="color:var(--crit);font-weight:650">"留一个 warp 收尾，其他 warp 退出"是通用模式，
       切法必须对齐 warp 边界。</span>
     </p>
     <p class="prose">
       <b>② 第 20 行 <code>sum = (lane &lt; nWarps) ? warp_s[lane] : 0.0f</code>
-      —— 先注意是 <code>=</code> 不是 <code>+=</code>。</b>
-      <span style="color:var(--ink-3)">寄存器里原来的 <code>sum</code> 是垃圾，必须整个盖掉；
-      看成"继续累加"就全错了。这一行同时干三件事：</span>
+：注意是 <code>=</code>，不是 <code>+=</code>。</b>
+      <span style="color:var(--ink-3)">寄存器里原来的 <code>sum</code> 是垃圾，必须整个覆盖；
+      当成"继续累加"就全错了。这一行同时做三件事：</span>
     </p>
     <pre><span class="a">（一）装载</span>      lane 0…7 各读一格 warp_s[lane]，落在 8 个不同 bank，无 bank conflict。
 <span class="a">（二）填单位元</span>  lane 8…31 填 0.0f。mask 承诺了 32 个 lane 到场，得让它们到场又不干扰结果 ——
@@ -2442,7 +2440,7 @@ warp_s[7] = warp 7 那 32 个 lane 的和
                 <span class="c">所以 lane &lt; nWarps 不只是为了填单位元，它还是这段唯一的边界守卫。</span></pre>
     <p class="prose">
       <b>③ 第 21–22 行和第 13–14 行逐字相同</b>
-      <span style="color:var(--ink-3)">，只是此刻 32 个 lane 里只有 8 个装着真数据。
+      <span style="color:var(--ink-3)">，只是这时 32 个 lane 里只有 8 个装着真数据。
       设 <code>warp_s[w] = w+1</code>（1…8，总和 36），跟踪 lane 0：</span>
     </p>
     <pre>  轮   off   lane 0 的搭档              搭档的值   lane 0 变成
@@ -2457,9 +2455,9 @@ warp_s[7] = warp 7 那 32 个 lane 的和
 <span class="c">// 那要引入运行时计算或分支；而这里的代价只是每个 block 多 2 条 shuffle，还只有一个 warp 在跑。</span></pre>
     <p class="prose">
       <b>④ 第 23 行 <code>if (lane == 0) atomicAdd(output, sum);</code></b>
-      <span style="color:var(--ink-3)">走完 5 轮只有 lane 0 手里是整个 block 的和，其余 31 个是半成品。
+      <span style="color:var(--ink-3)">5 轮走完，只有 lane 0 手里是整个 block 的和，其余 31 个是中间值。
       这个 <code>if</code> 确实是 warp 内发散，但只有一条指令，而且 atomicAdd 打在同一地址上本来就串行。
-      写 <code>lane == 0</code> 而不是 <code>t == 0</code>，两者在这里等价，只是前者更贴合"warp 坐标系"的语境。</span>
+      这里 <code>lane == 0</code> 和 <code>t == 0</code> 等价，前者更贴合"warp 坐标系"的语境。</span>
     </p>
     <div class="callout link">
       <p class="k">把 N = 2²⁸ 从下往上摊开：同步手段完全由作用域决定</p>
@@ -2469,71 +2467,71 @@ warp_s[7] = warp 7 那 32 个 lane 的和
 层 4  grid 内 131072 个 block → 1               atomicAdd                     131072 → 1
 
 验算：131072 block × 2048 元素 = 2²⁸ ✓</pre>
-      <p style="margin-bottom:0"><b>warp 内有 shuffle（寄存器直连），零同步；
-        跨 warp shuffle 够不着，只能 shared + 屏障；跨 block 连屏障都没有，只剩原子加。</b>
-        <span style="color:var(--crit);font-weight:650">R6 只动了第 2 层 —— 第 4 层一个字都没改：
-        原子加次数 = grid 大小，R5 和 R6 都是 131072 次，逐字相同。</span>
-        <span style="color:var(--ink-3)">比 R4 的 524288 次少 4 倍，那是 <code>COARSE_FACTOR</code> 的功劳，
-        和 shuffle 无关。R6 省的是 block 内部的屏障和 shared 流量。</span></p>
+      <p style="margin-bottom:0"><b>warp 内用 shuffle（寄存器直连），零同步；
+        跨 warp 时 shuffle 够不着，只能用 shared memory + <code>__syncthreads()</code>；跨 block 连 <code>__syncthreads()</code> 都没有，只剩原子加。</b>
+        <span style="color:var(--crit);font-weight:650">R6 改的是 block 内部的第 2、3 层，第 4 层一个字没改：
+        原子加次数 = grid 大小，R5 和 R6 都是 131072 次。</span>
+        <span style="color:var(--ink-3)">R4 是 524288 次，是它们的 4 倍。这是 <code>COARSE_FACTOR</code> 的功劳，
+        和 shuffle 无关。R6 省的是 block 内的 <code>__syncthreads()</code> 和 shared memory 流量。</span></p>
     </div>
     <div class="callout">
-      <p class="k">为什么非得是"三段"，以及一个刚好封闭的边界</p>
+      <p class="k">为什么必须是"三段"，以及一个刚好封闭的边界</p>
       <pre>第一段   8 个 warp 并行，各自 32 → 1   全在寄存器，0 次屏障
   ↓      8 个数必须过一趟 shared       <span class="x">← 卡点只在这里</span>
 第三段   1 个 warp 把 8 → 1            全在寄存器，0 次屏障
 
 <span class="c">// 根本原因一条：__shfl_* 的作用域是 warp，跨 warp 交换它无能为力。</span>
 <span class="c">// 所以中间那次 写/屏障/读 省不掉 —— 这就是屏障只能从 8 次降到 1 次、而不是 0 次的原因。</span></pre>
-      <p><b>边界封闭得刚刚好：BLOCK 最大 1024 → nWarps 最大 32 → 正好塞满一个 warp。</b>
-        <span style="color:var(--ink-3)">假如 block 能开到 2048 线程，nWarps 就是 64，一个 warp 装不下，
-        第三段还得再分一次，结构会变成四段甚至递归。
-        CUDA"每 block 最多 1024 线程"这条硬限制，刚好让三段式封闭。</span></p>
-      <p style="margin-bottom:0"><b>⚠ 第 17 行的 <code>__syncthreads()</code> 必须在
+      <p><b>边界刚好封闭：BLOCK 最大 1024 → nWarps 最大 32 → 正好填满一个 warp。</b>
+        <span style="color:var(--ink-3)">如果 block 能开到 2048 个线程，nWarps 就是 64，一个 warp 装不下，
+        第三段还要再分一次，结构会变成四段甚至递归。
+        CUDA"每个 block 最多 1024 个线程"这条硬限制，正好让三段式封闭。</span></p>
+      <p style="margin-bottom:0"><b>⚠ 第 17 行的 <code>__syncthreads()</code> 必须放在
         <code>if (warp == 0)</code> <u>外面</u>。</b>
-        <span style="color:var(--ink-3)">屏障要求 block 内全部 256 个线程都到达，挪进 <code>if</code> 里
-        另外 7 个 warp 永远到不了 —— 死锁。反过来也要看清：正因为屏障在外面，
-        第 20 行 lane 0 才能安全读到 warp 7 写的 <code>warp_s[7]</code>。</span></p>
+        <span style="color:var(--ink-3)">它要求 block 内全部 256 个线程都到达；挪进 <code>if</code>，
+        另外 7 个 warp 永远到不了，结果是死锁。反过来看：正因为它在外面，
+        第 20 行的 lane 0 才能安全读到 warp 7 写的 <code>warp_s[7]</code>。</span></p>
     </div>
   </div>
   <div class="sec">
     <h3 id="s7-6">六、同一棵树，换了个载体<a class="up" href="#t7-6" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>把 R5 树里的那一行和 R6 这一行摆在一起，会发现它们是<u>同一棵树</u>，只是"格子"换了地方。</b>
+      <b>R5 树里的那一行和 R6 的这一行是<u>同一棵树</u>，只是"格子"换了地方。</b>
     </p>
       <div class="tw"><table>
     <caption>BLOCK = 256 的一个 block，两种走法</caption>
-    <thead><tr><th></th><th>R5　shared 树</th><th>R6　warp shuffle</th></tr></thead>
+    <thead><tr><th></th><th>R5　shared memory 树</th><th>R6　warp shuffle</th></tr></thead>
     <tbody>
-      <tr><td class="cn"><b>我的累加器</b></td><td><code>s[t]</code>　shared 第 t 格</td><td class="en"><code>sum</code>　我自己的寄存器</td></tr>
+      <tr><td class="cn"><b>我的累加器</b></td><td><code>s[t]</code>　shared memory 第 t 格</td><td class="en"><code>sum</code>　我自己的寄存器</td></tr>
       <tr><td class="cn"><b>我要加的搭档</b></td><td><code>s[t + stride]</code></td><td class="en"><code>__shfl_down_sync(…, sum, off)</code>　lane t+off 的寄存器</td></tr>
       <tr><td class="cn"><b>每轮折半的距离</b></td><td><code>stride</code> = 128, 64, …, 1</td><td class="en"><code>off</code> = 16, 8, 4, 2, 1</td></tr>
       <tr><td class="cn"><b>挡住多余线程</b></td><td><code>if (t &lt; stride)</code>　<b>必须有</b></td><td class="en"><b>没有 if</b>　—— 理由见下框</td></tr>
       <tr><td class="cn"><b>同步</b></td><td>每轮一次 <code>__syncthreads()</code></td><td class="en">不需要　lane 天然同步</td></tr>
-      <tr><td class="cn"><b>一个 block 的开销</b></td><td>shared 访问 <b>1021</b> 次、屏障 <b>8</b> 次、shared 占 1 KB</td><td class="en">shared 访问 <b>16</b> 次、屏障 <b>1</b> 次、shared 占 32 B</td></tr>
+      <tr><td class="cn"><b>一个 block 的开销</b></td><td>shared memory 访问 <b>1022</b> 次、<code>__syncthreads()</code> <b>8</b> 次、占 1 KB</td><td class="en">shared memory 访问 <b>16</b> 次、<code>__syncthreads()</code> <b>1</b> 次、占 32 B</td></tr>
       <tr><td class="cn"><b>发散的轮数</b></td><td>后 <b>5</b> 轮</td><td class="en"><b>0</b> 轮</td></tr>
       <tr><td class="cn"><b>搬的字节</b></td><td>4N</td><td class="en">4N　<span class="tag crit">一分没变</span></td></tr>
     </tbody>
   </table></div>
     <p class="prose">
-      <b><code>off</code> 起点是 16 而不是 32，因为第一轮要把 32 个 lane 折成 16 对</b>
-      <span style="color:var(--ink-3)">—— 和 R5 的 <code>stride = blockDim.x/2</code> 完全同构。
+      <b><code>off</code> 从 16 开始而不是 32，因为第一轮要把 32 个 lane 折成 16 对</b>
+      <span style="color:var(--ink-3)">——这和 R5 的 <code>stride = blockDim.x/2</code> 同构。
       循环正好 5 轮，因为 32 = 2⁵。</span>
     </p>
     <div class="callout crit">
-      <p class="k">为什么 R6 敢去掉 <code>if</code>，R5 不敢 —— 这是两者唯一实质性的区别</p>
-      <p><b>R5 若去掉 <code>if (t &lt; stride)</code>，那些本该退休的线程算出的垃圾会
-        <u>写进 shared memory</u>，下一轮别人读这些格子就读到垃圾，污染会扩散。</b></p>
-      <p style="margin-bottom:0"><b>R6 去掉 <code>if</code> 则完全无害，因为 shuffle
+      <p class="k">为什么 R6 敢去掉 <code>if</code>，R5 不敢：这是两者唯一的实质区别</p>
+      <p><b>R5 如果去掉 <code>if (t &lt; stride)</code>，本该退出的线程算出的垃圾会
+        <u>写进 shared memory</u>；下一轮别人读这些格子就读到垃圾，污染会扩散。</b></p>
+      <p style="margin-bottom:0"><b>R6 去掉 <code>if</code> 完全无害，因为 shuffle
         <u>不写任何共享存储</u></b><span style="color:var(--ink-3)">——
-        lane 16…31 的垃圾只留在自己寄存器里，而它们摆出去给别人读的那份，
+        lane 16…31 的垃圾只留在自己的寄存器里；它们摆出去给别人读的那份，
         是上一轮结束时的合法值。</span>
-        <span style="color:var(--crit);font-weight:650">一句话：R5 必须用 <code>if</code> 挡住多余线程，
-        是为了保护 shared；R6 不需要挡，因为没有共享的东西可以被弄脏。</span>
-        <span style="color:var(--ink-3)">收益就是发散轮数 5 → 0：32 个 lane 从头到尾步调一致，
-        一次分支都不发生。代价是有一半的加法白算了 —— 但那些 lane 本来也是闲着。</span></p>
+        <span style="color:var(--crit);font-weight:650">一句话：R5 用 <code>if</code> 挡住多余线程，
+        是为了保护 shared memory；R6 不需要挡，因为没有共享的东西会被弄脏。</span>
+        <span style="color:var(--ink-3)">收益是发散轮数 5 → 0：32 个 lane 从头到尾步调一致，
+        不发生分支。代价是一半的加法白算了，但那些 lane 本来也闲着。</span></p>
     </div>
     <p class="prose">
-      <b>跑一组真数字：让 lane <i>i</i> 的初值 = <i>i</i>+1（即 1, 2, … 32），总和应为 528，跟踪 lane 0。</b>
+      <b>用真数字验证：设 lane <i>i</i> 的初值 = <i>i</i>+1（即 1, 2, … 32），总和应为 528。跟踪 lane 0：</b>
     </p>
     <pre>轮   off   lane 0 的搭档   搭档此刻的值   lane 0 变成      此时 lane 0 覆盖了哪些原始 lane
 起始  —      —              —             1               {0}
@@ -2553,8 +2551,8 @@ warp_s[7] = warp 7 那 32 个 lane 的和
   <p class="prose" style="margin-top:14px">
     <b>2026-09-21 实跑，RTX 4090 (sm_89) · 128 SM · 峰值带宽 1008 GB/s · 每 SM 1536 线程。</b>
     <span style="color:var(--ink-3)">六个 kernel 全部校验通过，
-    <code>compute-sanitizer --tool racecheck</code> 0 hazards；
-    编译期体检也干净：全是 0 bytes stack frame、0 spill，寄存器最多 20 个。</span>
+    <code>compute-sanitizer --tool racecheck</code> 报告 0 hazards。
+    编译期检查也没有问题：全是 0 bytes stack frame、0 spill，寄存器最多 20 个。</span>
   </p>
   <div class="sec">
     <h3 id="s8-1">一、实验 A / 实验 B<a class="up" href="#t8-1" title="回到目录">↑</a></h3>
@@ -2569,14 +2567,14 @@ warp_s[7] = warp 7 那 32 个 lane 的和
     </tbody>
   </table></div>
     <div class="callout warn">
-      <p class="k">这张表的数字不能太当真</p>
+      <p class="k">这张表只能看定性结论</p>
       <p style="margin-bottom:0"><b>净耗时只有 0.5–2.2 µs，
         而空 kernel 本身就要 1.8 µs。</b>
-        <span style="color:var(--ink-3)">减法之后剩下的量级和 <code>cudaEvent</code> 的分辨率同阶，
-        ±0.1 µs 的抖动就能让倍数翻一番。按原始耗时算，R1→R2 只有 1.74×、
+        <span style="color:var(--ink-3)">减掉空 kernel 后，剩下的量级和 <code>cudaEvent</code> 的分辨率同阶，
+        ±0.1 µs 的抖动就能让倍数翻一番。按原始耗时算，R1→R2 只快 1.74×，
         R2→R3 是 0.92×（R3 略慢）。</span>
-        <span style="color:var(--crit);font-weight:650">两种口径都指向同一个定性结论：
-        R1→R2 确实快了，R2→R3 没快。</span></p>
+        <span style="color:var(--crit);font-weight:650">两种口径的定性结论相同：
+        R1→R2 变快了，R2→R3 没有变快。</span></p>
     </div>
       <div class="tw"><table>
     <caption>实验 B · N=268,435,456（1 GiB）· 整卡 · 11 次取平均</caption>
@@ -2591,8 +2589,8 @@ warp_s[7] = warp 7 那 32 个 lane 的和
   </table></div>
     <p class="prose">
       <b>R4 一步就到 95.1%，后面三行一个百分点都没再动。</b>
-      <span style="color:var(--ink-3)">1.1203 / 1.1211 / 1.1212 ms ——
-      三个数字在噪声里分不开。</span>
+      <span style="color:var(--ink-3)">1.1203 / 1.1211 / 1.1212 ms
+      三个数的差别在噪声范围内。</span>
     </p>
   </div>
   <div class="sec">
@@ -2610,10 +2608,10 @@ warp_s[7] = warp 7 那 32 个 lane 的和
   </table></div>
     <p class="prose">
       <b>第 ③ 条是核心，它押中得毫无悬念。</b>
-      <span style="color:var(--ink-3)">注意它必须按"每元素耗时"比 ——
-      两个实验的 N 差了 13 万倍，直接比总时间没有意义。</span>
-      <span style="color:var(--crit);font-weight:650">而第 ④⑤ 条的"很小"在实测里根本不是"小"，
-      是彻底的零。</span>
+      <span style="color:var(--ink-3)">注意：这一条必须按每元素耗时比。
+      实验 B 的 N 是实验 A 的 13 万倍，直接比总时间没有意义。</span>
+      <span style="color:var(--crit);font-weight:650">第 ④⑤ 条预测"收益很小"，实测的收益不是"小"，
+      是零。</span>
     </p>
     <pre><span class="a">"没收益"可以有三种原因，得排除掉后两种才算预测成立：</span>
 
@@ -2625,10 +2623,10 @@ warp_s[7] = warp 7 那 32 个 lane 的和
     耗时 1.1203 / 1.1211 / 1.1224 ms —— 纹丝不动。
 
 (c) 测量噪声把收益盖住了。                <span class="x">✗ 排除。</span>
-    实验 B 在毫秒量级、跑了 11 次取平均，三者相差 0.9 µs（0.08%）。</pre>
+    实验 B 在毫秒量级、跑了 11 次取平均，三者最多相差 2.1 µs（0.19%）。</pre>
     <p class="prose">
-      <b>所以第 ④⑤ 条不只是"押中了"，而是"因为预测的那个理由押中了"</b>
-      <span style="color:var(--ink-3)">—— 这才是对账的意义。</span>
+      <b>所以第 ④⑤ 条不只是押中了，而且是按预测时给的理由押中的。</b>
+      <span style="color:var(--ink-3)">对账要核对的正是这一点。</span>
     </p>
   </div>
   <div class="sec">
@@ -2639,18 +2637,18 @@ warp_s[7] = warp 7 那 32 个 lane 的和
 <span class="c">// 而 R3 额外付出了：shared 的写 + 读、以及一次额外的 __syncthreads 协调。</span>
 <span class="x">// 净效果：持平到略负。</span></pre>
     <p class="prose">
-      <b>我在写第 ② 条预测时，犯的正是 <a href="#s1-1">§1·一</a> 自己警告过的错：拿书的指标当时间。</b>
-      <span style="color:var(--ink-3)">R3 的价值不在 N=2048 —— 它在 N 大到装不进 cache 的时候才显现，
-      而那时候你已经必须用 R4 的分段结构了。</span>
+      <b>写第 ② 条预测时，我犯了 <a href="#s1-1">§1·一</a> 警告过的错：拿书的指标当时间。</b>
+      <span style="color:var(--ink-3)">R3 的价值在 N=2048 时体现不出来。N 大到装不进 cache 时它才有用，
+      而那时已经必须用 R4 的分段结构了。</span>
     </p>
     <div class="callout warn">
-      <p class="k">附带一个方法论教训：第 ① 条那个 4.40× 也不该全信</p>
-      <p style="margin-bottom:0"><b>净耗时只有 0.5–2.2 µs，空 kernel 本身就 1.8 µs
-        —— 减法之后的量级和计时分辨率同阶。</b>
-        <span style="color:var(--ink-3)">按原始耗时算只有 1.74×，够不着 2× 的门槛。
-        定性结论（R1→R2 确实快了）站得住，那个具体倍数站不住。</span>
-        <span style="color:var(--crit);font-weight:650">下次设计这类实验，
-        应该把 N 提到启动开销可以忽略的规模，或者用 <code>ncu</code> 直接读 kernel 内部计数器。</span></p>
+      <p class="k">方法论教训：第 ① 条的 4.40× 也不可靠</p>
+      <p style="margin-bottom:0"><b>净耗时只有 0.5–2.2 µs，空 kernel 本身就要 1.8 µs，
+        减掉之后的量级和计时分辨率同阶。</b>
+        <span style="color:var(--ink-3)">按原始耗时算只快 1.74×，没达到 2× 的标准。
+        定性结论（R1→R2 变快了）成立，具体倍数不成立。</span>
+        <span style="color:var(--crit);font-weight:650">下次做这类实验，
+        要把 N 加大到启动开销可以忽略，或者用 <code>ncu</code> 直接读 kernel 内部计数器。</span></p>
     </div>
   </div>
 </section>
@@ -2659,35 +2657,34 @@ warp_s[7] = warp 7 那 32 个 lane 的和
 <section>
 <h2 id="s9"><span class="num">意外</span>两个计划外的发现<a class="up" href="#t9" title="回到目录">↑</a></h2>
   <div class="sec">
-    <h3 id="s9-1">一、occupancy 打平<a class="up" href="#t9-1" title="回到目录">↑</a></h3>
+    <h3 id="s9-1">一、占用率（occupancy）打平<a class="up" href="#t9-1" title="回到目录">↑</a></h3>
     <pre>BLOCK = 1024  （每 SM 只放得下 1 个 block，1024/1536 = 66.7%）   1.1224 ms
 BLOCK =  256  （100%）                                        1.1211 ms
                                                     <span class="a">差 0.1%</span></pre>
     <div class="callout crit">
-      <p class="k">这条结论要加个前提，而且和 SGEMM 那边相反</p>
-      <p style="margin-bottom:0"><b>"occupancy 不足"只有在它<u>导致延迟藏不住</u>时才是问题。</b>
-        <span style="color:var(--ink-3)">纯顺序读的归约里，66.7% 的 warp 已经足够把 DRAM 喂饱，
-        剩下 33% 补上去也没地方可去。</span>
-        <span style="color:var(--crit);font-weight:650">而报告 01 §7 里 K5 把占用率从 75% 砍到 33.3%
-        反而快 1.66 倍 —— 那边是"降低 occupancy 换寄存器复用"，
-        这边是"提高 occupancy 什么也换不到"。两个方向，同一个道理：看瓶颈在哪。</span></p>
+      <p class="k">这条结论有前提，而且方向和 SGEMM 相反</p>
+      <p style="margin-bottom:0"><b>只有当占用率不足<u>导致延迟藏不住</u>时，它才是问题。</b>
+        <span style="color:var(--ink-3)">归约是纯顺序读，66.7% 的 warp 已经能喂饱显存带宽，
+        再补上剩下的 33% 也没有带宽可用。</span>
+        <span style="color:var(--crit);font-weight:650">报告 01 §7 的 K5 把占用率从 75% 降到 33.3%，
+        反而快 1.66 倍。那边是"降低占用率换寄存器复用"，
+        这边是"提高占用率什么也换不到"。方向相反，道理相同：看瓶颈在哪。</span></p>
     </div>
   </div>
   <div class="sec">
     <h3 id="s9-2">二、52 万次原子加没声音<a class="up" href="#t9-2" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>开跑前担心过："524,288 次原子加全部打在同一个地址上，会不会堵死？"</b>
-      <span style="color:var(--crit);font-weight:650">现代 GPU 的 <code>atomicAdd</code> 在 L2 里完成、
-      还有跨 warp 的聚合优化，524,288 次分摊到 1.1 ms 里连个响都听不见。
-      这条担忧可以从清单上划掉。</span>
+      <b>开跑前的担心可以划掉："524,288 次原子加全打在同一个地址上，会不会堵死？"</b>
+      <span style="color:var(--crit);font-weight:650">现代 GPU 的 <code>atomicAdd</code> 在 L2 里完成，
+      524,288 次分摊到 1.1 ms 里，耗时上看不出影响。</span>
     </p>
     <div class="callout">
-      <p class="k">顺带：别误读 ptxas 那句 "used 1 barriers"</p>
-      <p style="margin-bottom:0"><b>它说的是<u>占用了 1 个 barrier 硬件资源</u>，不是"执行了 1 次屏障"。</b>
-        <span style="color:var(--ink-3)">R5 循环里那些 <code>__syncthreads()</code> 复用同一个 barrier 资源，
-        所以 R5 和 R6 在这一行上长得一模一样。</span>
-        <span style="color:var(--crit);font-weight:650">屏障次数减少这件事，
-        <code>ptxas -v</code> 是看不出来的。</span></p>
+      <p class="k">别误读 ptxas 的 "used 1 barriers"</p>
+      <p style="margin-bottom:0"><b>它的意思是<u>占用了 1 个 barrier 硬件资源</u>，不是"执行了 1 次 <code>__syncthreads()</code>"。</b>
+        <span style="color:var(--ink-3)">R5 循环里的几次 <code>__syncthreads()</code> 共用同一个 barrier 资源，
+        所以 R5 和 R6 的这一行完全相同。</span>
+        <span style="color:var(--crit);font-weight:650"><code>ptxas -v</code> 看不出
+        <code>__syncthreads()</code> 次数的减少。</span></p>
     </div>
   </div>
 </section>
@@ -2698,27 +2695,27 @@ BLOCK =  256  （100%）                                        1.1211 ms
   <div class="sec">
     <h3 id="s10-1">一、归约出现在哪<a class="up" href="#t10-1" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>SGEMM 是推理里最费时间的算子，归约是最<u>频繁</u>的那个。</b>
-      <span style="color:var(--ink-3)">Transformer 的每一层、每一个 token，都要跑好几次归约。</span>
+      <b>SGEMM 是推理里最费时间的算子，归约是最<u>频繁</u>的算子。</b>
+      <span style="color:var(--ink-3)">Transformer 的每一层、每一个 token 都要跑好几次归约。</span>
     </p>
       <div class="tw"><table>
     <caption>归约在推理栈里出现的地方</caption>
     <thead><tr><th>它出现在哪</th><th>是什么形式的归约</th><th>这一章的哪一课用得上</th></tr></thead>
     <tbody>
-      <tr><td class="cn"><b>LayerNorm / RMSNorm</b></td><td>每一行求和 + 求平方和</td><td class="en">一个 block 管一行 = R3 的结构；行长几千，正好一个 block 吃得下</td></tr>
+      <tr><td class="cn"><b>LayerNorm / RMSNorm</b></td><td>每一行求和 + 求平方和</td><td class="en">一个 block 管一行，就是 R3 的结构；行长几千，一个 block 正好装得下</td></tr>
       <tr><td class="cn"><b>Softmax</b></td><td>两次归约：先求 max，再求 exp 的和</td><td class="en">max 归约可复现，sum 归约不可复现</td></tr>
       <tr><td class="cn"><b>FlashAttention</b></td><td>在线 softmax：边扫 KV 分块边维护 running max / sum</td><td class="en"><b>这一章的直接延伸</b> —— 本质是"能增量合并的归约"</td></tr>
       <tr><td class="cn"><b>张量并行 allreduce</b></td><td>跨 GPU 求和（NCCL ring / tree）</td><td class="en">同一棵树，换了一层硬件：lane → warp → block → GPU → 节点</td></tr>
       <tr><td class="cn"><b>采样 / top-k / top-p</b></td><td>max、排序、前缀和</td><td class="en">归约是前缀和的基础</td></tr>
-      <tr><td class="cn"><b>量化的 scale</b></td><td>每个 tensor / 每一行求 absmax</td><td class="en">就是把加法换成 max 的归约</td></tr>
+      <tr><td class="cn"><b>量化的 scale</b></td><td>每个 tensor / 每一行求 absmax</td><td class="en">把加法换成 max 的归约</td></tr>
     </tbody>
   </table></div>
     <div class="callout link">
-      <p class="k">注意 FlashAttention 那一行</p>
-      <p style="margin-bottom:0"><b>它之所以能不落盘地算 attention，靠的就是
+      <p class="k">FlashAttention 靠的是可合并的归约</p>
+      <p style="margin-bottom:0"><b>FlashAttention 能不落盘地算 attention，靠的是
         "softmax 的归约可以分块做、再合并"这个性质。</b>
-        <span style="color:var(--ink-3)">而能不能合并，取决于算子满不满足结合律 ——
-        正是 <a href="#s3-2">§3·二</a> 那张图下面提醒过的事。</span></p>
+        <span style="color:var(--ink-3)">能不能合并，取决于算子是否满足结合律。
+        <a href="#s3-2">§3·二</a> 那张图下面提醒过这一点。</span></p>
     </div>
   </div>
   <div class="sec">
@@ -2730,8 +2727,8 @@ BLOCK =  256  （100%）                                        1.1211 ms
 线程粗化   SGEMM K3→K4  <span class="a">3.359×</span>       归约 R4→R5  <span class="x">0.999×</span>
 提高占用率 SGEMM K5      <span class="a">降到 33.3% 反而快</span>  归约      <span class="x">66.7% 和 100% 打平</span></pre>
     <p class="prose">
-      <b>SGEMM 教你怎么把复用做出来，归约教你在<u>没有复用可做</u>的时候该看什么。</b>
-      <span style="color:var(--ink-3)">而推理里一大半的算子属于后者 —— 它们全都卡在带宽上。</span>
+      <b>SGEMM 教你怎么把复用做出来，归约教你在<u>没有复用可做</u>时该看什么。</b>
+      <span style="color:var(--ink-3)">推理里一大半算子属于后者，它们都卡在带宽上。</span>
       <span style="color:var(--crit);font-weight:650">所以"算一遍下限、量一次达成率"这个动作，
       比任何单个优化技巧都值钱。</span>
     </p>
@@ -2756,27 +2753,27 @@ BLOCK =  256  （100%）                                        1.1211 ms
 nvcc -O3 -arch=sm_89 -Xptxas -v -c reduce_ch10.cu 2>&amp;1 | grep -A2 reduce_r
 compute-sanitizer --tool racecheck ./reduce_ch10 r6 2048 1</pre>
     <div class="callout link">
-      <p class="k">三个坑，踩过才写进来的</p>
-      <p style="margin-bottom:0"><b>① R1 原地修改 <code>input</code>，跑完输入就毁了</b>
-        <span style="color:var(--ink-3)">—— 多次计时必须每轮重新拷贝输入。</span>
-        <b>② <code>__syncthreads()</code> 必须写在 <code>if</code> 外面</b>
-        <span style="color:var(--ink-3)">—— 写进去就是部分线程等不到的死锁。</span>
-        <b>③ <code>unsigned</code> 的 stride 别写成会减到 0 再减的形式</b>
-        <span style="color:var(--ink-3)">—— 无符号数绕回最大值就是死循环。</span></p>
+      <p class="k">三个踩过的坑</p>
+      <p style="margin-bottom:0"><b>① R1、R2 都原地修改 <code>input</code>，跑完输入就毁了。</b>
+        <span style="color:var(--ink-3)">多次计时要每轮重新拷贝输入。</span>
+        <b>② <code>__syncthreads()</code> 必须写在 <code>if</code> 外面。</b>
+        <span style="color:var(--ink-3)">写在里面，部分线程永远等不到，就会死锁。</span>
+        <b>③ <code>unsigned</code> 的 stride 不要写成减到 0 还会再减的形式。</b>
+        <span style="color:var(--ink-3)">无符号数会绕回最大值，变成死循环。</span></p>
     </div>
     <p class="prose">
       <b>原始数据一条没删</b><span style="color:var(--ink-3)">：
-      <code>Results/Reduction/reduce_20260921.txt</code> 是当天的原样终端输出，
-      本报告里每一个数字都由构建脚本从它现场解析，没有一个是手抄的。</span>
-      <span style="color:var(--crit);font-weight:650">换一张卡，这里所有的绝对数字都会变 ——
+      <code>Results/Reduction/reduce_20260921.txt</code> 是当天的原样终端输出。
+      本报告里每个数字都由构建脚本从它现场解析，没有一个是手抄的。</span>
+      <span style="color:var(--crit);font-weight:650">换一张卡，这里所有绝对数字都会变；
       但"R4 之后达成率不再动"这个定性结论，在任何带宽受限的卡上都应该成立。</span>
     </p>
     <div class="callout warn">
-      <p class="k">两项没覆盖到的</p>
-      <p style="margin-bottom:0"><b>小 N（2¹⁶）下 R5/R6 的对比、以及
-        <code>cuobjdump -sass | grep SHFL</code> 的条数，这一批都没量。</b>
-        <span style="color:var(--ink-3)">所以"R6 真的编出了 SHFL 指令"这条只是推断 ——
-        和报告 01 §8 当初对 <code>float4</code> 的处境一样，那边后来用反汇编证实了，
+      <p class="k">两项还没测</p>
+      <p style="margin-bottom:0"><b>这一批没有测两项：小 N（2¹⁶）下 R5/R6 的对比，以及
+        <code>cuobjdump -sass | grep SHFL</code> 的条数。</b>
+        <span style="color:var(--ink-3)">所以"R6 编出了 SHFL 指令"目前只是推断。
+        报告 01 §8 当初对 <code>float4</code> 也是这样，那边后来用反汇编证实了，
         这边还没有。</span></p>
     </div>
   </div>
