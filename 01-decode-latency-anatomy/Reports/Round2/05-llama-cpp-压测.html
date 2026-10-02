@@ -224,12 +224,12 @@
 <div class="wrap">
 
 <header>
-  <p class="eyebrow">vLLM FP16 vs llama.cpp Q4_K_M · Round 2 · RTX 4090</p>
+  <p class="eyebrow">vLLM BF16 vs llama.cpp Q4_K_M · Round 2 · RTX 4090</p>
   <h1>llama.cpp 压测</h1>
   <p class="standfirst">
-    同一张卡、同一个模型、同一份 1024/256 负载,并发 1 到 64 两边各扫一遍 ——
-    这一次两个引擎都是完整的 7 个点,而且 llama.cpp 侧关掉了 prompt cache。
-    第一轮只能在 3 个点上比,而且比得不干净;这一轮的对照是公平的。
+    这一轮的对照是公平的:同一张卡、同一个模型、同一份 1024/256 负载,
+    两个引擎都扫完了并发 1 到 64 的 7 个点,llama.cpp 侧关掉了 prompt cache。
+    第一轮只能在 3 个点上比,而且比得不干净。
   </p>
   <dl class="spec">
     <div><dt>GPU</dt><dd>RTX 4090 · 24 GB</dd></div>
@@ -248,9 +248,12 @@
 <section>
   <h2><span class="num">术语</span>先把这七个指标定义清楚</h2>
   <p class="lede prose">
-    下面这些缩写在正文里会反复出现,它们<b>不是同义词</b> ——
-    每一个量的是流水线上不同的一段,彼此之间还有确定的换算关系。
-    本轮负载:<code>1024 输入 / 256 输出 · 并发 1 → 64 · 两个引擎各扫一遍</code>。两个引擎的指标口径由<b>同一个客户端</b>(<code>vllm bench serve</code>)统一测量,所以 TTFT / ITL / E2EL 这几个数是可比的。<b>服务端侧的计数器(KV 占用、抢占、running/waiting)只有 vLLM 有</b>,llama.cpp 只暴露 slot,所以本报告的所有对照都建立在客户端指标上。
+    下面这些缩写<b>不是同义词</b>:每一个量的是流水线上不同的一段,彼此之间有确定的换算关系。
+    本轮负载:<code>1024 输入 / 256 输出 · 并发 1 → 64 · 两个引擎各扫一遍</code>。
+  </p>
+  <p class="prose">
+    两个引擎的指标都由<b>同一个客户端</b>(<code>vllm bench serve</code>)测量,所以 TTFT（首字延迟）/ ITL / E2EL 这几个数可以直接比。
+    <b>服务端侧的计数器(KV 占用、抢占、running/waiting)只有 vLLM 有</b>,llama.cpp 只暴露 slot,所以本报告的对照都只用客户端指标。
   </p>
 
   <pre>  t=0   客户端发出请求
@@ -276,13 +279,13 @@
       <caption>本报告用到的全部指标 · 最后一列是本轮的实测范围</caption>
       <thead><tr><th>指标</th><th>中文</th><th>量的是什么</th><th>本轮实测</th></tr></thead>
       <tbody>
-        <tr><td><strong>TTFT</strong><br><span class="n" style="opacity:.7">Time To First Token</span></td><td>首字延迟</td><td>从客户端发出请求,到收到<b>第 1 个</b>输出 token。它包含排队 + prefill + 前端开销三段,<b>不含</b>后续解码。</td><td class="hl">vLLM 102→787 ms;llama.cpp 93→442 ms</td></tr>
+        <tr><td><strong>TTFT</strong><br><span class="n" style="opacity:.7">Time To First Token</span></td><td>首字延迟</td><td>从客户端发出请求,到收到<b>第 1 个</b>输出 token。它包含排队 + prefill + 前端开销三段,<b>不含</b>后续 decode。</td><td class="hl">vLLM 102→787 ms;llama.cpp 93→442 ms</td></tr>
         <tr><td><strong>ITL</strong><br><span class="n" style="opacity:.7">Inter-Token Latency</span></td><td>token 间隔</td><td>相邻两个输出 token 之间的时间。一条请求有(输出数 − 1)个 ITL 样本 —— 样本量大,所以它的 p99 最能暴露抖动。</td><td class="hl">vLLM 15.83→22.50;llama.cpp 5.84→35.32 ms</td></tr>
-        <tr><td><strong>ITL p99</strong></td><td>间隔的尾部</td><td>把所有 ITL 样本排序后第 99% 那个值。一次卡顿只影响少数间隔,均值和中位数都看不出来,<b>只有 p99 会跳</b>。</td><td class="hl">vLLM 16.3→207.6;llama.cpp 17.6→219.6 ms</td></tr>
-        <tr><td><strong>TPOT</strong><br><span class="n" style="opacity:.7">Time Per Output Token</span></td><td>每输出 token 耗时</td><td>一条请求"首 token 之后"的平均出字速度,即 <code>(E2EL − TTFT) ÷ (输出 token 数 − 1)</code>。数值上就是这条请求 ITL 的均值。</td><td class="hl">vLLM 15.83→43.41;llama.cpp 5.83→46.83 ms</td></tr>
+        <tr><td><strong>ITL p99</strong></td><td>间隔的尾部</td><td>把所有 ITL 样本排序后第 99% 那个值。一次卡顿只影响少数间隔,均值和中位数都看不出来,<b>只有 p99 会跳</b>。</td><td class="hl">vLLM 16.3→207.6;llama.cpp 6.0→223.8 ms</td></tr>
+        <tr><td><strong>TPOT</strong><br><span class="n" style="opacity:.7">Time Per Output Token</span></td><td>每输出 token 耗时</td><td>一条请求在第 1 个输出 token 之后的平均出字速度,即 <code>(E2EL − TTFT) ÷ (输出 token 数 − 1)</code>。数值上就是这条请求 ITL 的均值。</td><td class="hl">vLLM 15.83→43.41;llama.cpp 5.85→57.54 ms</td></tr>
         <tr><td><strong>E2EL</strong><br><span class="n" style="opacity:.7">End-to-End Latency</span></td><td>端到端时延</td><td>从发出请求到收到<b>最后一个</b> token 的总时间。恒等式:<code>E2EL = TTFT + (输出数−1) × TPOT</code>。</td><td class="hl">vLLM 4,138→11,779;llama.cpp 1,585→15,193 ms</td></tr>
         <tr><td><strong>输出吞吐</strong><br><span class="n" style="opacity:.7">output token/s</span></td><td>用户拿到的</td><td>单位时间产出的<b>输出</b> token 数。这是用户真正感知的产能。</td><td class="hl">vLLM 61.9→1,388;llama.cpp 161.5→1,065 tok/s</td></tr>
-        <tr><td><strong>总吞吐</strong><br><span class="n" style="opacity:.7">total token/s</span></td><td>GPU 处理的</td><td>输入 + 输出一起算。长输入场景下它会上涨而输出吞吐下跌 —— <b>两者不可互相替代</b>。</td><td class="hl">vLLM 309→6,939;llama.cpp 807→5,324 tok/s</td></tr>
+        <tr><td><strong>总吞吐</strong><br><span class="n" style="opacity:.7">total token/s</span></td><td>GPU 处理的</td><td>输入 + 输出一起算。长输入场景下它上涨、输出吞吐下跌,所以<b>两者不能互相替代</b>。</td><td class="hl">vLLM 309→6,939;llama.cpp 807→5,376 tok/s</td></tr>
       </tbody>
     </table>
   </div>
@@ -291,22 +294,21 @@
     <p class="k">三个最容易混的地方</p>
     <p>
       <b>1 · TPOT 和 ITL 均值是同一件事的两种算法。</b>
-      TPOT 是"每条请求先算自己的平均,再对请求取中位数";ITL 均值是"把所有间隔倒在一起平均"。
-      负载均匀时两者几乎相等,有长尾时会分开 ——
-      <span class="hl">两者一分开,就说明存在少数被拖长的间隔</span>。
+      TPOT 是每条请求先算自己的平均,再对所有请求取中位数;ITL 均值是把所有间隔放在一起取平均。
+      负载均匀时两者几乎相等;<span class="hl">两者一分开,就说明存在少数被拖长的间隔</span>。
       本轮 C=1 两个引擎都是均匀的(vLLM 15.83 / 15.83,llama.cpp 5.84 / 5.83);
-      到 C=8 llama.cpp 就分成了 10.30 / 18.33,而 vLLM 还是 16.63 / 18.25。
+      到 C=8,llama.cpp 分成了 10.30 / 18.33,vLLM 还是 16.63 / 18.25。
     </p>
     <p>
       <b>2 · 看 p50 得不出任何关于抖动的结论。</b>
-      一次 200 ms 的停顿混在 25 万个间隔里,对中位数毫无影响,对均值影响也很小。
-      本系列反复出现的一条经验:<b>抖动只在 p99 上露头</b>;
-      而抢占这种更稀有的事件(万分之一量级)连 p99 都够不着,只能看专门的计数器。
+      一次 200 ms 的停顿混在 25 万个间隔里,不影响中位数,对均值的影响也很小。
+      本系列的经验是:<b>抖动只在 p99 上露头</b>。
+      抢占更稀有(万分之一量级),连 p99 都反映不出来,只能看专门的计数器。
     </p>
     <p>
       <b>3 · 吞吐不是 1 / TPOT。</b>
-      TPOT 是单条请求的出字速度,吞吐是整台机器的产能 —— 后者约等于前者乘以并行的请求条数。
-      并发提高时 TPOT 会变差而吞吐会变好,<span class="hl">这正是压测要权衡的那个交换</span>。
+      TPOT 衡量单条请求的出字速度,吞吐衡量整台机器的产能,后者约等于前者乘以并行的请求数。
+      并发提高时,TPOT 变差、吞吐变好,<span class="hl">这正是压测要权衡的交换</span>。
     </p>
   </div>
 </section>
@@ -316,23 +318,23 @@
 <section>
   <h2><span class="num">结论</span>量化省的是字节,省不了调度</h2>
   <p class="lede prose">
-    llama.cpp 把每步要读的权重从 14.1 GB 压到 4.7 GB,单流解码因此快了 2.71 倍 ——
-    这一段是实打实的,字节账能算到小数点后两位。
-    但并发一上去,优势就被吃光:<strong>两条吞吐曲线在 C≈8 就换位了</strong>,
-    而不是第一轮估计的 C≈21。原因不在算力,在批处理红利:
-    vLLM 在 C=64 仍能吃到理论地板的 81%,llama.cpp 只剩 25%。
+    llama.cpp 把每步要读的权重从 14.1 GB 压到 4.7 GB,单流 decode 因此快 2.71 倍,
+    这个数能用字节账算到小数点后两位。
+    但并发一上去,优势就没了:<strong>两条吞吐曲线在 C≈8 就换位了</strong>,
+    不是第一轮估计的 C≈21。原因不在算力,在批处理红利:
+    C=64 时,vLLM 仍能达到理论地板的 81%,llama.cpp 只有 25%。
   </p>
 
   <div class="stats">
     <div class="stat gd">
-      <p class="k">单流解码步长</p>
+      <p class="k">单流 decode 步长</p>
       <p class="v">5.84<small> ms</small></p>
       <p class="n">vLLM 15.83 ms。字节账预测 2.99×,实测 2.71×</p>
     </div>
     <div class="stat crit">
       <p class="k">C=64 批处理效率</p>
       <p class="v">25<small> %</small></p>
-      <p class="n">vLLM 81%。同一条 roofline,差 3.2 倍</p>
+      <p class="n">vLLM 81%,是它的 3.2 倍(同一条 roofline)</p>
     </div>
     <div class="stat warn">
       <p class="k">每多一条并发的边际成本</p>
@@ -342,22 +344,21 @@
     <div class="stat crit">
       <p class="k">C=32 反常塌陷</p>
       <p class="v">444<small> tok/s</small></p>
-      <p class="n">比 C=16 的 548 还低,比 C=64 的 1065 低 2.4 倍</p>
+      <p class="n">比 C=16 的 548 还低;C=64 的 1065 是它的 2.4 倍</p>
     </div>
   </div>
 
   <div class="callout">
     <p class="k">第一轮的三条数据瑕疵,两条已消除、一条大幅改善</p>
     <p>
-      第一轮的对照有三个问题:① llama.cpp 的 prompt cache 默认开着,C=32 有 23% 的请求白拿了 prefill;
-      ② C=32 掉了 8 条请求;③ 只测了 1 / 8 / 32 三个点。
-      本轮 ① 已用 <code>--cache-ram 0 --slot-prompt-similarity 0</code> 关掉,
-      ③ 补齐到 7 个点,② 改善到只掉 1 条(C=32,319/320)。
-      <span class="hl">所以这一轮的交叉点 C≈8 比第一轮的 C≈21 更可信</span> ——
-      第一轮那个数是被 prompt cache 抬高的。
+      <span class="hl">这一轮的交叉点 C≈8 比第一轮的 C≈21 更可信</span>,因为第一轮那个数被 prompt cache 抬高了。
+      第一轮的三个问题和本轮的处理:
     </p>
+    <p>① llama.cpp 的 prompt cache 默认开着,C=32 有 23% 的请求白拿了 prefill。本轮用 <code>--cache-ram 0 --slot-prompt-similarity 0</code> 关掉了。</p>
+    <p>② C=32 掉了 8 条请求。本轮只掉 1 条(C=32,319/320)。</p>
+    <p>③ 只测了 1 / 8 / 32 三个点。本轮补齐到 7 个点。</p>
     <p>
-      显存这一项本轮也补上了:<code>nvidia-smi</code> 实测 19,089 MiB,与权重加 KV 的推算差 1.5%。
+      本轮还补上了显存实测:<code>nvidia-smi</code> 记到 19,089 MiB,与权重加 KV 的推算差 1.5%。
     </p>
   </div>
 </section>
@@ -366,9 +367,9 @@
 <section>
   <h2><span class="num">交叉</span>两条吞吐曲线在 C≈8 换位</h2>
   <p class="lede prose">
-    这一轮两边都是 7 个点,不用再靠三点插值。
-    两条线不是平移关系,是<strong>斜率</strong>不同 —— llama.cpp 起点高、爬得慢,vLLM 起点低、爬得快。
+    两条线的差别在<strong>斜率</strong>,不是平移:llama.cpp 起点高、爬得慢,vLLM 起点低、爬得快。
     C=8 时两边几乎重合(411 vs 416),C=16 就分开了(681 vs 548)。
+    这一轮两边都有 7 个点,不用再靠三点插值。
   </p>
 
   <figure>
@@ -376,15 +377,15 @@
     <p class="fig-title">输出吞吐 vs 并发(双对数)</p>
     <div class="chart" id="ch-cross"></div>
     <div class="legend">
-      <span style="color:var(--accent)"><i style="background:currentColor"></i>vLLM FP16(7 点)</span>
+      <span style="color:var(--accent)"><i style="background:currentColor"></i>vLLM BF16(7 点)</span>
       <span style="color:var(--warn)"><i style="background:currentColor"></i>llama.cpp Q4_K_M(7 点)</span>
       <span style="color:var(--crit)"><i class="d" style="background:none"></i>交叉点 C ≈ 8.3</span>
     </div>
     <p class="note">
       交叉点由 C=8 与 C=16 两点在 log–log 空间插值得到:llama/vLLM 的吞吐比从 1.010 降到 0.804,
-      过 1 的位置是 C = 8.3。
-      注意 llama.cpp 的 C=32 点(444 tok/s)<strong>低于它自己的 C=16(548)</strong> ——
-      那一档是反常的,见「反常」一节。
+      在 C = 8.3 处过 1。
+      注意:llama.cpp 的 C=32 点(444 tok/s)<strong>低于它自己的 C=16(548)</strong>,
+      这一档是反常的,见「反常」一节。
     </p>
   </figure>
 
@@ -410,8 +411,9 @@
 <section>
   <h2><span class="num">字节账</span>单流那 2.71 倍,能算到小数点后两位</h2>
   <p class="lede prose">
-    单流解码是纯带宽问题:每生成一个 token,把整个模型的权重从显存读一遍。
-    量化把这堆字节压小,步长就该按同样的比例变短。这是全篇唯一一处理论与实测能对到 10% 以内的地方。
+    单流 decode 是全篇唯一一处理论与实测能对到 10% 以内的地方。
+    它是纯带宽问题:每生成一个 token,都要把整个模型的权重从显存读一遍。
+    量化把这些字节压小,步长就该按同样的比例变短。
   </p>
 
   <pre><span class="c"># 每个 decode step 要读的字节</span>
@@ -438,22 +440,22 @@ llama   4.75 GB ÷  5.84 ms = <span class="w">813 GB/s</span>  = <span class="w"
   <div class="callout ok">
     <p class="k">2.71 而不是 2.99,差的那 9% 是带宽效率</p>
     <p>
-      两边跑的是同一张卡、同一条 1,008 GB/s 的总线。
-      vLLM 的 decode kernel 把带宽跑到 89%,llama.cpp 的 Q4_K_M 反量化路径跑到 81% ——
-      <strong>解量化本身要花掉一点带宽预算</strong>(读 4-bit 权重、在寄存器里展开成 fp16 再乘)。
+      <strong>解量化本身要花掉一点带宽预算</strong>(读 4-bit 权重,在寄存器里展开成 fp16 再乘)。
+      两边用的是同一张卡、同一条 1,008 GB/s 的总线:
+      vLLM 的 decode kernel 把带宽跑到 89%,llama.cpp 的 Q4_K_M 反量化路径跑到 81%。
       这 8 个百分点就是 2.99 与 2.71 之间的全部差距。
     </p>
     <p>
-      换个说法:<span class="hl">量化没有骗人,它确实把字节数降到了 1/3;
-      但它换来的加速是 2.7 倍而不是 3.0 倍</span>,因为省下的字节里有一小部分被解码开销吃回去了。
+      <span class="hl">量化没有骗人,它确实把字节数降到了 1/3;
+      但 decode 只快 2.7 倍,不是 3.0 倍</span>,因为省下的字节有一小部分被解量化开销吃回去了。
     </p>
   </div>
 
-  <h3>prefill 这一头,量化一点忙都帮不上</h3>
+  <h3>prefill 这一头,量化帮不上忙</h3>
   <p class="prose">
+    量化省的是<strong>读权重的字节</strong>,而 prefill 的瓶颈不在读权重:权重读进来一次,要算 1024 个 token。
     prefill 是算力密集的(第三节那张 roofline 图量过:prefill 秒能跑到 146 TF/s)。
-    量化省的是<strong>读权重的字节</strong>,而 prefill 的瓶颈根本不在读权重 ——
-    一次读进来要算 1024 个 token。所以 TTFT 这一栏,llama.cpp 从 C=1 到 C=64 <strong>没有一档赢过</strong>:
+    所以 TTFT 这一栏,llama.cpp 从 C=1 到 C=64 <strong>每一档的 p50 都更低</strong>:
   </p>
 
   <pre><span class="c"># TTFT p50(ms),越小越好</span>
@@ -467,8 +469,8 @@ C=64   vLLM <span class="a">787</span>   llama 442
 C=64   vLLM ITL 22.5 ms   llama ITL <span class="w">35.3 ms</span></pre>
 
   <p class="prose">
-    上面比的是<b>客户端</b>量到的 TTFT,里面含调度与网络。
-    换成两边<b>服务端</b>自己记的纯 prefill 再比一次,结论一样、幅度也一样 ——
+    上面比的是<b>客户端</b>量到的 TTFT,含调度与网络。
+    换成两边<b>服务端</b>自己记的纯 prefill 再比一次,结论和幅度都一样。
     两条独立路径同向,说明这 9% 不是测量噪声:
   </p>
 
@@ -483,10 +485,12 @@ vLLM       TTFT p50             <span class="a">102.3 ms</span>   <span class="c
   <div class="callout">
     <p class="k">这 9% 不是量化的功劳</p>
     <p>
-      prefill 一次前向要算 1024 个 token,权重只读一遍就摊给了所有 token ——
-      瓶颈在 FLOPs 不在带宽,而 Q4_K 的解量化只会让 FLOPs 更多。
-      所以这 9% 来自实现细节(kernel、框架开销),不是"少读了 3 倍字节"换来的。
-      <span class="hl">量化换来的是解码速度和显存,不是首字延迟</span> ——
+      这 9% 来自实现细节(kernel、框架开销),不是"少读了 3 倍字节"换来的。
+      prefill 一次前向要算 1024 个 token,权重只读一遍就摊给了所有 token,所以瓶颈在 FLOPs,不在带宽;
+      Q4_K 的解量化只会让 FLOPs 更多。
+    </p>
+    <p>
+      <span class="hl">量化换来的是 decode 速度和显存,不是 TTFT</span>。
       对话类负载(短输入长输出)收益大;RAG / 长文摘要(长输入短输出)收益小得多。
     </p>
   </div>
@@ -496,14 +500,14 @@ vLLM       TTFT p50             <span class="a">102.3 ms</span>   <span class="c
 <section>
   <h2><span class="num">摊薄</span>批处理红利,vLLM 吃到 81%,llama.cpp 只吃到 25%</h2>
   <p class="lede prose">
-    批处理的全部价值在于:<strong>一次读进来的权重,给批内所有请求共用</strong>。
-    所以并发翻倍时,单步耗时不该翻倍 —— 它只该多出"多读那些 KV"的时间。
-    这个"只多出 KV"的下限就是 roofline 地板,拿它去除实测步长,就得到批处理效率。
+    批处理的价值在于:<strong>一次读进来的权重,给批内所有请求共用</strong>。
+    所以并发翻倍时,单步耗时不该翻倍,只该多出读那些 KV 的时间。
+    这个下限就是 roofline 地板;地板 ÷ 实测步长,就是批处理效率。
   </p>
 
   <figure>
     <figcaption>Figure 2</figcaption>
-    <p class="fig-title">解码步长:实测 vs roofline 地板</p>
+    <p class="fig-title">decode 步长:实测 vs roofline 地板</p>
     <div class="chart" id="ch-roof"></div>
     <div class="legend">
       <span style="color:var(--accent)"><i style="background:currentColor"></i>vLLM 实测 ITL</span>
@@ -512,15 +516,15 @@ vLLM       TTFT p50             <span class="a">102.3 ms</span>   <span class="c
       <span style="color:var(--warn)"><i class="d" style="background:none"></i>llama.cpp 地板</span>
     </div>
     <p class="note">
-      地板 = (权重字节 + 并发 × 1152 tok × 56 KiB) ÷ 1,008 GB/s。
-      vLLM 的实测线始终贴着自己的地板(81%–89%);
-      llama.cpp 从 C=1 的 81% 掉到 C=16 的 24%、C=32 的 11%,C=64 回到 25%
-      —— <b>掉下去容易,回不到 vLLM 那条水平线</b>。
       <strong>两条地板之间的距离(量化红利)是恒定的,拉开差距的是各自离地板有多远。</strong>
+      vLLM 的实测线始终贴着自己的地板(81%–89%);
+      llama.cpp 从 C=1 的 81% 掉到 C=16 的 24%、C=32 的 11%,C=64 回到 25%,
+      <b>掉下去容易,回不到 vLLM 那条水平线</b>。
+      地板 = (权重字节 + 并发 × 1152 tok × 56 KiB) ÷ 1,008 GB/s。
     </p>
   </figure>
 
-  <h3>换个说法:每多接一条并发,要多付多少</h3>
+  <h3>每多接一条并发,要多付多少</h3>
   <pre><span class="c"># 理论地板:每多一条并发,每步多读 1152 tok × 56 KiB = 0.066 GB</span>
 0.066 GB ÷ 1,008 GB/s = <span class="a">0.0655 ms / 槽位</span>
 
@@ -532,11 +536,11 @@ llama.cpp  (35.32 −  5.84) ÷ 63 = <span class="w">0.468 ms / 槽位</span>   
     <p class="k">这就是"量化省不了调度"的量化版本</p>
     <p>
       llama.cpp 每多接一条并发,单步要多花 0.47 ms;vLLM 只多花 0.11 ms。
-      差的这 0.36 ms<strong>和权重精度毫无关系</strong> —— 它是 PagedAttention、
+      相差的 0.36 ms <strong>和权重精度无关</strong>,它是 PagedAttention、
       continuous batching、CUDA graph 复用这些调度侧工程的价值。
     </p>
     <p>
-      这 0.36 ms 的差价,就是「交叉」那一节 C≈8 换位的全部来源。
+      这 0.36 ms 就是「交叉」一节里 C≈8 换位的全部来源。
     </p>
   </div>
 </section>
@@ -545,7 +549,7 @@ llama.cpp  (35.32 −  5.84) ÷ 63 = <span class="w">0.468 ms / 槽位</span>   
 <section>
   <h2><span class="num">波次</span>10 个整整齐齐的 32:llama.cpp 没在做 continuous batching</h2>
   <p class="lede prose">
-    效率掉得这么快,直接原因能从时间账上读出来。
+    时间账能读出效率掉得这么快的直接原因。
     如果引擎在做 continuous batching,一条请求结束就该立刻补进下一条,
     总耗时应该远小于"批数 × 单条端到端时延"。实测正好相反。
   </p>
@@ -565,18 +569,20 @@ llama.cpp  (35.32 −  5.84) ÷ 63 = <span class="w">0.468 ms / 槽位</span>   
 总耗时 ÷ 10             = 79.79 ÷ 10  = 7.98 s   <span class="c">← 也吻合,因为负载是定长齐发</span></pre>
 
   <p class="prose">
-    这个 0.7% / 0.1% 的吻合度就是结论本身:<strong>总耗时几乎等于"批数 × 单条端到端时延"</strong>,
+    <strong>总耗时几乎等于"批数 × 单条端到端时延"</strong>(吻合到 0.7% / 0.1%),
     说明新请求只在整批结束后才成批进场,每 18.0 秒一次。
-    如果引擎在做 continuous batching,一条结束就补一条,这种整齐的批边界根本不会存在。
+    如果引擎在做 continuous batching,一条结束就补一条,不会有这种整齐的批边界。
     换手间隙只有约 0.5 秒(= 实测 TTFT p50 478 ms),占一波的 3%。
-    <span class="hl">注意本轮没有对 llama.cpp 做 1 Hz 采样</span>,
-    所以这里只有时间账,没有槽位占用的实测曲线 —— 补采样是「下一步」的第 3 条。
+  </p>
+  <p class="prose">
+    <span class="hl">注意:本轮没有对 llama.cpp 做 1 Hz 采样</span>,
+    所以这里只有时间账,没有槽位占用的实测曲线。补采样是「下一步」的第 3 条。
   </p>
 
   <h3>停顿的证据:ITL 的中位数和均值分家</h3>
   <p class="prose">
-    如果解码是均匀的,ITL 的中位数和均值应该几乎相等。llama.cpp 在高并发下这两个数分开了 ——
-    说明存在一批远大于中位数的间隔,把均值拉了上去。
+    llama.cpp 在高并发下,ITL 的中位数和均值分开了,说明有一批远大于中位数的间隔把均值拉了上去。
+    如果 decode 是均匀的,这两个数应该几乎相等。
   </p>
 
   <pre><span class="c">          ITL p50    ITL 均值   均值/中位</span>
@@ -592,10 +598,9 @@ C=64      35.32      56.25      <span class="r">1.59</span>
 C=64      22.50      42.22      1.88   <span class="c">← vLLM 也有,来自 chunked prefill 抢步</span>
 C=1       15.83      15.83      1.00</pre>
 
-  <h3>换个算法量同一件事:解码时间里有多少在等别人</h3>
+  <h3>换个算法量同一件事:decode 时间里有多少在等别人</h3>
   <p class="prose">
-    上面那张表用的是 ITL 自己的均值与中位数。换成
-    <code>TPOT 均值 ÷ ITL p50 − 1</code> 更直接 —— 它量的是
+    <code>TPOT 均值 ÷ ITL p50 − 1</code> 比上面那张表(ITL 自己的均值与中位数)更直接。它量的是
     <b>"一条请求的平均出字间隔,比它自己的典型间隔多出了多少"</b>,
     多出来的部分就是被别人的 prefill 堵住的时间。两个引擎并排:
   </p>
@@ -612,11 +617,11 @@ C=1       15.83      15.83      1.00</pre>
   <div class="callout">
     <p class="k">差别在于 prefill 是切片插入还是整块插入</p>
     <p>
+      <span class="hl">llama.cpp 在 C=4 就有一半 decode 时间在等待,vLLM 到 C=8 才 9.8%</span>。
       vLLM 开着 <code>enable_chunked_prefill</code>:新请求的 prompt 被切成块,
-      和正在进行的 decode 混在同一个 step 里,每一步只堵一小会儿。
-      llama.cpp 是<b>整块插入</b> —— 一条新请求进来就要把所有正在解码的 slot 一起堵住,
+      和正在运行的 decode 混在同一个 step 里,每一步只堵一小会儿。
+      llama.cpp 是<b>整块插入</b>:一条新请求进来,所有正在 decode 的 slot 都被堵住,
       直到它的 1024 个 token 算完。
-      <span class="hl">所以 llama.cpp 在 C=4 就已经有一半解码时间在等待,vLLM 到 C=8 才 9.8%</span>。
     </p>
   </div>
 </section>
@@ -625,9 +630,9 @@ C=1       15.83      15.83      1.00</pre>
 <section>
   <h2><span class="num">反常</span>C=32 那一档塌了,而且不是噪声</h2>
   <p class="lede prose">
-    这一轮最扎眼的一个数:llama.cpp 在 C=32 只跑出 <strong>444 tok/s</strong>,
-    <strong>比它自己的 C=16(548)还低</strong>,更比 C=64(1065)低 2.4 倍。
-    单调性在这里断了 —— 一个吞吐曲线不该长这样。
+    llama.cpp 在 C=32 只跑出 <strong>444 tok/s</strong>,
+    <strong>比它自己的 C=16(548)还低</strong>;C=64(1065)是它的 2.4 倍。
+    吞吐曲线的单调性在这里断了。
   </p>
 
   <pre><span class="c"># 逐槽解码速率 = 1000 ÷ ITL p50</span>
@@ -645,19 +650,21 @@ C=32    16.3 × 32 = 522   <span class="c">(实测 444)</span>
 C=64    28.3 × 64 = 1811  <span class="c">(实测 1065)</span></pre>
 
   <p class="prose">
-    换个角度看,反常的也可能是 <b>C=64 太好</b>,而不只是 C=32 太差:
+    反常的也可能是 <b>C=64 太好</b>,不只是 C=32 太差。
     C=64 的 ITL p50(35.32 ms)明显优于 C=32(61.36),roofline 达成率也从 11% 回到 25%,
-    <b>而它的 CUDA graph 复用率同样只有 1.35%</b> —— 复用率解释不了这次回升。
-    两种读法都指向同一件事:<span class="hl">C=32 与 C=64 之间还有一个没被这一轮抓到的变量</span>,
-    所以下面的对照实验要在 C=16 / 32 / 64 三档同时做,而不是只重跑 C=32。
+    <b>但它的 CUDA graph 复用率同样只有 1.35%</b>,所以复用率解释不了这次回升。
+  </p>
+  <p class="prose">
+    两种读法都说明:<span class="hl">C=32 与 C=64 之间还有一个这一轮没抓到的变量</span>。
+    所以下面的对照实验要在 C=16 / 32 / 64 三档同时做,不能只重跑 C=32。
   </p>
 
   <div class="callout crit">
     <p class="k">三条线索,但还不足以定案</p>
     <p>
-      ① <strong>CUDA graph 复用率整档归零</strong>。服务端每条请求结束时会打印累计的
-      <code>graphs reused</code>。按并发档切段做差分,再除以该档的解码步总数,
-      就得到"多少比例的解码步复用了已捕获的 CUDA graph" —— 这条曲线和逐槽速率的塌陷同步:
+      ① <strong>CUDA graph 复用率整档归零</strong>,复用率曲线和逐槽速率的塌陷同步。
+      算法:服务端每条请求结束时打印累计的 <code>graphs reused</code>;
+      按并发档切段做差分,再除以该档的 decode 步总数,就得到复用了已捕获 CUDA graph 的 decode 步比例:
     </p>
   </div>
 
@@ -666,9 +673,9 @@ C=64    28.3 × 64 = 1811  <span class="c">(实测 1065)</span></pre>
       <caption>取自 <code>llamacpp-server.log</code> 的 1,359 条 <code>print_timing</code>,
         按各档切段(31 条 warmup + 40 / 59 / 79 / 120 / 200 / 318 / 512)。
         <b>增量</b> = 本档最后一条的读数 − 上一档最后一条的读数;
-        <b>解码步总数</b> = 本档实际产出的输出 token 数(llama.cpp 每条 250–256 不等,见「数据」节自检)。
+        <b>decode 步总数</b> = 本档条数 × 256 的估算值(实际产出略少,llama.cpp 每条 250–256 不等,见「数据」节自检)。
         roofline 达成率 = 地板 ÷ 实测 ITL p50,地板 = (4.68 GB + C × 1152 tok × 56 KiB) ÷ 1,008 GB/s。</caption>
-      <thead><tr><th>C</th><th>条数</th><th>解码步总数</th><th>graph 增量</th><th>复用率</th><th>ITL p50</th><th>roofline 达成率</th></tr></thead>
+      <thead><tr><th>C</th><th>条数</th><th>decode 步总数</th><th>graph 增量</th><th>复用率</th><th>ITL p50</th><th>roofline 达成率</th></tr></thead>
       <tbody>
         <tr><td>1</td><td>40</td><td>10,240</td><td>10,160</td><td class="gd">99.22%</td><td>5.84</td><td class="gd">80.6%</td></tr>
         <tr><td>2</td><td>59</td><td>15,104</td><td>6,487</td><td class="gd">42.95%</td><td>6.53</td><td>73.1%</td></tr>
@@ -684,20 +691,22 @@ C=64    28.3 × 64 = 1811  <span class="c">(实测 1065)</span></pre>
   <div class="callout crit">
     <p class="k">这张表是相关性,不是因果</p>
     <p>
-      C=32 那一档 <strong>81,408 步里一次都没复用</strong>,而它正是塌得最狠的一档;
-      C=1 复用 <strong>99.22%</strong> —— 几乎每一步都命中(理论上限也就 99.6%,
-      因为每条请求的那一次 prefill 步本来就复用不了),正是唯一贴住 roofline 的一档。
-      两列几乎同起同落。
+      复用率和 roofline 达成率两列几乎同起同落。
+      C=32 那一档 <strong>81,408 步里一次都没复用</strong>,它正是塌得最狠的一档。
+      C=1 复用 <strong>99.22%</strong>,几乎每一步都命中,它也是唯一贴住 roofline 的一档。
+      理论上限是 99.6%,因为每条请求的那一次 prefill 步本来就复用不了。
+    </p>
+    <p>
       机制上也说得通:CUDA graph 把几百次 kernel launch 打包成一次提交,
-      <b>batch 形状一变就要重新捕获</b> —— vLLM 把 batch padding 到固定的几个桶,
+      <b>batch 形状一变就要重新捕获</b>。vLLM 把 batch padding 到固定的几个桶,
       任何实际 batch 都能命中已捕获的图;llama.cpp 的活跃 slot 数每步都在变(30/31/32 来回跳),
       图就一直命中不了。
     </p>
     <p>
-      但服务端日志没有解释原因(verbosity 已开到 3),
-      <span class="hl">要坐实因果必须做对照实验</span>:用
-      <code>-DGGML_CUDA_USE_GRAPHS=OFF</code> 重编一份再扫一遍 ——
-      如果关掉图之后 C=1 大幅变慢而 C=32 几乎不变,因果链就闭合了。
+      <span class="hl">要确认因果,必须做对照实验</span>:用
+      <code>-DGGML_CUDA_USE_GRAPHS=OFF</code> 重编一份,再扫一遍。
+      如果关掉图之后 C=1 大幅变慢、C=32 几乎不变,因果链就闭合了。
+      服务端日志没有给出原因(verbosity 已开到 3)。
     </p>
   </div>
 
@@ -711,8 +720,8 @@ C=64    28.3 × 64 = 1811  <span class="c">(实测 1065)</span></pre>
       不是温度(全程 ≤73 °C)、不是 prompt cache(本轮已关)。
     </p>
     <p>
-      <span class="hl">在补上对照实验之前,C=32 这一档不应该写进任何结论</span> ——
-      本报告的交叉点是用 C=8/16 算的,批处理效率引用的是 C=64,都绕开了这一档。
+      <span class="hl">在补上对照实验之前,C=32 这一档不应该写进任何结论</span>。
+      本报告的交叉点用 C=8/16 算,批处理效率引用 C=64,都绕开了这一档。
     </p>
   </div>
 </section>
@@ -721,9 +730,8 @@ C=64    28.3 × 64 = 1811  <span class="c">(实测 1065)</span></pre>
 <section>
   <h2><span class="num">显存</span>Q4 省下的那 10 GiB,这一轮全花在 KV 上了</h2>
   <p class="lede prose">
-    量化最直观的好处是权重变小:14.49 GiB → 4.36 GiB,省下 10 GiB。
-    但这一轮给 llama.cpp 开了 <code>-np 64 -c 262144</code>(64 个槽位 × 4096 上下文),
-    KV 池按满配分配,把省下的显存又吃回去了。
+    量化把权重从 14.49 GiB 压到 4.36 GiB,省下 10 GiB,但这一轮的 KV 池又把它吃回去了。
+    原因是 llama.cpp 开了 <code>-np 64 -c 262144</code>(64 个槽位 × 4096 上下文),KV 池按满配分配。
   </p>
 
   <figure>
@@ -731,7 +739,7 @@ C=64    28.3 × 64 = 1811  <span class="c">(实测 1065)</span></pre>
     <p class="fig-title">24 GiB 显存的两种分法</p>
     <div class="chart" id="ch-mem"></div>
     <p class="note">
-      vLLM 侧是启动日志实测;llama.cpp 侧的<b>总量</b>也是实测 ——
+      vLLM 侧来自启动日志实测。llama.cpp 侧的<b>总量</b>也是实测:
       <code>fingerprint.txt</code> 里 <code>nvidia-smi</code> 记到 <b>19,089 MiB = 18.64 GiB</b>。
       只有分段是推算:权重 4.36 GiB + KV(262,144 tok × 56 KiB = 14.0 GiB)= 18.36 GiB,
       <span class="hl">与实测总量差 1.5%,账是闭合的</span>。
@@ -741,15 +749,14 @@ C=64    28.3 × 64 = 1811  <span class="c">(实测 1065)</span></pre>
   <div class="callout">
     <p class="k">这是一个配置选择,不是引擎的性质</p>
     <p>
-      如果把 llama.cpp 的 <code>-c</code> 调成和 vLLM 一样的有效容量,
-      它的 KV 池会小得多,空出来的显存可以拿去开更多槽位或跑更大的模型。
       <strong>Q4 的显存红利是真的,只是这一轮的启动参数没让它体现出来。</strong>
+      如果把 llama.cpp 的 <code>-c</code> 调成和 vLLM 一样的有效容量,
+      它的 KV 池会小得多,空出来的显存可以开更多槽位或跑更大的模型。
     </p>
     <p>
-      反过来说,vLLM 侧的 6.41 GiB KV 池换算成 120,064 token,
-      而 llama.cpp 的 262,144 token 是它的 <strong>2.18 倍</strong> ——
-      <span class="hl">在"能同时装多少上下文"这一项上,量化确实赢了</span>,
-      只是本轮的负载(1280 tok/请求)根本用不到那么多。
+      <span class="hl">在"能同时装多少上下文"这一项上,量化确实赢了</span>:
+      vLLM 侧的 6.41 GiB KV 池换算成 120,064 token,llama.cpp 的 262,144 token 是它的 <strong>2.18 倍</strong>。
+      只是本轮的负载(1280 tok/请求)用不到这么多。
     </p>
   </div>
 </section>
@@ -790,13 +797,13 @@ C=64    28.3 × 64 = 1811  <span class="c">(实测 1065)</span></pre>
       vLLM 七档<b>每条精确 256 个输出 token</b>(<code>--ignore-eos</code> 严格生效);
       llama.cpp 是 <b>250–256 不等</b>(C=1 为 255.95,C=32 为 250.00),
       七档合计 336,142 token,比 vLLM 的同口径值少 <strong>4,594 个(1.35%)</strong>。
-      吞吐是"输出 token ÷ 墙钟",所以 llama.cpp 侧被<b>低估了约 1.35%</b> ——
+      吞吐是"输出 token ÷ 墙钟",所以 llama.cpp 侧被<b>低估了约 1.35%</b>。
       <span class="hl">方向对它不利,但幅度远小于 C≥16 时 20%–57% 的差距,不影响 C≈8 这个交叉点</span>。
-      做跨引擎对比时这一项必须现场核对,不能假设 <code>--ignore-eos</code> 在两边行为一致。</li>
+      做跨引擎对比时,要现场核对这一项,不能假设 <code>--ignore-eos</code> 在两边行为一致。</li>
     <li><strong>prompt cache 确实关着</strong>:<code>--cache-ram 0 --slot-prompt-similarity 0</code>,
       这是第一轮那个 C≈21 交叉点被抬高的原因,本轮已消除。</li>
     <li><strong>一条失败请求出在 C=32</strong>(319/320),而那一档恰好也是每条输出最少的
-      (250.00,七档最低)、CUDA graph 复用率归零的一档 —— 三个异常同源,见「反常」一节。</li>
+      (250.00,七档最低)、CUDA graph 复用率归零的一档。三个异常同源,见「反常」一节。</li>
   </ul>
 </section>
 
@@ -815,7 +822,7 @@ C=64    28.3 × 64 = 1811  <span class="c">(实测 1065)</span></pre>
       套一个和 vLLM 侧同样的轮询就能补齐,成本极低。</li>
     <li><strong>补 C=4 与 C=8 之间的点。</strong>交叉点算出来在 C≈8.3,
       而 C=8 正好是两条线几乎重合的地方(411 vs 416,差 1%)。
-      加测 C=6 和 C=12 能把这个阈值钉得更准 —— 它是"什么时候该换引擎"的实操分界线。</li>
+      加测 C=6 和 C=12,能把这个阈值定得更准。它是"什么时候该换引擎"的实操分界线。</li>
   </ul>
 </section>
 
@@ -845,7 +852,7 @@ var XC = 8.3, YC = 422;
 var ROOF = {"c":[1,8,16,32,64],"vFloor":[14.09,14.55,15.08,16.13,18.22],"vMeas":[15.83,16.63,17.23,19.82,22.5],"lFloor":[4.71,5.17,5.69,6.74,8.84],"lMeas":[5.84,10.3,23.35,61.36,35.32]};
 var ACT = [[0.0,32],[1.0,32],[2.0,32],[3.0,32],[4.0,32],[5.0,32],[6.0,32],[7.0,32],[8.0,32],[9.0,32],[10.0,32],[11.0,32],[12.0,32],[13.0,32],[14.0,32],[15.0,32],[16.0,32],[17.0,32],[18.0,32],[19.0,32],[20.0,32],[21.0,32],[22.0,32],[23.0,32],[24.0,32],[25.0,32],[26.0,32],[27.0,32],[28.0,32],[29.0,32],[30.0,32],[31.0,32],[32.0,32],[33.0,32],[34.0,32],[35.0,32],[36.0,32],[37.0,32],[38.0,32],[39.0,32],[40.0,32],[41.0,32],[42.0,32],[43.0,32],[44.0,32],[45.0,32],[46.0,32],[47.0,32],[48.0,32],[49.0,32],[50.0,32],[51.0,32],[52.0,32],[53.0,32],[54.0,32],[55.0,32],[56.0,32],[57.0,32],[58.0,32],[59.0,32],[60.0,32],[61.0,32],[62.0,32],[63.0,32],[64.0,32],[65.0,32],[66.0,32],[67.0,32],[68.0,32],[69.0,32],[70.0,32],[71.0,32],[72.0,32],[73.0,32],[74.0,32],[75.0,32],[76.0,32],[77.0,32],[78.0,32],[79.0,32],[80.0,32],[81.0,32],[82.0,32],[83.0,32],[84.0,32],[85.0,32],[86.0,32],[87.0,32],[88.0,32],[89.0,32],[90.0,32],[91.0,32],[92.0,32],[93.0,32],[94.0,32],[95.0,32],[96.0,32],[97.0,32],[98.0,32],[99.0,32],[100.0,32],[101.0,32],[102.0,32],[103.0,32],[104.0,32],[105.0,32],[106.0,32],[107.0,32],[108.0,32],[109.0,32],[110.0,32],[111.0,32],[112.0,32],[113.0,32],[114.0,32],[115.0,32],[116.0,32],[117.0,32],[118.0,32],[119.0,32],[120.0,32],[121.0,32],[122.0,32],[123.0,32],[124.0,32],[125.0,32],[126.0,32],[127.0,32],[128.0,32],[129.0,32],[130.0,32],[131.0,32],[132.0,32],[133.0,32],[134.0,32],[135.0,32],[136.0,32],[137.0,32],[138.0,32],[139.0,32],[140.0,32],[141.0,32],[142.0,32],[143.0,32],[144.0,32],[145.0,32],[146.0,32],[147.0,32],[148.0,32],[149.0,32],[150.0,32],[151.0,32],[152.0,32],[153.0,32],[154.0,32],[155.0,32],[156.0,32],[157.0,32],[158.0,32],[159.0,32],[160.0,32],[161.0,32],[162.0,32],[163.0,32],[164.0,32],[165.0,32],[166.0,32],[167.0,32],[168.0,32],[169.0,32],[170.0,32],[171.0,32],[172.0,32],[173.0,32],[174.0,32],[175.0,32],[176.0,32],[177.0,32],[178.0,32],[179.0,32]];
 var WAVES = [[0.0,32],[18.0,32],[35.9,32],[53.9,32],[71.9,32],[89.9,32],[107.8,32],[125.8,32],[143.8,32],[161.8,32]];
-var MEM = [{"name":"vLLM FP16","seg":[["权重 + non-torch",14.49,"--accent"],["KV cache",6.41,"--violet"],["激活/graph",0.6,"--ink-3"]],"idle":2.02,"note":"21.50 GiB 已用 · 启动日志实测"},{"name":"llama.cpp Q4","seg":[["权重",4.36,"--accent"],["KV cache(-c 262144)",14.0,"--violet"],["其他",0.6,"--ink-3"]],"idle":4.56,"note":"≈18.96 GiB 已用 · 按 -np 64 × 4096 推算,未采集"}];
+var MEM = [{"name":"vLLM BF16","seg":[["权重 + non-torch",14.49,"--accent"],["KV cache",6.41,"--violet"],["激活/graph",0.6,"--ink-3"]],"idle":2.02,"note":"21.50 GiB 已用 · 启动日志实测"},{"name":"llama.cpp Q4","seg":[["权重",4.36,"--accent"],["KV cache(-c 262144)",14.0,"--violet"],["其他",0.6,"--ink-3"]],"idle":4.56,"note":"≈18.96 GiB 已用 · 按 -np 64 × 4096 推算,未采集"}];
 
 var NS = "http://www.w3.org/2000/svg";
 function el(n,a){ var e=document.createElementNS(NS,n); if(a) for(var k in a) e.setAttribute(k,a[k]); return e; }

@@ -242,8 +242,8 @@
   <h1>Qwen2.5-7B 并发曲线</h1>
   <p class="standfirst">
     固定 1024 输入 / 256 输出,并发从 1 扫到 64。
-    第二轮换了一台实例,KV 池比第一轮大了 38%。
-    这条曲线回答两个问题:这张卡上吞吐涨到多少才开始拿延迟去换,以及池子变大之后那个拐点动了没有。
+    第二轮换了一台实例,KV 池比第一轮大 38%。
+    这条曲线回答两个问题:吞吐涨到多少时开始用延迟去换;KV 池变大后,拐点有没有移动。
   </p>
   <dl class="spec">
     <div><dt>GPU</dt><dd>RTX 4090 · 24 GB</dd></div>
@@ -262,10 +262,10 @@
 <section>
   <h2><span class="num">术语</span>先把这六个主线指标定义清楚</h2>
   <p class="lede prose">
-    下面这些缩写在正文里会反复出现,它们<b>不是同义词</b> ——
-    每一个量的是流水线上不同的一段,彼此之间还有确定的换算关系。
+    下面这些缩写<b>不是同义词</b>:
+    每个指标量流水线上不同的一段,彼此之间有确定的换算关系。
     本轮负载:<code>1024 输入 / 256 输出 · 并发 1 → 64</code>。
-    其余指标(MBU、MFU、KV 占用、preemption 等)只在用到它的那一节就地解释,不必现在记。
+    其余指标(MBU、MFU、KV 占用、抢占等)在用到的那一节再解释。
   </p>
 
   <pre>  t=0   客户端发出请求
@@ -291,12 +291,12 @@
       <caption>贯穿全文的六个主线指标 · 最后一列是本轮的实测范围</caption>
       <thead><tr><th>指标</th><th>中文</th><th>量的是什么</th><th>本轮实测</th></tr></thead>
       <tbody>
-        <tr><td><strong>TTFT</strong><br><span class="n" style="opacity:.7">Time To First Token</span></td><td>首字延迟</td><td>从客户端发出请求,到收到<b>第 1 个</b>输出 token。它包含排队 + prefill + 前端开销三段,<b>不含</b>后续解码。</td><td class="hl">102 ms(C=1)→ 787 ms(C=64)</td></tr>
-        <tr><td><strong>ITL</strong><br><span class="n" style="opacity:.7">Inter-Token Latency</span></td><td>token 间隔</td><td>相邻两个输出 token 之间的时间。一条 256 token 的请求有 255 个 ITL 样本 —— 样本量大,所以它的 p99 最能暴露抖动。</td><td class="hl">15.83 → 22.50 ms(p50)</td></tr>
-        <tr><td><strong>ITL p99</strong></td><td>间隔的尾部</td><td>把所有 ITL 样本排序后第 99% 那个值。一次卡顿只影响少数间隔,均值和中位数都看不出来,<b>只有 p99 会跳</b>。</td><td class="hl">16.3 → 207.6 ms</td></tr>
-        <tr><td><strong>TPOT</strong><br><span class="n" style="opacity:.7">Time Per Output Token</span></td><td>每输出 token 耗时</td><td>一条请求"首 token 之后"的平均出字速度,即 <code>(E2EL − TTFT) ÷ (输出 token 数 − 1)</code>。数值上就是这条请求 ITL 的均值。</td><td class="hl">15.83 → 43.41 ms</td></tr>
+        <tr><td><strong>TTFT</strong><br><span class="n" style="opacity:.7">Time To First Token</span></td><td>首字延迟</td><td>从客户端发出请求,到收到<b>第 1 个</b>输出 token。它包含排队 + prefill + 前端开销三段,<b>不含</b>后续 decode。</td><td class="hl">102 ms(C=1)→ 787 ms(C=64)</td></tr>
+        <tr><td><strong>ITL</strong><br><span class="n" style="opacity:.7">Inter-Token Latency</span></td><td>token 间隔</td><td>相邻两个输出 token 之间的时间。一条 256 token 的请求有 255 个 ITL 样本。样本量大,所以它的 p99 最能暴露抖动。</td><td class="hl">15.83 → 22.50 ms(p50)</td></tr>
+        <tr><td><strong>ITL p99</strong></td><td>间隔的尾部</td><td>把所有 ITL 样本排序后第 99% 那个值。一次卡顿只影响少数间隔,均值和中位数看不出来,<b>只有 p99 会跳</b>。</td><td class="hl">16.3 → 207.6 ms</td></tr>
+        <tr><td><strong>TPOT</strong><br><span class="n" style="opacity:.7">Time Per Output Token</span></td><td>每输出 token 耗时</td><td>一条请求在第 1 个 token 之后的平均出字速度,即 <code>(E2EL − TTFT) ÷ (输出 token 数 − 1)</code>。数值上就是这条请求 ITL 的均值。</td><td class="hl">15.83 → 43.41 ms</td></tr>
         <tr><td><strong>E2EL</strong><br><span class="n" style="opacity:.7">End-to-End Latency</span></td><td>端到端时延</td><td>从发出请求到收到<b>最后一个</b> token 的总时间。恒等式:<code>E2EL = TTFT + (输出数−1) × TPOT</code>。</td><td class="hl">4,138 → 11,779 ms</td></tr>
-        <tr><td><strong>输出吞吐</strong><br><span class="n" style="opacity:.7">output token/s</span></td><td>用户拿到的</td><td>单位时间产出的<b>输出</b> token 数。这是用户真正感知的产能。</td><td class="hl">61.9 → 1,387.8 tok/s</td></tr>
+        <tr><td><strong>输出吞吐</strong><br><span class="n" style="opacity:.7">output token/s</span></td><td>用户拿到的</td><td>单位时间产出的<b>输出</b> token 数,即用户感知到的产能。</td><td class="hl">61.9 → 1,387.8 tok/s</td></tr>
       </tbody>
     </table>
   </div>
@@ -305,20 +305,20 @@
     <p class="k">三个最容易混的地方</p>
     <p>
       <b>1 · TPOT 和 ITL 均值是同一件事的两种算法。</b>
-      TPOT 是"每条请求先算自己的平均,再对请求取中位数";ITL 均值是"把所有间隔倒在一起平均"。
-      负载均匀时两者几乎相等(本轮 C=1 都是 15.83 ms),
-      有长尾时会分开 —— <span class="hl">两者一分开,就说明存在少数被拖长的间隔</span>。
+      TPOT 是每条请求先算自己的平均,再对请求取中位数;ITL 均值是把所有间隔放在一起平均。
+      负载均匀时两者几乎相等(本轮 C=1 都是 15.83 ms)。
+      <span class="hl">两者一分开,就说明存在少数被拖长的间隔</span>。
     </p>
     <p>
-      <b>2 · 看 p50 得不出任何关于抖动的结论。</b>
-      一次 200 ms 的停顿混在 25 万个间隔里,对中位数毫无影响,对均值影响也很小。
-      本系列反复出现的一条经验:<b>抖动只在 p99 上露头</b>;
-      而抢占这种更稀有的事件(万分之一量级)连 p99 都够不着,只能看专门的计数器。
+      <b>2 · p50 不能说明抖动。</b>
+      一次 200 ms 的停顿混在 25 万个间隔里,对中位数没有影响,对均值影响也很小。
+      本系列反复验证的经验是:<b>抖动只在 p99 上露头</b>。
+      抢占这种更稀有的事件(万分之一量级)连 p99 都反映不出来,只能看专门的计数器。
     </p>
     <p>
       <b>3 · 吞吐不是 1 / TPOT。</b>
-      TPOT 是单条请求的出字速度,吞吐是整台机器的产能 —— 后者约等于前者乘以并行的请求条数。
-      并发提高时 TPOT 会变差而吞吐会变好,<span class="hl">这正是压测要权衡的那个交换</span>。
+      TPOT 是单条请求的出字速度,吞吐是整台机器的产能,约等于单条请求的出字速度乘以并行的请求条数。
+      并发提高时 TPOT 变差、吞吐变好,<span class="hl">这正是压测要权衡的交换</span>。
     </p>
   </div>
 </section>
@@ -328,22 +328,22 @@
 <section>
   <h2><span class="num">结论</span>拐点仍然在 C=8 到 C=16 之间</h2>
   <p class="lede prose">
-    吞吐一路涨到 C=64 都没有真正饱和,但"每多给一个并发槽换来多少 token/s"从 C=8 起就掉得很快。
-    真正划线的不是吞吐曲线,是 ITL 的尾部 —— 它在 C=8 那一点突然裂开。
-    <strong>池子比第一轮宽松得多,这个拐点一步都没动</strong>:它不是被显存卡住的,是被调度器卡住的。
+    <strong>KV 池比第一轮宽松得多,但拐点没有移动</strong>:限制拐点的是调度器,不是显存。
+    吞吐到 C=64 仍没有饱和,但每个新增并发槽换来的 token/s 从 C=8 起快速下降。
+    划出拐点的是 ITL 的尾部,不是吞吐曲线:ITL 尾部在 C=8 突然裂开。
   </p>
 
   <div class="verdict">
     <p class="k">推荐运行点</p>
     <p class="big">C = 16 &nbsp;·&nbsp; 681 tok/s</p>
     <p>
-      吞吐达到单流的 11.0 倍,p50 ITL 仍只有 17.2 ms(比单流慢 8.9%),p99 TTFT 1.41 秒。
-      再往上走,C=32 多拿 50.7% 吞吐,代价是 p99 TTFT 翻一倍到 2.85 秒。
+      吞吐是单流的 11.0 倍,p50 ITL 只有 17.2 ms(比单流慢 8.9%),p99 TTFT 是 1.41 秒。
+      C=32 的吞吐再多 50.7%,代价是 p99 TTFT 翻倍到 2.85 秒。
     </p>
     <p style="margin-top:10px">
-      为什么不是 C=8?<b>C=8 是抖动开始出现的点,C=16 是抖动仍可接受的点</b> ——
-      C=16 的 p99 ITL 虽已到 184 ms,但 p50 ITL 只有 17.2 ms、p99 TTFT 还在 1.5 秒 SLO 以内。
-      要完全消掉 ITL 尖峰只能退回 C=4,代价是丢掉三分之二的吞吐。
+      <b>C=8 是抖动开始出现的点,C=16 是抖动仍可接受的点。</b>
+      C=16 的 p99 ITL 已到 184 ms,但 p50 ITL 只有 17.2 ms,p99 TTFT 仍在 1.5 秒 SLO 以内。
+      要完全消掉 ITL 尖峰,只能退回 C=4,代价是丢掉三分之二的吞吐。
     </p>
   </div>
 
@@ -356,17 +356,17 @@
     <div class="stat">
       <p class="k">C=64 吞吐增益</p>
       <p class="v">22.4<small> ×</small></p>
-      <p class="n">用 64 倍并发换来,最后一段每槽只剩 11.3 tok/s</p>
+      <p class="n">并发是 64 倍,最后一段每槽只剩 11.3 tok/s</p>
     </div>
     <div class="stat crit">
       <p class="k">ITL p99 / p50 最大比</p>
       <p class="v">10.7<small> ×</small></p>
-      <p class="n">C=16 处,均值完全看不见这个裂口</p>
+      <p class="n">出现在 C=16,均值看不见这个裂口</p>
     </div>
     <div class="stat ok">
       <p class="k">C=64 时 KV 池占用</p>
       <p class="v">57.2<small> %</small></p>
-      <p class="n">采样窗口实测均值,理论上界 68.2% —— 显存不再是这一轮的墙</p>
+      <p class="n">采样窗口实测均值,理论上界 68.2%。显存不再是这一轮的墙</p>
     </div>
   </div>
 </section>
@@ -375,9 +375,10 @@
 <section>
   <h2><span class="num">曲线</span>吞吐与延迟的兑换率</h2>
   <p class="lede prose">
-    横轴是实际产出的 token/s,纵轴是 p99 首字延迟(对数)。曲线越往右越贵 ——
-    从 C=1 走到 C=16 花了 1.30 秒 p99 TTFT 买到 11 倍吞吐;从 C=32 走到 C=64
-    只多买到 35% 吞吐,却付出了 3.07 秒。
+    曲线越往右,每份吞吐的延迟代价越高。
+    从 C=1 到 C=16,p99 TTFT 增加 1.30 秒,吞吐变成 11 倍;从 C=32 到 C=64,
+    吞吐只多 35%,p99 TTFT 却增加 3.07 秒。
+    横轴是实际产出的 token/s,纵轴是 p99 TTFT(对数)。
   </p>
 
   <figure>
@@ -390,8 +391,8 @@
       <span style="color:var(--accent)"><i style="background:currentColor;border-radius:50%;width:8px;height:8px"></i>各并发点</span>
     </div>
     <p class="note">
-      灰色横带是三档常见 SLO。p50 与 p99 在 C=8 之后急剧分离,说明高并发下的慢请求
-      不是整体变慢,而是少数请求被排到了后面。
+      p50 与 p99 在 C=8 之后急剧分离:高并发下不是所有请求整体变慢,而是少数请求被排到了后面。
+      灰色横带是三档常见 SLO。
     </p>
   </figure>
 </section>
@@ -400,8 +401,8 @@
 <section>
   <h2><span class="num">效率</span>并发翻倍,吞吐没有翻倍</h2>
   <p class="lede prose">
-    双对数坐标下,理想线性扩展是一条直线。实测曲线从 C=4 开始明显偏离,
-    到 C=64 时只剩理想值的 35.1%。
+    实测吞吐从 C=4 开始明显偏离理想线性扩展,到 C=64 只有理想值的 35.1%。
+    双对数坐标下,理想线性扩展是一条直线。
   </p>
 
   <figure>
@@ -417,9 +418,9 @@
 
   <h3>每多一个并发槽,还能换来多少</h3>
   <p class="prose">
-    这是判断拐点最直接的量。第一个并发槽带来 61.9 tok/s,到 C=32→64 那一段,
-    每个槽只剩 11.3 tok/s —— <strong>边际收益衰减到五分之一以下</strong>。
-    而这一段的 KV 池占用才刚过一半,<strong>掉下来的不是显存,是并行度本身的收益</strong>。
+    边际吞吐是判断拐点最直接的量:<strong>它衰减到了五分之一以下</strong>。
+    第一个并发槽带来 61.9 tok/s,C=32→64 这一段每个槽只剩 11.3 tok/s。
+    这一段的 KV 池占用刚过一半,<strong>所以下降的原因不是显存,而是并行度本身的收益在减少</strong>。
   </p>
 
   <figure>
@@ -427,7 +428,7 @@
     <p class="fig-title">边际吞吐收益(每新增一个并发槽)</p>
     <div class="chart" id="ch-marginal"></div>
     <p class="note">
-      柱高 = 该区间内新增吞吐 ÷ 新增并发数。虚线为 C=1 的基准值 61.9 tok/s。
+      柱高 = 该区间内新增吞吐 ÷ 新增并发数。虚线是 C=1 的基准值 61.9 tok/s。
     </p>
   </figure>
 </section>
@@ -436,22 +437,20 @@
 <section>
   <h2><span class="num">两堵墙</span>MBU 下滑、MFU 上扬,交点在 C≈44</h2>
   <p class="lede prose">
-    上一节留了个问题:并发翻 64 倍,吞吐只兑现了理想值的 35.1%,那损失掉的到底是什么?
-    这一节用服务端计数器正面回答 —— <b>不是浪费,是瓶颈换了一堵墙</b>。
+    并发是 64 倍,吞吐只有理想值的 35.1%。服务端计数器显示,<b>差额不是浪费,而是瓶颈换了一堵墙</b>。
     本轮给服务端加了 <code>--enable-mfu-metrics</code>,它把每次迭代的
-    <strong>FLOPs</strong> 和<strong>读取字节数</strong>累加进 <code>/metrics</code>,
-    除以窗口墙钟就得到实际算力和实际带宽,再除以 4090 的峰值(165.2 TFLOP/s FP16 累加、
-    1008 GB/s)就是 MFU 和 MBU。
+    <strong>FLOPs</strong> 和<strong>读取字节数</strong>累加进 <code>/metrics</code>。
+    累计量除以窗口墙钟,得到实际算力和实际带宽;再除以 4090 的峰值(165.2 TFLOP/s FP16 累加、
+    1008 GB/s),就是 MFU 和 MBU。
   </p>
-  <p class="prose">
-    <b>MBU</b>(带宽利用率)= 实际读取字节 ÷ 墙钟 ÷ 1008 GB/s。解码是访存密集的:每出一个
-    token,整份权重都要过一遍 HBM ——<b>MBU 高说明卡在"读得不够快"这堵墙上</b>。
-    <b>MFU</b>(算力利用率)= 实际浮点乘加 ÷ 墙钟 ÷ 165.2 TFLOP/s。批越大,同一份权重服务的
-    token 越多,GEMM 越"方",算力才用得起来 ——<b>MFU 高说明卡在"算得不够快"这堵墙上</b>。
-    中间的传动杆是 <b>tok/iter</b>:一次前向里被一起算掉的 token 数(解码 token +
-    chunked prefill 切进来的块)。<b>权重只读一次,却服务了这么多 token</b> ——
-    这就是两者此消彼长的直接原因。
-  </p>
+  <ul class="pts">
+    <li><b>MBU</b>(带宽利用率)= 实际读取字节 ÷ 墙钟 ÷ 1008 GB/s。
+      <b>MBU 高,说明卡在"读得不够快"这堵墙上。</b>decode 是访存密集的:每出一个 token,整份权重都要从显存读一遍。</li>
+    <li><b>MFU</b>(算力利用率)= 实际浮点乘加 ÷ 墙钟 ÷ 165.2 TFLOP/s。
+      <b>MFU 高,说明卡在"算得不够快"这堵墙上。</b>batch 越大,同一份权重服务的 token 越多,GEMM 越"方",算力才用得起来。</li>
+    <li><b>tok/iter</b> 连接这两者:它是一次前向里一起算的 token 数(decode token +
+      chunked prefill 切进来的块)。<b>权重只读一次,却服务了这么多 token</b>,这是两者此消彼长的直接原因。</li>
+  </ul>
 
   <figure>
     <figcaption>Figure 4</figcaption>
@@ -463,17 +462,17 @@
       <span style="color:var(--ink-3)"><i class="d" style="background:none"></i>交叉点 C ≈ 44</span>
     </div>
     <p class="note">
-      C=1 时权重读取占满了带宽(88%),算力几乎闲置(2.5%);
-      C=64 时权重被摊薄 64 次,带宽需求降到 43%,而 GEMM 的算力需求升到 57%。
       <strong>同一颗芯片,瓶颈从左边那堵墙换到了右边那堵。</strong>
-      两条线在 C≈44 交于 49% 附近 —— 那之后再加并发,买到的是算力,付出的是带宽余量。
-      (同一对指标沿另一条轴的走势见《vllm-03-KV的线性》:那边固定并发扫输入长度,趋势相同。)
+      C=1 时权重读取占满带宽(88%),算力几乎闲置(2.5%);
+      C=64 时权重被摊薄 64 次,带宽需求降到 43%,GEMM 的算力需求升到 57%。
+      两条线在 C≈44 交于 49% 附近。此后再加并发,换来的是算力,付出的是带宽余量。
+      (《vllm-03-KV的线性》固定并发、扫输入长度,这对指标的趋势相同。)
     </p>
   </figure>
 
   <div class="tw">
     <table>
-      <caption>服务端计数器直读。TFLOP/s 与 GB/s 由 /metrics 累计量除以窗口墙钟得到;<b>功耗、温度、KV 均值三列是采样窗口内的算术均值</b>(不是 p50 / 峰值,与《vllm-02-TTFT解剖》那份的口径不同,不要直接对数)。</caption>
+      <caption>服务端计数器直读。TFLOP/s 与 GB/s 由 /metrics 累计量除以窗口墙钟得到;<b>功耗、温度、KV 均值三列是采样窗口内的算术均值</b>(不是 p50 / 峰值)。这与《vllm-02-TTFT解剖》的口径不同,不要直接对比数字。</caption>
       <thead><tr><th>C</th><th>TFLOP/s</th><th>MFU</th><th>GB/s</th><th>MBU</th><th>tok/iter</th><th>功耗 W 均值</th><th>温度 均值</th><th>KV 均值</th></tr></thead>
       <tbody>
         <tr><td>1</td><td>4.16</td><td>2.5%</td><td class="gd">887.1</td><td class="gd">88.0%</td><td>4.9</td><td>365</td><td>62</td><td>0.9%</td></tr>
@@ -489,8 +488,8 @@
 
   <h3>用 roofline 给每个并发点算一条地板</h3>
   <p class="prose">
-    上面那张表是"实际跑到了多少",这里换个方向问:<b>理论上最快能到多少</b>。
-    解码一步至少要把权重完整读一遍、再把每条在跑的请求的 KV 读一遍,
+    上表是实际跑到的值,roofline 给出<b>理论上最快能到多少</b>。
+    decode 一步至少要读一遍完整权重,再读一遍每条运行中请求的 KV。
     这些字节除以峰值带宽,就是这一步的时间下限。
   </p>
 
@@ -510,11 +509,11 @@
   <div class="callout ok">
     <p class="k">这张表是"批处理几乎不要钱"的直接证据</p>
     <p>
-      地板本身从 14.09 涨到 18.22 ms(<strong>+29%</strong>),因为要多读 63 条 KV
-      (63 × 0.066 GB = 4.16 GB);
-      实测从 15.83 涨到 22.50 ms(<strong>+42%</strong>)。多出来的 13 个百分点是调度和 kernel 效率的损耗。
-      <strong>换句话说:并发翻 64 倍,理论代价 29%,实付 42%。</strong>
-      同一把尺子量 llama.cpp 的结果见《llama-cpp-压测》,差距是数量级的。
+      <strong>并发是 64 倍,理论代价 29%,实付 42%。</strong>
+      地板从 14.09 涨到 18.22 ms(<strong>+29%</strong>),因为要多读 63 条 KV
+      (63 × 0.066 GB = 4.16 GB)。
+      实测从 15.83 涨到 22.50 ms(<strong>+42%</strong>),多出的 13 个百分点是调度和 kernel 效率的损耗。
+      用同一方法量 llama.cpp 的结果见《llama-cpp-压测》,差距是数量级的。
     </p>
   </div>
 </section>
@@ -523,9 +522,9 @@
 <section>
   <h2><span class="num">断点</span>ITL 的尾部在 C=8 裂开</h2>
   <p class="lede prose">
-    这是整轮压测里最值得看的一张图,也是"P99 ITL 才暴露抖动"这句话最干净的实证。
-    p50 ITL 从 C=1 到 C=64 只从 15.8 ms 涨到 22.5 ms —— 涨了 42%,温和得看不出问题。
-    但 p99 ITL 在 C=8 那一点从 17.6 ms 直接跳到 102.1 ms,<strong>比上一档翻了 5.8 倍</strong>。
+    这张图最直接地证明了"只有 P99 ITL 才暴露抖动"。
+    p50 ITL 从 C=1 到 C=64 只从 15.8 ms 涨到 22.5 ms,涨幅 42%,看不出问题。
+    p99 ITL 却在 C=8 从 17.6 ms 跳到 102.1 ms,<strong>是上一档的 5.8 倍</strong>。
   </p>
 
   <figure>
@@ -539,53 +538,55 @@
       <span style="color:var(--accent)"><i class="d" style="background:none"></i>ITL 均值</span>
     </div>
     <p class="note">
-      阴影区是 p50 与 p99 之间的跨度。C=4 时几乎看不见,C=8 之后张开成一个数量级。
-      注意均值线始终贴着 p50 与 p99 之间 —— 它两头都不代表。
+      阴影区是 p50 与 p99 之间的跨度。它在 C=4 时几乎看不见,C=8 之后张开到一个数量级。
+      均值线始终夹在 p50 与 p99 之间,两头都不代表。
       <br><br>
-      <strong>图上有两种倍数,别混:</strong>点上方标的
-      <span class="hl">p99/p50</span> 是<b>同一个并发档内</b>最慢的 1% 比中位数慢多少倍
-      (C=8 是 6.1×);C=4 与 C=8 之间那条斜虚线标的
-      <span class="hl">×5.8</span> 是 p99 <b>相对上一档</b>翻了多少倍。
-      前者说"这一档有多不均匀",后者说"抖动是在哪一步冒出来的"。
+      <strong>图上有两种倍数,不要混用:</strong>
+      点上方标的 <span class="hl">p99/p50</span> 是<b>同一个并发档内</b>最慢 1% 的间隔是中位数的几倍
+      (C=8 是 6.1×),说明这一档有多不均匀;
+      C=4 与 C=8 之间斜虚线标的 <span class="hl">×5.8</span> 是 p99 <b>相对上一档</b>的倍数,
+      说明抖动在哪一步出现。
     </p>
   </figure>
 
   <div class="callout crit">
     <p class="k">这不是抢占,而且这一轮尤其不可能是</p>
     <p>
-      <b>抢占(preemption)</b>指 KV 池装不下时,调度器把某条正在跑的请求踢回队列 ——
-      它已算出的 KV 被丢弃、恢复时要重算 prefill。计数器 <code>vllm:num_preemptions_total</code>
-      全程 <strong>0 次</strong>(vLLM V1 不为它打日志行,只能从 /metrics 读)。
-      <b>Waiting</b>(队列里等的请求数;它与 <b>Running</b>——正在解码的请求数——之和
-      等于客户端在飞的并发)确实出现过 —— C=64 那一档起步瞬间排到 55 条 ——
-      但那是客户端一次性投放 64 条造成的,<strong>5 秒内就排空了</strong>,
-      稳态下 90% 的采样点 Waiting 都是 0。
+      <b>抢占</b>计数器 <code>vllm:num_preemptions_total</code> 全程 <strong>0 次</strong>。
+      抢占指 KV 池装不下时,调度器把一条运行中的请求退回队列:它已算出的 KV 被丢弃,恢复时要重算 prefill。
+      vLLM V1 不为抢占打日志行,只能从 /metrics 读。
     </p>
     <p>
-      更关键的是:这一轮 C=64 的 KV 池占用只有 <strong>67.5%</strong>,
-      离抢占阈值差得很远。<span class="hl">同样的 ITL 裂口在池子宽松 38% 的机器上原样重现</span>,
-      基本排除了"KV 紧张导致抖动"这条解释。
+      队列等待只出现在起步阶段,<strong>约 6 秒内就排空了</strong>。
+      <b>Waiting</b> 是队列里等待的请求数,<b>Running</b> 是正在 decode 的请求数,两者之和等于客户端在飞的并发。
+      C=64 那一档起步瞬间 Waiting 排到 55 条,原因是客户端一次性投放 64 条。
+      稳态下 90% 的采样点 Waiting 是 0。
+    </p>
+    <p>
+      更关键的是,这一轮 C=64 的 KV 池占用只有 <strong>67.5%</strong>,离抢占阈值很远。
+      <span class="hl">同样的 ITL 裂口在 KV 池宽松 38% 的机器上原样重现</span>,
+      基本排除了"KV 紧张导致抖动"这个解释。
     </p>
     <p>
       真正的原因是 <code>enable_chunked_prefill</code>:
-      新请求的 prefill 被切块后<strong>混进正在解码的批次</strong>。
-      对已经在解码的请求来说,那一步要等 prefill 块算完,于是出现一个 100–200 ms 的停顿。
-      C=64 时 p90 ITL 已达 187.5 ms —— <strong>超过一成的 token 间隔卡在别人的 prefill 上</strong>。
+      新请求的 prefill 被切块后<strong>混进正在 decode 的 batch</strong>。
+      已经在 decode 的请求要等 prefill 块算完,于是出现一次 100–200 ms 的停顿。
+      C=64 时 p90 ITL 已达 187.5 ms,即<strong>超过一成的 token 间隔卡在别人的 prefill 上</strong>。
     </p>
   </div>
 
   <h3>这些停顿最终反映在端到端时间上</h3>
   <figure>
     <figcaption>Figure 6</figcaption>
-    <p class="fig-title">E2EL 构成:首字等待 vs 解码耗时(p50)</p>
+    <p class="fig-title">E2EL 构成:TTFT vs decode 耗时(p50)</p>
     <div class="chart" id="ch-e2el"></div>
     <div class="legend">
-      <span style="color:var(--warn)"><i style="background:currentColor"></i>TTFT(首字等待)</span>
-      <span style="color:var(--accent)"><i style="background:currentColor"></i>解码 255 个 token</span>
+      <span style="color:var(--warn)"><i style="background:currentColor"></i>TTFT</span>
+      <span style="color:var(--accent)"><i style="background:currentColor"></i>decode 255 个 token</span>
     </div>
     <p class="note">
-      解码段从 4.04 秒涨到 10.99 秒,是 E2EL 增长的主体。TTFT 虽然 p99 很难看,
-      但在中位数上始终只占总时长的 2.5%–6.7%。
+      decode 段从 4.04 秒涨到 10.99 秒,是 E2EL 增长的主体。TTFT 的 p99 很高,
+      但按中位数算,它始终只占总时长的 2.5%–6.7%。
     </p>
   </figure>
 </section>
@@ -594,11 +595,11 @@
 <section>
   <h2><span class="num">天花板</span>真实并发上限是 93 条,不是 <code>--max-num-seqs</code> 写的 128</h2>
   <p class="lede prose">
-    服务端启动参数写的是 <code>--max-num-seqs 128</code>,但那只是名义上限。
-    实际能同时跑多少条,由 KV cache 池除以单请求占用决定。
-    <b>KV 占用</b>(计数器 <code>gpu_cache_usage_perc</code>)就是这个池子的使用率 ——
-    池子大小 = 显存扣掉权重与激活之后的余量,由启动日志给出,每 token 占 56 KiB。
-    这一轮的池子比第一轮宽松不少,上限也跟着抬了同样的比例。
+    <code>--max-num-seqs 128</code> 只是名义上限。
+    实际能同时跑多少条,由 KV 池大小除以单请求占用决定。
+    KV 池大小 = 显存扣掉权重与激活之后的余量,由启动日志给出,每 token 占 56 KiB。
+    <b>KV 占用</b>(计数器 <code>gpu_cache_usage_perc</code>)是 KV 池的使用率。
+    这一轮的 KV 池比第一轮宽松,上限也按同样的比例提高。
   </p>
 
   <pre><span class="c"># 服务端日志实测(第二轮)</span>
@@ -628,34 +629,34 @@ Maximum concurrency for 8,192 tokens per request: <span class="a">14.66x</span>
 Actual usage: <span class="a">14.49 GiB</span> weights+non-torch, <span class="a">0.26 GiB</span> peak activation</pre>
 
   <p class="prose">
-    权重那一项少了 1.00 GiB、峰值激活少了 0.78 GiB,于是 KV 池多出 1.77 GiB。
-    两轮的 vLLM / torch 版本号完全相同(0.27.1 / 2.13.0+cu130),
+    权重那一项少了 1.00 GiB,峰值激活少了 0.78 GiB,所以 KV 池多出 1.77 GiB。
+    两轮的 vLLM / torch 版本号相同(0.27.1 / 2.13.0+cu130)。
     差别在驱动与 CUDA(Round 1 是 590.48.01 / CUDA 13.1,Round 2 是 580.159.03 / CUDA 13.0),
     以及显存 profiling 本身的随机性。
   </p>
 
   <figure>
     <figcaption>Figure 7</figcaption>
-    <p class="fig-title">各并发点的 KV cache 池占用</p>
+    <p class="fig-title">各并发点的 KV 池占用</p>
     <div class="chart" id="ch-kv"></div>
     <p class="note">
-      条长 = <b>全程满载的理论上界</b> C × 1280 ÷ 120,064。C=64 需要 81,920 tokens、
-      占池 68.2%,与服务端观测到的峰值 67.5% 吻合;全程实测均值则只有 57.2%(见下方对账)。
-      被注释掉的 C=128 需要 163,840 tokens,是池子的 1.36 倍,仍然跑不起来。
+      条长 = <b>全程满载的理论上界</b> C × 1280 ÷ 120,064。C=64 需要 81,920 tokens,
+      占 KV 池 68.2%,与服务端观测到的峰值 67.5% 吻合;全程实测均值只有 57.2%(见下方对账)。
+      被注释掉的 C=128 需要 163,840 tokens,是 KV 池的 1.36 倍,仍然跑不起来。
     </p>
   </figure>
 
   <div class="callout">
-    <p class="k">这一轮 C=64 根本没碰到 KV 墙</p>
+    <p class="k">这一轮 C=64 没有碰到 KV 墙</p>
     <p>
       显存账:权重 + non-torch <strong>14.49 GiB</strong>,峰值激活 0.26 GiB,CUDA Graph 0.34 GiB,
-      KV 池 6.41 GiB,合计 21.50 GiB。而 <code>--gpu-memory-utilization 0.90</code>
+      KV 池 6.41 GiB,合计 21.50 GiB。<code>--gpu-memory-utilization 0.90</code>
       给出的预算是 21.16 GiB,卡上总共有 23.52 GiB。
     </p>
     <p>
-      <strong>差别不在配置,在 profiling</strong> —— 换了驱动之后,
-      vLLM 探到的"已占用显存"少了 1 GiB,省下来的全进了 KV 池。
-      <span class="hl">所以并发上限这个数必须每台机器现读日志,不能跨机器搬</span>。
+      <strong>差别不在配置,在 profiling。</strong>换了驱动之后,
+      vLLM 测到的"已占用显存"(权重 + non-torch)少了 1.00 GiB(15.49 → 14.49 GiB),峰值激活也少了 0.78 GiB;两项省下的 1.77 GiB 全部进了 KV 池(4.64 → 6.41 GiB)。
+      <span class="hl">所以并发上限必须在每台机器上读日志确认,不能从别的机器照搬</span>。
     </p>
   </div>
 </section>
@@ -676,31 +677,31 @@ Actual usage: <span class="a">14.49 GiB</span> weights+non-torch, <span class="a
         </tr>
       </thead>
       <tbody id="tbody"></tbody>
-      <caption>延迟单位 ms。效率 = 吞吐 ÷ (C × 61.86)。<b>KV 上界</b> = C × 1280 ÷ 120,064,即"全程满载"的理论值;<b>KV 实测</b>是采样窗口内的实测均值。表中吞吐只算输出 token —— 把输入一起算的<b>总吞吐</b>是它的 5 倍(309 → 6,939 tok/s),长输入场景下两者会背道而驰,不可互相替代。</caption>
+      <caption>延迟单位 ms。效率 = 吞吐 ÷ (C × 61.86)。<b>KV 上界</b> = C × 1280 ÷ 120,064,即"全程满载"的理论值;<b>KV 实测</b>是采样窗口内的实测均值。表中吞吐只算输出 token。把输入一起算的<b>总吞吐</b>是它的 5 倍(309 → 6,939 tok/s)。长输入场景下两者会背道而驰,不能互相替代。</caption>
     </table>
   </div>
 
   <h3>这批数据能不能信:四条自检</h3>
   <ul class="pts">
-    <li><strong>每请求输出 token 精确等于 256</strong>(全部 7 档),<code>--ignore-eos</code> 生效,
-      各档之间的工作量完全一致 —— 吞吐差异不可能来自"有的请求提前停了"。</li>
-    <li><strong><code>--temperature 0</code> 生效</strong>:sweep 日志里已经没有
+    <li><strong>每请求输出 token 正好是 256</strong>(全部 7 档),说明 <code>--ignore-eos</code> 生效,
+      各档的工作量相同。吞吐差异不可能来自"有的请求提前停了"。</li>
+    <li><strong><code>--temperature 0</code> 生效</strong>:sweep 日志里没有
       <code>no longer sets temperature==0</code> 这句 WARNING(Round 1 每档都有)。
       采样路径与 llama.cpp 侧同构。</li>
-    <li><strong>prefix caching 确实关着</strong>:启动日志 <code>non-default args</code> 里
-      <code>enable_prefix_caching: False</code>,且 KV 使用率随并发严格线性
-      (0.9 / 1.9 / 3.7 / 7.4 / 14.1 / 28.9 / 57.2 %),没有任何缓存命中造成的塌陷。
-      <span class="hl">这条线性关系在《vllm-03-KV的线性》里被单独做成了实验</span>,那边的对账更严格。</li>
+    <li><strong>prefix caching 关着</strong>:启动日志 <code>non-default args</code> 里是
+      <code>enable_prefix_caching: False</code>。KV 使用率随并发严格线性
+      (0.9 / 1.9 / 3.7 / 7.4 / 14.1 / 28.9 / 57.2 %),没有缓存命中造成的塌陷。
+      <span class="hl">《vllm-03-KV的线性》把这条线性关系单独做成了实验</span>,那边的对账更严格。</li>
     <li><strong>零失败、零抢占</strong>:1,332 条请求全部成功,
-      <code>vllm:num_preemptions_total</code> 全程为 0 —— 本轮没有任何一个点触到 KV 上限。</li>
+      <code>vllm:num_preemptions_total</code> 全程为 0。本轮没有一个点触到 KV 上限。</li>
   </ul>
 
   <div class="callout ok">
     <p class="k">三个 KV 数字,一把尺子对得上</p>
     <p>
       理论上界 <code>C × 1280 ÷ 120,064</code>(C=64 得 68.2%)、服务端观测到的峰值(67.5%)、
-      采样窗口内的实测均值(57.2%)—— 量的是同一件事的三个时刻。
-      把上界里的两处高估还原回去,它就落到实测均值上:
+      采样窗口内的实测均值(57.2%),量的是同一件事的三个时刻。
+      去掉上界里的两处高估,它就落到实测均值上:
     </p>
     <pre><span class="c"># ① 1280 是请求结束那一刻的占用,全程平均只有 (1024+1280)/2 = 1152</span>
 <span class="c"># ② running 均值略小于 C —— 起步和收尾都有一小段没坐满</span>
@@ -714,8 +715,8 @@ Actual usage: <span class="a">14.49 GiB</span> weights+non-torch, <span class="a
 
 <span class="c"># 七个点最大偏差 0.5%,PagedAttention 的账在这个尺度上是平的</span></pre>
     <p>
-      也就是说 <span class="hl">Figure 7 的 68.2% 是"如果 64 条全程都满载"的上界,
-      57.2% 才是这台机器实际占住的量</span> —— 结论(本轮离 KV 上限还很远)三个数都成立。
+      <span class="hl">Figure 7 的 68.2% 是"64 条全程满载"的上界,
+      57.2% 才是这台机器实际占用的量</span>。按三个数中的任何一个,本轮都离 KV 上限很远。
     </p>
   </div>
 </section>
@@ -724,9 +725,9 @@ Actual usage: <span class="a">14.49 GiB</span> weights+non-torch, <span class="a
 <section>
   <h2><span class="num">选点</span>按 SLO 反查配置</h2>
   <p class="lede prose">
+    下表按 p99 TTFT ≤ 0.5 / 1 / 1.5 / 3 秒四档,反查并发最多能开到多少。
     <b>SLO</b>(Service Level Objective,服务等级目标)是事先定下的延迟承诺,
-    例如"p99 首字延迟不超过 1.5 秒"。压测的意义就是反查:在这条线以内,并发最多能开到多少。
-    下表按 p99 TTFT ≤ 0.5 / 1 / 1.5 / 3 秒四档反查。
+    例如"p99 TTFT 不超过 1.5 秒"。
   </p>
   <div class="tw">
     <table>
@@ -740,28 +741,28 @@ Actual usage: <span class="a">14.49 GiB</span> weights+non-torch, <span class="a
 
   <h3>下一步该改什么</h3>
   <ul class="pts">
-    <li><strong>C=96 现在才是该补的点。</strong>这一轮 C=64 只用掉 68% 的池子,
-      C=96 需要 122,880 tokens、刚好压满 120,064 —— 那才是第一次能看到 preemption 的地方。
-      第一轮想测这个点必须先扩池,这一轮不用。</li>
-    <li><strong>池子还能再扩一次。</strong>加 <code>--kv-cache-memory=8471115264</code>,
-      6.41 → 7.89 GiB,上限 93 → 115 条。仍然是纯赚不赔的改动,只是没有第一轮那么急迫。</li>
-    <li><strong>ITL 抖动想压下去,调 <code>--max-num-batched-tokens</code>。</strong>
-      调小 → prefill 块更细 → ITL 尖峰更矮,但 TTFT 会变差。这是一个明确的对换,
-      取决于你的场景是流式聊天(在意 ITL)还是批量任务(在意 TTFT)。
-      <span class="hl">这一轮已经证明它跟 KV 余量无关,所以只能从这里下手</span>。</li>
-    <li><strong>跨轮对照要锁住 KV 池。</strong>两轮之间池子差得远,任何"并发上限"类的结论
-      都不能直接比。要比就用 <code>--kv-cache-memory</code> 把两边钉死在同一个数上。</li>
-    <li><strong>TTFT 的 p99 在 C≤8 不要单独引用。</strong>它的样本量就是请求数
-      (40/60/80/120),算 p99 等于取最慢的那一两条。
-      <strong>ITL 的 p99 不受此限</strong> —— 每条请求贡献 255 个间隔样本,C=8 已有
-      30,600 个。<span class="hl">这正是本报告用 ITL p99、而不是 TTFT p99 来划拐点的原因</span>。</li>
+    <li><strong>下一个该补的点是 C=96。</strong>这一轮 C=64 只用掉 68% 的 KV 池,
+      C=96 需要 122,880 tokens,刚好压满 120,064,是第一个能看到抢占的点。
+      第一轮要测这个点必须先扩 KV 池,这一轮不用。</li>
+    <li><strong>KV 池还能再扩一次。</strong>加 <code>--kv-cache-memory=8471115264</code>,
+      6.41 → 7.89 GiB,上限 93 → 115 条。这仍是只有好处的改动,只是没有第一轮那么急。</li>
+    <li><strong>要压低 ITL 抖动,调 <code>--max-num-batched-tokens</code>。</strong>
+      调小 → prefill 块更细 → ITL 尖峰更矮,但 TTFT 会变差。这是明确的取舍:
+      流式聊天在意 ITL,批量任务在意 TTFT。
+      <span class="hl">这一轮已证明抖动与 KV 余量无关,所以只能从这里下手</span>。</li>
+    <li><strong>跨轮对照要锁住 KV 池。</strong>两轮的 KV 池相差很大,"并发上限"类的结论
+      都不能直接比。要比,就用 <code>--kv-cache-memory</code> 把两边固定在同一个值。</li>
+    <li><strong>不要单独引用 C≤8 的 TTFT p99。</strong>它的样本量就是请求数
+      (40/60/80/120),p99 等于最慢的那一两条。
+      <strong>ITL 的 p99 不受此限</strong>:每条请求贡献 255 个间隔样本,C=8 已有
+      30,600 个。<span class="hl">所以本报告用 ITL p99 而不是 TTFT p99 来划拐点</span>。</li>
   </ul>
 </section>
 
 <p class="note" style="margin-top:56px; max-width:none">
   <b>这是 Round 2 五份压测报告的第 1 份</b>(vLLM 并发扫描)。
-  整轮的横向结论与生产选型建议见 <b>《选型指南-vllm-llama-cpp》</b> ——
-  那份把五组测试的数据合起来,回答"两个引擎各自强在哪、生产上怎么选"。
+  整轮的横向结论与生产选型建议见 <b>《选型指南-vllm-llama-cpp》</b>。
+  那份报告合并五组测试的数据,回答"两个引擎各自强在哪、生产上怎么选"。
   同目录另有:<code>vllm-02-TTFT解剖</code> · <code>vllm-03-KV的线性</code> · <code>vllm-04-断崖</code> · <code>llama-cpp-压测</code>。
 </p>
 
