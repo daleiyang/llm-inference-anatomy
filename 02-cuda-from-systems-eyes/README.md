@@ -2,7 +2,7 @@
 
 # 02 · CUDA from a Systems Engineer's Eyes
 
-> **SGEMM 与归约两条线已完成。** 同一块 RTX 4090、同一个可执行文件、同一次开机，
+> **SGEMM、归约、融合算子三条线已完成。** 同一块 RTX 4090、同一个可执行文件、同一次开机，
 > 把一个 FP32 矩阵乘从 naive 改到 **cuBLAS 的 71.5%**，共 **63.1 倍**。
 >
 > 但这份记录的价值不在这两个数字，而在于：**教科书给的那本账（算术强度 → roofline）
@@ -13,6 +13,10 @@
 > 算术强度恒为 0.25 FLOP/B（脊点的 **1/334**），一步也挪不动。
 > 结果是书里五步优化**只有一步打中瓶颈**，其余四步收益为零。
 > **同一套账，两种命运；差别只在瓶颈在哪一侧。**
+>
+> 最后用 **RMSNorm 与 online softmax** 两个融合算子把字节账用到推理里的真实算子上：
+> 寄存器驻留版收在峰值带宽的 **90–91%**。但开跑前写死的十四条预测落空了五条，
+> **全部是同一个原因：L2** —— 字节账应该算到达 DRAM 的字节，不是访存指令发出的字节。
 
 我写过内存池、lock-free hash table，也逐行读过 word2vec.c。这一阶段要回答的问题是：
 **那些 CPU 上的性能直觉，搬到 GPU 上还剩多少？**
@@ -34,10 +38,12 @@
 | **cuBLAS 强在哪一侧？** | 只在**算力受限**那一侧。decode 上我们追平它，K4 甚至跑到 **102.6%** | [报告 02 · §5](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/02-SGEMM实测与三本账.html) |
 | **真·带宽受限长什么样？** | 归约：算术强度恒为 **0.25 FLOP/B = 脊点的 1/334**，六个版本一步也挪不动。<br>上限一秒钟就能算出来：`4N ÷ 1008 GB/s` | [报告 03 · §1](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/03-归约六级优化-一道纯带宽题.html) |
 | **那五步优化值多少？** | **只有一步打中瓶颈**（R3→R4 分段，每元素快 **292 倍**）。<br>其余四步收益为零 —— R4/R5/R6 全部收在下限的 **95%** | [报告 03 · §1](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/03-归约六级优化-一道纯带宽题.html) |
+| **融合算子能跑到多少带宽？** | RMSNorm 与 online softmax 的寄存器驻留版都在峰值带宽的 **90–91%**（MBU），<br>相对基线分别快 **1.51×**（理论 1.50×）和 **1.70×**（理论 2.00×） | [报告 04 · §9](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/04-融合算子-RMSNorm与OnlineSoftmax.html) |
+| **融合到底省的是什么？** | 省的是**重用距离**，访存指令一条没少。N2 的账面字节一点没省（仍是 12N），实测却快 **1.49×**：<br>第二次读和第一次读之间的距离从 112 MiB 缩到 14 KB，第二次读落进了 L2 | [报告 04 · §9](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/04-融合算子-RMSNorm与OnlineSoftmax.html) |
 
 ---
 
-## 七个最硬的发现
+## 八个最硬的发现
 
 ### 1 · 教科书那本账，七次里失效五次
 
@@ -167,7 +173,34 @@ R4 之后达成率 **95.1%**，剩下那 5% 是 L2/DRAM 的现实开销 —— *
 **两条线正好照出对方的形状**：SGEMM 教你怎么把复用做出来，
 归约教你在**没有复用可做**的时候该看什么 —— 而推理里一大半算子属于后者。
 
-### 7 · 给下一阶段的接口
+### 7 · 融合算子：字节账要算到 DRAM，不能只算到指令
+
+RMSNorm（N=3584）与 online softmax（N=2048）都取 Qwen2.5-7B 的真实维度，M=8192 行。
+这两个算子都是访存密集型，所以指标从「占峰值算力」换成 **MBU = 实测 GB/s ÷ 1008**。
+
+```
+               字节/行    耗时 ms     MBU     相对基线   理论
+N1 两趟           12N    0.3859    90.6%      基准
+N2 融合但读两次    12N    0.2591   134.9%     1.49×    1.00×   ← 账面一字节没省，却快了一半
+N3 寄存器驻留      8N    0.2560    91.0%     1.51×    1.50×
+S1 三趟           16N    0.2509   106.1%      基准
+S2 online 两趟    12N    0.2202    90.7%     1.14×    1.33×
+S3 一趟            8N    0.1475    90.3%     1.70×    2.00×
+```
+
+**MBU 超过 100%，说明分子已经不是 DRAM 流量了。** 把 N3 实测的 917.5 GB/s 当作这张卡的实际天花板，
+用耗时反推每一级真正搬运的字节数：八级里有六级落在账面的 100.0%–100.8%，只有两级明显偏离 ——
+
+- **N2**：账面 12N，实际只搬了 **8.1N**。两次读之间，这个 block 只处理了自己那一行（14 KB），
+  第二次读全部命中 L2；N1 是两个 kernel，两次读之间隔着全部 8192 行（112 MiB），L2 早被冲掉了。
+- **S1**：x 只有 64 MiB，**刚好装得进 72 MiB 的 L2**，所以基线被抬快了，比值跟着缩水。
+  把 M 加到 16384（x 涨到 128 MiB）后，S3 对 S1 立刻回到 **1.97×**，几乎正好是理论值。
+
+十四条预测里成立 9 条、落空 4 条、口径失效 1 条，**没成立的 5 条都是被 L2 绊倒的**。
+**融合省带宽的机制不是「少发访存指令」，而是「把重用距离压进 cache 装得下的范围」** ——
+FlashAttention 押的也是这一点：它并没有减少读 Q/K/V 的次数，减少的是两次读之间的距离。
+
+### 8 · 给下一阶段的接口
 
 ```
 cuBLAS   decode b1   M=1    0.302 ms   449.6 GFLOP/s
@@ -221,10 +254,13 @@ cuBLAS   decode b1   M=1    0.302 ms   449.6 GFLOP/s
 | **01** | [**核心代码的演化**](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/01-SGEMM六级优化-核心代码的演化.html) | 每一级改了哪一行、为什么那样改 | 17 张原理图，六级代码逐个拆 |
 | **02** | [**实测与三本账**](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/02-SGEMM实测与三本账.html) | 数字从哪来、八个指标怎么算 | 从代码数出七个指标，再和实测对账 |
 | **03** | [**归约六级优化：一道纯带宽题**](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/03-归约六级优化-一道纯带宽题.html) | 没有复用可做的算子该看什么 | 五步优化只有一步打中瓶颈 |
+| **04** | [**融合算子：RMSNorm 与 online softmax**](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/04-融合算子-RMSNorm与OnlineSoftmax.html) | 归约之后拿结果回头缩放整行，融合到底省了什么 | 收在峰值带宽 90–91%，五条落空预测全栽在 L2 |
 
 **建议读法**：先 01 建立"代码长什么样"的直觉，再 02 看"凭什么这么判断"。
 02 的 §3 是全套方法的核心 —— **八个指标里只有一个是量出来的，其余七个全部从代码数出来**。
 03 可以单独读：它换了一个**没有复用可做**的算子，把同一套账跑了一遍，结论正好相反。
+04 接在 03 后面：block 级归约之后多了一步「拿归约结果回头缩放整行」，指标换成 MBU。
+它的 §9 是这一阶段最有价值的一次「对不上」—— 字节账和实测之间还隔着一层 L2。
 
 ---
 
@@ -277,6 +313,24 @@ nvcc -O3 -arch=sm_89 -lineinfo reduce_ch10.cu -o reduce_ch10
 不减就什么也比不出来。完整命令串见 [`Results/Reduction/reduce_20260921.txt`](Results/Reduction/reduce_20260921.txt) ——
 那是原样的终端输出，报告 03 的每个数字都由构建脚本从它现场解析。
 
+融合算子那条线也是单文件，外加一个总驱动脚本：
+
+```bash
+nvcc -O3 -arch=sm_89 -lineinfo -Xptxas -v fused_ops.cu -o fused_ops
+# 用法：fused_ops <n1|n2|n3|n4|s1|s2|s3|s4> [M] [N] [ITERS]
+
+./fused_ops n3 8192 3584 11           # RMSNorm 主阶梯：M=8192 行 × hidden 3584
+./fused_ops s3 8192 2048 11           # softmax 主阶梯：M=8192 行 × seq 2048
+
+bash run_fused.sh                     # 全套：编译 + spill 检查 → 正确性与边界 → 主阶梯 × 3 轮
+                                      #       → 形状扫描 → 长行拒绝 → racecheck
+ROUNDS=1 bash run_fused.sh            # 快速过一遍
+```
+
+**spill 检查是这一套的命门**：n3/n4/s3/s4 的前提是整行留在寄存器里，一旦 spill，数据就落回显存，
+1.5× 和 2.0× 都不会出现，而且从耗时上看不出原因。十一个 kernel 必须全部 `0 bytes spill stores`。
+原样日志见 [`Results/Fused/fused_20261001_005225.txt`](Results/Fused/fused_20261001_005225.txt)。
+
 > 从开机到收工的完整命令串（含传文件、取回、关机）在 [`Scripts/build-and-bench.md`](Scripts/build-and-bench.md)。
 
 四条关键规矩：
@@ -299,14 +353,16 @@ nvcc -O3 -arch=sm_89 -lineinfo reduce_ch10.cu -o reduce_ch10
 ```
 02-cuda-from-systems-eyes/
 ├── README.md                    # 本页
-├── Reports/                     # 3 份自包含 HTML 报告
-│   ├── README.md                # 三份报告的分工与建议读法
+├── Reports/                     # 4 份自包含 HTML 报告
+│   ├── README.md                # 四份报告的分工与建议读法
 │   ├── 01-SGEMM六级优化-核心代码的演化.html
 │   ├── 02-SGEMM实测与三本账.html
-│   └── 03-归约六级优化-一道纯带宽题.html
+│   ├── 03-归约六级优化-一道纯带宽题.html
+│   └── 04-融合算子-RMSNorm与OnlineSoftmax.html
 ├── src/
 │   ├── sgemm_all.cu             # 八个 kernel（K0 cuBLAS + K1–K6）+ 测试脚手架
 │   ├── reduce_ch10.cu           # 归约 R1–R6 + 空 kernel 基线
+│   ├── fused_ops.cu             # RMSNorm n1–n4 + online softmax s1–s4（11 个 kernel）
 │   ├── devinfo.cu               # 设备自查
 │   └── sgemm.cu                 # 开工前的空框架（kernel 留白），留作对照
 ├── Scripts/
@@ -316,6 +372,7 @@ nvcc -O3 -arch=sm_89 -lineinfo reduce_ch10.cu -o reduce_ch10
 │   ├── sweep_shapes.sh          # 形状扫描
 │   ├── check_sass.sh            # 反汇编计数
 │   ├── collect_ncu.sh           # Nsight 采集（本轮因权限未成功）
+│   ├── run_fused.sh             # 融合算子总驱动，六个阶段
 │   └── parse_results.py         # 文本 → CSV
 └── Results/
     ├── README.md                # 每个文件是什么、两份 CSV 的分工
@@ -327,8 +384,10 @@ nvcc -O3 -arch=sm_89 -lineinfo reduce_ch10.cu -o reduce_ch10
     │   ├── ncu_20260924_180816.log          # 权限失败的现场
     │   ├── fingerprint.txt                  # 环境指纹
     │   └── csv/bench_*.csv                  # 解析后：逐轮的是证据，中位数的是结论
-    └── Reduction/               # 归约（2026-09-21，另一台 4090）
-        └── reduce_20260921.txt              # 原样终端输出，报告 03 现场解析
+    ├── Reduction/               # 归约（2026-09-21，另一台 4090）
+    │   └── reduce_20260921.txt              # 原样终端输出，报告 03 现场解析
+    └── Fused/                   # 融合算子（2026-10-01，又一台 4090）
+        └── fused_20261001_005225.txt        # run_fused.sh 原样日志（787 行）
 ```
 
 ---
@@ -341,8 +400,9 @@ nvcc -O3 -arch=sm_89 -lineinfo reduce_ch10.cu -o reduce_ch10
 - [x] 算术强度的理论预测与实测对账，差异有解释 —— **对账结果是预测被推翻，解释见上**
 - [x] 六级归约全部通过 double 参照校验，R4 之后收在带宽下限的 **95%**
 - [x] 归约的五条预测在开跑前写死判决标准，事后逐条对账 —— **押中四条**，没押中的是 R2→R3
-- [ ] RMSNorm / online softmax 融合版 MBU 70%+ —— 代码与导学已完成，**待上机**
-- [x] SGEMM 两份 + 归约一份，共三份报告产出
+- [x] RMSNorm / online softmax 融合版 MBU 70%+ —— N3/N4 **91.0%**、S3/S4 **90.3%**；十一个 kernel 全部 0 spill，racecheck 全部 0 hazards
+- [x] 融合算子的十四条预测开跑前写死、事后逐条判决 —— **成立 9 条**，落空的 5 条全部追到 L2
+- [x] SGEMM 两份 + 归约一份 + 融合算子一份，共四份报告产出
 
 ---
 
@@ -357,12 +417,14 @@ nvcc -O3 -arch=sm_89 -lineinfo reduce_ch10.cu -o reduce_ch10
 | **数据** | `Results/Round1/`，原始输出 1555 行 + 完整 SASS 反汇编 8981 行 |
 | **归约那一轮** | 2026-09-21，另一台 RTX 4090（口径相同）· 9 组测量：实验 A 单 block × 5 + 实验 B 整卡 × 3 + BLOCK 对照 × 1 |
 | **归约数据** | `Results/Reduction/reduce_20260921.txt`，171 行原样终端输出 |
+| **融合算子那一轮** | 2026-10-01，又一台 RTX 4090 · driver 595.91.07 · 口径相同 · 8 级 × 主阶梯 3 轮 + 4 组形状 + 边界 + 长行拒绝 + racecheck |
+| **融合算子数据** | `Results/Fused/fused_20261001_005225.txt`，787 行原样日志 |
 
 ---
 
 ## 参考
 
-- **PMPP 第 4 版** 第 1–6 章（执行模型、内存、性能）+ 第 10 章（归约）
+- **PMPP 第 4 版** 第 1–6 章（执行模型、内存、性能）+ 第 10 章（归约；融合算子是它的应用）
   *K1/K2/K3/K3c 分别出自第 3/4/5/6 章；K4/K5/K6 书上没有。*
 - **siboehm, CUDA matmul** — <https://siboehm.com/articles/22/CUDA-MMM>
   *K4/K5/K6 的思路来源。他的结果在 A6000（Ampere）上，4090 是 Ada、L2 大得多 ——

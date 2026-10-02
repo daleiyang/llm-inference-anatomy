@@ -12,20 +12,18 @@
 | **01** | [核心代码的演化](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/01-SGEMM六级优化-核心代码的演化.html) | 每一级改了哪一行、为什么那样改、原理是什么 | 10 节 · 17 图 · 六级代码全文 |
 | **02** | [实测与三本账](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/02-SGEMM实测与三本账.html) | 数字从哪来、八个指标各自怎么算、哪本账真的准 | 8 节 · 14 表 · 八步推导 |
 | **03** | [归约六级优化：一道纯带宽题](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/03-归约六级优化-一道纯带宽题.html) | 没有复用可做的算子该看什么；五步优化只有一步打中瓶颈 | 10 节 · 10 图 · 7 表 · 六级代码全文 |
+| **04** | [融合算子：RMSNorm 与 online softmax](https://daleiyang.github.io/llm-inference-anatomy/02-cuda-from-systems-eyes/Reports/04-融合算子-RMSNorm与OnlineSoftmax.html) | 归约之后拿结果回头缩放整行，融合到底省了什么；MBU 什么时候会骗人 | 10 节 · 31 图 · 八级代码全文 · 十四条预测逐条判决 |
 
 **建议读法**：先 01 建立"代码长什么样"的直觉，再 02 看"凭什么这么判断"。
 03 可以单独读 —— 它换了一个算子（归约），用的是同一套方法：
 **先算上限、写死预测、再测、再逐条对账**。
+04 接在 03 后面：同一个 block 级归约骨架，多了「拿结果回头缩放整行」一步，
+指标从「占峰值算力」换成 MBU。**先读 §9**：十四条预测落空五条，全部栽在 L2 上 ——
+这是这一阶段最有价值的一次「对不上」。
 
 > **02 的 §3 是全套方法的核心**：八个指标里只有"耗时"是量出来的，
 > 其余七个（dist / bcast / ldg / load-per-FMA / bytesPerOut / 算术强度 / 节拍 / 每条 load 周期）
 > 全部从代码数出来 —— 数完再和实测对账，对上了才说明理解是对的。
-
-## 融合算子部分 · 待上机
-
-| # | 报告 | 状态 |
-|---|---|---|
-| 04 | RMSNorm / online softmax · MBU 视角 | 代码（`fused_ops.cu`，11 个 kernel）与上机导学已完成，**等机器** |
 
 ## 一处诚实标注
 

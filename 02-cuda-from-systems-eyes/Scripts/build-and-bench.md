@@ -73,6 +73,31 @@ tar xzf p0_<stamp>.tgz
 python parse_results.py all_*.txt shapes_*.txt     # 若远端没装 python
 ```
 
+## 3b · 融合算子（报告 04）
+
+独立于上面那一整套，传两个文件就够：
+
+```bash
+# 本地
+scp -P <PORT> -i <KEY.pem> fused_ops.cu run_fused.sh root@<HOST>:/root/
+
+# 远端
+bash run_fused.sh                # 六个阶段，日志写进 fused_<stamp>.txt
+ROUNDS=1 bash run_fused.sh       # 快速过一遍
+
+# 本地
+scp -P <PORT> -i <KEY.pem> root@<HOST>:/root/fused_*.txt .
+```
+
+| 阶段 | 做什么 | 看什么 |
+|---|---|---|
+| 0 | 编译 + spill 检查 | 十一个 kernel 全部 `0 bytes spill stores` —— n3/n4/s3/s4 的立论就是整行留在寄存器里 |
+| 1 | 正确性（含边界） | 每一级 `✓ 抽样校验通过` |
+| 2 | 主阶梯 × 3 轮 | M=8192，RMSNorm N=3584 / softmax N=2048；看 1.5× 和 2.0× 兑现了多少 |
+| 3 | 形状扫描 | decode-b1 / decode-b32 / prefill / 大批；**M=2048 时整份数据装进 L2，MBU 会超过 100%** |
+| 4 | 长行 | `s3 32 152064` **应当被拒绝并返回 3**，这是预期行为 |
+| 5 | racecheck | 放在最后、形状取 `8 1000 1`；每段结尾都要是 `0 hazards` |
+
 ## 4 · 收工
 
 ```bash
@@ -91,6 +116,7 @@ vastai destroy instance <INSTANCE_ID>
 | `check_sass.sh` | 反汇编分类计数 | `bash check_sass.sh`（纯 CPU） |
 | `collect_ncu.sh` | Nsight 六指标 | `N=1024 bash collect_ncu.sh` |
 | `parse_results.py` | 文本 → 两份 CSV | `python parse_results.py all_*.txt` |
+| `run_fused.sh` | 融合算子总驱动（报告 04） | `ROUNDS=1 bash run_fused.sh` |
 
 ---
 

@@ -1,0 +1,787 @@
+=============================================================
+ 融合算子基准 · RMSNorm + online softmax   2026-10-01T00:52:25+00:00
+ 主机 0bac088d7c89   Linux 6.8.0-138-generic
+ hidden=3584  seq=2048  （Qwen2.5-7B 的真实维度）
+=============================================================
+$ nvidia-smi --query-gpu=name,driver_version,clocks.max.sm,clocks.max.mem,power.limit --format=csv
+name, driver_version, clocks.max.sm [MHz], clocks.max.memory [MHz], power.limit [W]
+NVIDIA GeForce RTX 4090, 595.91.07, 3105 MHz, 10501 MHz, 450.00 W
+-------------------------------------------------------------
+编译 + spill 检查
+-------------------------------------------------------------
+$ nvcc -O3 -arch=sm_89 -lineinfo -Xptxas -v fused_ops.cu -o fused_ops
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z5sm_s4PKfPfi' for 'sm_89'
+ptxas info    : Function properties for _Z5sm_s4PKfPfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 48 registers, used 1 barriers, 72 bytes smem, 372 bytes cmem[0]
+ptxas info    : Compile time = 42.087 ms
+ptxas info    : Compiling entry function '_Z5sm_s3PKfPfi' for 'sm_89'
+ptxas info    : Function properties for _Z5sm_s3PKfPfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 56 registers, used 1 barriers, 72 bytes smem, 372 bytes cmem[0]
+ptxas info    : Compile time = 58.810 ms
+ptxas info    : Compiling entry function '_Z8sm_s2_msPKfPfS1_i' for 'sm_89'
+ptxas info    : Function properties for _Z8sm_s2_msPKfPfS1_i
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 22 registers, used 1 barriers, 72 bytes smem, 380 bytes cmem[0]
+ptxas info    : Compile time = 15.586 ms
+ptxas info    : Compiling entry function '_Z9sm_s1_divPKfS0_S0_Pfi' for 'sm_89'
+ptxas info    : Function properties for _Z9sm_s1_divPKfS0_S0_Pfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 24 registers, used 0 barriers, 388 bytes cmem[0]
+ptxas info    : Compile time = 5.917 ms
+ptxas info    : Compiling entry function '_Z9sm_s1_sumPKfS0_Pfi' for 'sm_89'
+ptxas info    : Function properties for _Z9sm_s1_sumPKfS0_Pfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 32 bytes smem, 380 bytes cmem[0]
+ptxas info    : Compile time = 12.004 ms
+ptxas info    : Compiling entry function '_Z9sm_s1_maxPKfPfi' for 'sm_89'
+ptxas info    : Function properties for _Z9sm_s1_maxPKfPfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 39 registers, used 1 barriers, 32 bytes smem, 372 bytes cmem[0]
+ptxas info    : Compile time = 7.524 ms
+ptxas info    : Compiling entry function '_Z6rms_n4PKfS0_Pfif' for 'sm_89'
+ptxas info    : Function properties for _Z6rms_n4PKfS0_Pfif
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 55 registers, used 1 barriers, 32 bytes smem, 384 bytes cmem[0]
+ptxas info    : Compile time = 16.673 ms
+ptxas info    : Compiling entry function '_Z6rms_n3PKfS0_Pfif' for 'sm_89'
+ptxas info    : Function properties for _Z6rms_n3PKfS0_Pfif
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 52 registers, used 1 barriers, 32 bytes smem, 384 bytes cmem[0]
+ptxas info    : Compile time = 22.987 ms
+ptxas info    : Compiling entry function '_Z6rms_n2PKfS0_Pfif' for 'sm_89'
+ptxas info    : Function properties for _Z6rms_n2PKfS0_Pfif
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 39 registers, used 1 barriers, 32 bytes smem, 384 bytes cmem[0]
+ptxas info    : Compile time = 15.714 ms
+ptxas info    : Compiling entry function '_Z12rms_n1_pass2PKfS0_S0_Pfi' for 'sm_89'
+ptxas info    : Function properties for _Z12rms_n1_pass2PKfS0_S0_Pfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 26 registers, used 0 barriers, 388 bytes cmem[0]
+ptxas info    : Compile time = 3.224 ms
+ptxas info    : Compiling entry function '_Z12rms_n1_pass1PKfPfif' for 'sm_89'
+ptxas info    : Function properties for _Z12rms_n1_pass1PKfPfif
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, used 1 barriers, 32 bytes smem, 376 bytes cmem[0]
+ptxas info    : Compile time = 12.284 ms
+
+>>> 十一个 kernel 全都要是 0 bytes stack frame / 0 bytes spill stores。
+>>> 尤其盯住 rms_n3 / rms_n4 / sm_s3 / sm_s4 —— 它们每线程要拿 32 个寄存器
+>>> 存整行数据。一旦 spill，那行数据就跑到显存里去了，
+>>> '只读一次' 的前提作废，1.5× / 2.0× 一个都不会出现。
+>>> 顺带记下寄存器数：n1/n2 应该很少（十几个），n3/n4/s3/s4 应该明显更多。
+-------------------------------------------------------------
+正确性：八个 kernel 各跑一次小规模
+-------------------------------------------------------------
+
+--- n1 · M=64 N=3584 ---
+$ ./fused_ops n1 64 3584 3
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n1] RMSNorm   M=64 行 × N=3584 列   block 256 线程   grid 64 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 64 / (128 SM × 6) = 0.08   ⚠ 填不满，卡在空转
+footprint = x + y = 1.8 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0072 ms   搬运 2.6 MB   384.0 GB/s   MBU 38.1%
+字节账: 12N 字节/行 × 64 行 = 2.6 MB；理论下限 0.0027 ms（按 1008 GB/s 跑满）
+
+--- n2 · M=64 N=3584 ---
+$ ./fused_ops n2 64 3584 3
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n2] RMSNorm   M=64 行 × N=3584 列   block 256 线程   grid 64 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 64 / (128 SM × 6) = 0.08   ⚠ 填不满，卡在空转
+footprint = x + y = 1.8 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0051 ms   搬运 2.6 MB   537.6 GB/s   MBU 53.3%
+字节账: 12N 字节/行 × 64 行 = 2.6 MB；理论下限 0.0027 ms（按 1008 GB/s 跑满）
+
+--- n3 · M=64 N=3584 ---
+$ ./fused_ops n3 64 3584 3
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n3] RMSNorm   M=64 行 × N=3584 列   block 256 线程   grid 64 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 64 / (128 SM × 4) = 0.12   ⚠ 填不满，卡在空转
+footprint = x + y = 1.8 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0061 ms   搬运 1.8 MB   300.2 GB/s   MBU 29.8%
+字节账: 8N 字节/行 × 64 行 = 1.8 MB；理论下限 0.0018 ms（按 1008 GB/s 跑满）
+
+--- n4 · M=64 N=3584 ---
+$ ./fused_ops n4 64 3584 3
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n4] RMSNorm   M=64 行 × N=3584 列   block 256 线程   grid 64 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 64 / (128 SM × 4) = 0.12   ⚠ 填不满，卡在空转
+footprint = x + y = 1.8 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0051 ms   搬运 1.8 MB   358.4 GB/s   MBU 35.6%
+字节账: 8N 字节/行 × 64 行 = 1.8 MB；理论下限 0.0018 ms（按 1008 GB/s 跑满）
+
+--- s1 · M=64 N=2048 ---
+$ ./fused_ops s1 64 2048 3
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s1] softmax   M=64 行 × N=2048 列   block 256 线程   grid 64 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 64 / (128 SM × 6) = 0.08   ⚠ 填不满，卡在空转
+footprint = x + y = 1.0 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0092 ms   搬运 2.0 MB   227.6 GB/s   MBU 22.6%
+字节账: 16N 字节/行 × 64 行 = 2.0 MB；理论下限 0.0021 ms（按 1008 GB/s 跑满）
+
+--- s2 · M=64 N=2048 ---
+$ ./fused_ops s2 64 2048 3
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s2] softmax   M=64 行 × N=2048 列   block 256 线程   grid 64 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 64 / (128 SM × 6) = 0.08   ⚠ 填不满，卡在空转
+footprint = x + y = 1.0 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0061 ms   搬运 1.5 MB   256.0 GB/s   MBU 25.4%
+字节账: 12N 字节/行 × 64 行 = 1.5 MB；理论下限 0.0016 ms（按 1008 GB/s 跑满）
+
+--- s3 · M=64 N=2048 ---
+$ ./fused_ops s3 64 2048 3
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s3] softmax   M=64 行 × N=2048 列   block 256 线程   grid 64 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 64 / (128 SM × 4) = 0.12   ⚠ 填不满，卡在空转
+footprint = x + y = 1.0 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0051 ms   搬运 1.0 MB   204.8 GB/s   MBU 20.3%
+字节账: 8N 字节/行 × 64 行 = 1.0 MB；理论下限 0.0010 ms（按 1008 GB/s 跑满）
+
+--- s4 · M=64 N=2048 ---
+$ ./fused_ops s4 64 2048 3
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s4] softmax   M=64 行 × N=2048 列   block 256 线程   grid 64 个 block
+occupancy: 5 block × 256 线程 = 1280 / 1536 = 83.3%   grid 填充度 64 / (128 SM × 5) = 0.10   ⚠ 填不满，卡在空转
+footprint = x + y = 1.0 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0041 ms   搬运 1.0 MB   256.0 GB/s   MBU 25.4%
+字节账: 8N 字节/行 × 64 行 = 1.0 MB；理论下限 0.0010 ms（按 1008 GB/s 跑满）
+
+>>> 八行都要看到 ✓ 抽样校验通过。
+>>> softmax 那四个尤其要看 —— online 递推写错的典型症状不是崩溃，
+>>> 是结果偏一点点，只有对照 CPU 才看得出来。
+
+--- 边界：N 不是 BLOCK 的整数倍（最后一轮只有部分线程有活）---
+
+--- n3 · N=1000 ---
+$ ./fused_ops n3 64 1000 3
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n3] RMSNorm   M=64 行 × N=1000 列   block 256 线程   grid 64 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 64 / (128 SM × 4) = 0.12   ⚠ 填不满，卡在空转
+footprint = x + y = 0.5 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0051 ms   搬运 0.5 MB   100.0 GB/s   MBU 9.9%
+字节账: 8N 字节/行 × 64 行 = 0.5 MB；理论下限 0.0005 ms（按 1008 GB/s 跑满）
+
+--- s3 · N=1000 ---
+$ ./fused_ops s3 64 1000 3
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s3] softmax   M=64 行 × N=1000 列   block 256 线程   grid 64 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 64 / (128 SM × 4) = 0.12   ⚠ 填不满，卡在空转
+footprint = x + y = 0.5 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0051 ms   搬运 0.5 MB   100.0 GB/s   MBU 9.9%
+字节账: 8N 字节/行 × 64 行 = 0.5 MB；理论下限 0.0005 ms（按 1008 GB/s 跑满）
+>>> 这两个必须也通过。写越界判断时最容易在这里翻车。
+
+=============================================================
+ 主阶梯：3 轮
+ RMSNorm  M=8192 行 × N=3584    理论 n1→n3 = 12N/8N = 1.50×
+ softmax  M=8192 行 × N=2048    理论 s1→s3 = 16N/8N = 2.00×
+=============================================================
+
+##################### 第 1 轮 #####################
+
+--- round 1 · rmsnorm · n1 ---
+$ ./fused_ops n1 8192 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n1] RMSNorm   M=8192 行 × N=3584 列   block 256 线程   grid 8192 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 8192 / (128 SM × 6) = 10.67
+footprint = x + y = 224.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.3860 ms   搬运 336.0 MB   912.6 GB/s   MBU 90.5%
+字节账: 12N 字节/行 × 8192 行 = 336.0 MB；理论下限 0.3495 ms（按 1008 GB/s 跑满）
+
+--- round 1 · rmsnorm · n2 ---
+$ ./fused_ops n2 8192 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n2] RMSNorm   M=8192 行 × N=3584 列   block 256 线程   grid 8192 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 8192 / (128 SM × 6) = 10.67
+footprint = x + y = 224.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.2591 ms   搬运 336.0 MB   1359.9 GB/s   MBU 134.9%
+字节账: 12N 字节/行 × 8192 行 = 336.0 MB；理论下限 0.3495 ms（按 1008 GB/s 跑满）
+
+--- round 1 · rmsnorm · n3 ---
+$ ./fused_ops n3 8192 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n3] RMSNorm   M=8192 行 × N=3584 列   block 256 线程   grid 8192 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 8192 / (128 SM × 4) = 16.00
+footprint = x + y = 224.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.2560 ms   搬运 224.0 MB   917.5 GB/s   MBU 91.0%
+字节账: 8N 字节/行 × 8192 行 = 224.0 MB；理论下限 0.2330 ms（按 1008 GB/s 跑满）
+
+--- round 1 · rmsnorm · n4 ---
+$ ./fused_ops n4 8192 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n4] RMSNorm   M=8192 行 × N=3584 列   block 256 线程   grid 8192 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 8192 / (128 SM × 4) = 16.00
+footprint = x + y = 224.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.2560 ms   搬运 224.0 MB   917.4 GB/s   MBU 91.0%
+字节账: 8N 字节/行 × 8192 行 = 224.0 MB；理论下限 0.2330 ms（按 1008 GB/s 跑满）
+
+--- round 1 · softmax · s1 ---
+$ ./fused_ops s1 8192 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s1] softmax   M=8192 行 × N=2048 列   block 256 线程   grid 8192 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 8192 / (128 SM × 6) = 10.67
+footprint = x + y = 128.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.2509 ms   搬运 256.0 MB   1070.0 GB/s   MBU 106.1%
+字节账: 16N 字节/行 × 8192 行 = 256.0 MB；理论下限 0.2663 ms（按 1008 GB/s 跑满）
+
+--- round 1 · softmax · s2 ---
+$ ./fused_ops s2 8192 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s2] softmax   M=8192 行 × N=2048 列   block 256 线程   grid 8192 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 8192 / (128 SM × 6) = 10.67
+footprint = x + y = 128.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.2202 ms   搬运 192.0 MB   914.5 GB/s   MBU 90.7%
+字节账: 12N 字节/行 × 8192 行 = 192.0 MB；理论下限 0.1997 ms（按 1008 GB/s 跑满）
+
+--- round 1 · softmax · s3 ---
+$ ./fused_ops s3 8192 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s3] softmax   M=8192 行 × N=2048 列   block 256 线程   grid 8192 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 8192 / (128 SM × 4) = 16.00
+footprint = x + y = 128.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.1475 ms   搬运 128.0 MB   910.2 GB/s   MBU 90.3%
+字节账: 8N 字节/行 × 8192 行 = 128.0 MB；理论下限 0.1331 ms（按 1008 GB/s 跑满）
+
+--- round 1 · softmax · s4 ---
+$ ./fused_ops s4 8192 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s4] softmax   M=8192 行 × N=2048 列   block 256 线程   grid 8192 个 block
+occupancy: 5 block × 256 线程 = 1280 / 1536 = 83.3%   grid 填充度 8192 / (128 SM × 5) = 12.80
+footprint = x + y = 128.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.1475 ms   搬运 128.0 MB   910.2 GB/s   MBU 90.3%
+字节账: 8N 字节/行 × 8192 行 = 128.0 MB；理论下限 0.1331 ms（按 1008 GB/s 跑满）
+
+##################### 第 2 轮 #####################
+
+--- round 2 · rmsnorm · n1 ---
+$ ./fused_ops n1 8192 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n1] RMSNorm   M=8192 行 × N=3584 列   block 256 线程   grid 8192 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 8192 / (128 SM × 6) = 10.67
+footprint = x + y = 224.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.3859 ms   搬运 336.0 MB   912.9 GB/s   MBU 90.6%
+字节账: 12N 字节/行 × 8192 行 = 336.0 MB；理论下限 0.3495 ms（按 1008 GB/s 跑满）
+
+--- round 2 · rmsnorm · n2 ---
+$ ./fused_ops n2 8192 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n2] RMSNorm   M=8192 行 × N=3584 列   block 256 线程   grid 8192 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 8192 / (128 SM × 6) = 10.67
+footprint = x + y = 224.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.2600 ms   搬运 336.0 MB   1354.9 GB/s   MBU 134.4%
+字节账: 12N 字节/行 × 8192 行 = 336.0 MB；理论下限 0.3495 ms（按 1008 GB/s 跑满）
+
+--- round 2 · rmsnorm · n3 ---
+$ ./fused_ops n3 8192 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n3] RMSNorm   M=8192 行 × N=3584 列   block 256 线程   grid 8192 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 8192 / (128 SM × 4) = 16.00
+footprint = x + y = 224.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.2560 ms   搬运 224.0 MB   917.5 GB/s   MBU 91.0%
+字节账: 8N 字节/行 × 8192 行 = 224.0 MB；理论下限 0.2330 ms（按 1008 GB/s 跑满）
+
+--- round 2 · rmsnorm · n4 ---
+$ ./fused_ops n4 8192 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n4] RMSNorm   M=8192 行 × N=3584 列   block 256 线程   grid 8192 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 8192 / (128 SM × 4) = 16.00
+footprint = x + y = 224.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.2551 ms   搬运 224.0 MB   920.8 GB/s   MBU 91.3%
+字节账: 8N 字节/行 × 8192 行 = 224.0 MB；理论下限 0.2330 ms（按 1008 GB/s 跑满）
+
+--- round 2 · softmax · s1 ---
+$ ./fused_ops s1 8192 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s1] softmax   M=8192 行 × N=2048 列   block 256 线程   grid 8192 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 8192 / (128 SM × 6) = 10.67
+footprint = x + y = 128.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.2509 ms   搬运 256.0 MB   1070.0 GB/s   MBU 106.1%
+字节账: 16N 字节/行 × 8192 行 = 256.0 MB；理论下限 0.2663 ms（按 1008 GB/s 跑满）
+
+--- round 2 · softmax · s2 ---
+$ ./fused_ops s2 8192 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s2] softmax   M=8192 行 × N=2048 列   block 256 线程   grid 8192 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 8192 / (128 SM × 6) = 10.67
+footprint = x + y = 128.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.2201 ms   搬运 192.0 MB   914.6 GB/s   MBU 90.7%
+字节账: 12N 字节/行 × 8192 行 = 192.0 MB；理论下限 0.1997 ms（按 1008 GB/s 跑满）
+
+--- round 2 · softmax · s3 ---
+$ ./fused_ops s3 8192 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s3] softmax   M=8192 行 × N=2048 列   block 256 线程   grid 8192 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 8192 / (128 SM × 4) = 16.00
+footprint = x + y = 128.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.1485 ms   搬运 128.0 MB   903.9 GB/s   MBU 89.7%
+字节账: 8N 字节/行 × 8192 行 = 128.0 MB；理论下限 0.1331 ms（按 1008 GB/s 跑满）
+
+--- round 2 · softmax · s4 ---
+$ ./fused_ops s4 8192 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s4] softmax   M=8192 行 × N=2048 列   block 256 线程   grid 8192 个 block
+occupancy: 5 block × 256 线程 = 1280 / 1536 = 83.3%   grid 填充度 8192 / (128 SM × 5) = 12.80
+footprint = x + y = 128.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.1474 ms   搬运 128.0 MB   910.8 GB/s   MBU 90.4%
+字节账: 8N 字节/行 × 8192 行 = 128.0 MB；理论下限 0.1331 ms（按 1008 GB/s 跑满）
+
+##################### 第 3 轮 #####################
+
+--- round 3 · rmsnorm · n1 ---
+$ ./fused_ops n1 8192 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n1] RMSNorm   M=8192 行 × N=3584 列   block 256 线程   grid 8192 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 8192 / (128 SM × 6) = 10.67
+footprint = x + y = 224.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.3859 ms   搬运 336.0 MB   912.9 GB/s   MBU 90.6%
+字节账: 12N 字节/行 × 8192 行 = 336.0 MB；理论下限 0.3495 ms（按 1008 GB/s 跑满）
+
+--- round 3 · rmsnorm · n2 ---
+$ ./fused_ops n2 8192 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n2] RMSNorm   M=8192 行 × N=3584 列   block 256 线程   grid 8192 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 8192 / (128 SM × 6) = 10.67
+footprint = x + y = 224.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.2591 ms   搬运 336.0 MB   1359.9 GB/s   MBU 134.9%
+字节账: 12N 字节/行 × 8192 行 = 336.0 MB；理论下限 0.3495 ms（按 1008 GB/s 跑满）
+
+--- round 3 · rmsnorm · n3 ---
+$ ./fused_ops n3 8192 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n3] RMSNorm   M=8192 行 × N=3584 列   block 256 线程   grid 8192 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 8192 / (128 SM × 4) = 16.00
+footprint = x + y = 224.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.2560 ms   搬运 224.0 MB   917.5 GB/s   MBU 91.0%
+字节账: 8N 字节/行 × 8192 行 = 224.0 MB；理论下限 0.2330 ms（按 1008 GB/s 跑满）
+
+--- round 3 · rmsnorm · n4 ---
+$ ./fused_ops n4 8192 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n4] RMSNorm   M=8192 行 × N=3584 列   block 256 线程   grid 8192 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 8192 / (128 SM × 4) = 16.00
+footprint = x + y = 224.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.2562 ms   搬运 224.0 MB   916.9 GB/s   MBU 91.0%
+字节账: 8N 字节/行 × 8192 行 = 224.0 MB；理论下限 0.2330 ms（按 1008 GB/s 跑满）
+
+--- round 3 · softmax · s1 ---
+$ ./fused_ops s1 8192 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s1] softmax   M=8192 行 × N=2048 列   block 256 线程   grid 8192 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 8192 / (128 SM × 6) = 10.67
+footprint = x + y = 128.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.2519 ms   搬运 256.0 MB   1065.6 GB/s   MBU 105.7%
+字节账: 16N 字节/行 × 8192 行 = 256.0 MB；理论下限 0.2663 ms（按 1008 GB/s 跑满）
+
+--- round 3 · softmax · s2 ---
+$ ./fused_ops s2 8192 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s2] softmax   M=8192 行 × N=2048 列   block 256 线程   grid 8192 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 8192 / (128 SM × 6) = 10.67
+footprint = x + y = 128.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.2211 ms   搬运 192.0 MB   910.5 GB/s   MBU 90.3%
+字节账: 12N 字节/行 × 8192 行 = 192.0 MB；理论下限 0.1997 ms（按 1008 GB/s 跑满）
+
+--- round 3 · softmax · s3 ---
+$ ./fused_ops s3 8192 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s3] softmax   M=8192 行 × N=2048 列   block 256 线程   grid 8192 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 8192 / (128 SM × 4) = 16.00
+footprint = x + y = 128.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.1475 ms   搬运 128.0 MB   910.2 GB/s   MBU 90.3%
+字节账: 8N 字节/行 × 8192 行 = 128.0 MB；理论下限 0.1331 ms（按 1008 GB/s 跑满）
+
+--- round 3 · softmax · s4 ---
+$ ./fused_ops s4 8192 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s4] softmax   M=8192 行 × N=2048 列   block 256 线程   grid 8192 个 block
+occupancy: 5 block × 256 线程 = 1280 / 1536 = 83.3%   grid 填充度 8192 / (128 SM × 5) = 12.80
+footprint = x + y = 128.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.1475 ms   搬运 128.0 MB   910.2 GB/s   MBU 90.3%
+字节账: 8N 字节/行 × 8192 行 = 128.0 MB；理论下限 0.1331 ms（按 1008 GB/s 跑满）
+
+=============================================================
+ 形状扫描 —— 行数变了，结论会不会变
+   decode b1   M=1      一个 block，128 个 SM 里 127 个在看戏
+   decode b32  M=32     还是填不满
+   prefill     M=2048   一次前向 2048 个 token
+   大批        M=16384  把卡喂饱，MBU 的上限在这里
+=============================================================
+
+========== decode-b1 : M=1 ==========
+
+--- decode-b1 · n1 ---
+$ ./fused_ops n1 1 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n1] RMSNorm   M=1 行 × N=3584 列   block 256 线程   grid 1 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 1 / (128 SM × 6) = 0.00   ⚠ 填不满，卡在空转
+footprint = x + y = 0.0 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0061 ms   搬运 0.0 MB   7.0 GB/s   MBU 0.7%
+字节账: 12N 字节/行 × 1 行 = 0.0 MB；理论下限 0.0000 ms（按 1008 GB/s 跑满）
+
+--- decode-b1 · n3 ---
+$ ./fused_ops n3 1 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n3] RMSNorm   M=1 行 × N=3584 列   block 256 线程   grid 1 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 1 / (128 SM × 4) = 0.00   ⚠ 填不满，卡在空转
+footprint = x + y = 0.0 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0061 ms   搬运 0.0 MB   4.7 GB/s   MBU 0.5%
+字节账: 8N 字节/行 × 1 行 = 0.0 MB；理论下限 0.0000 ms（按 1008 GB/s 跑满）
+
+--- decode-b1 · n4 ---
+$ ./fused_ops n4 1 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n4] RMSNorm   M=1 行 × N=3584 列   block 256 线程   grid 1 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 1 / (128 SM × 4) = 0.00   ⚠ 填不满，卡在空转
+footprint = x + y = 0.0 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0041 ms   搬运 0.0 MB   7.0 GB/s   MBU 0.7%
+字节账: 8N 字节/行 × 1 行 = 0.0 MB；理论下限 0.0000 ms（按 1008 GB/s 跑满）
+
+--- decode-b1 · s1 ---
+$ ./fused_ops s1 1 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s1] softmax   M=1 行 × N=2048 列   block 256 线程   grid 1 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 1 / (128 SM × 6) = 0.00   ⚠ 填不满，卡在空转
+footprint = x + y = 0.0 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0081 ms   搬运 0.0 MB   4.1 GB/s   MBU 0.4%
+字节账: 16N 字节/行 × 1 行 = 0.0 MB；理论下限 0.0000 ms（按 1008 GB/s 跑满）
+
+--- decode-b1 · s3 ---
+$ ./fused_ops s3 1 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s3] softmax   M=1 行 × N=2048 列   block 256 线程   grid 1 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 1 / (128 SM × 4) = 0.00   ⚠ 填不满，卡在空转
+footprint = x + y = 0.0 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0058 ms   搬运 0.0 MB   2.8 GB/s   MBU 0.3%
+字节账: 8N 字节/行 × 1 行 = 0.0 MB；理论下限 0.0000 ms（按 1008 GB/s 跑满）
+
+--- decode-b1 · s4 ---
+$ ./fused_ops s4 1 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s4] softmax   M=1 行 × N=2048 列   block 256 线程   grid 1 个 block
+occupancy: 5 block × 256 线程 = 1280 / 1536 = 83.3%   grid 填充度 1 / (128 SM × 5) = 0.00   ⚠ 填不满，卡在空转
+footprint = x + y = 0.0 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0041 ms   搬运 0.0 MB   4.0 GB/s   MBU 0.4%
+字节账: 8N 字节/行 × 1 行 = 0.0 MB；理论下限 0.0000 ms（按 1008 GB/s 跑满）
+
+========== decode-b32 : M=32 ==========
+
+--- decode-b32 · n1 ---
+$ ./fused_ops n1 32 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n1] RMSNorm   M=32 行 × N=3584 列   block 256 线程   grid 32 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 32 / (128 SM × 6) = 0.04   ⚠ 填不满，卡在空转
+footprint = x + y = 0.9 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0061 ms   搬运 1.3 MB   224.0 GB/s   MBU 22.2%
+字节账: 12N 字节/行 × 32 行 = 1.3 MB；理论下限 0.0014 ms（按 1008 GB/s 跑满）
+
+--- decode-b32 · n3 ---
+$ ./fused_ops n3 32 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n3] RMSNorm   M=32 行 × N=3584 列   block 256 线程   grid 32 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 32 / (128 SM × 4) = 0.06   ⚠ 填不满，卡在空转
+footprint = x + y = 0.9 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0060 ms   搬运 0.9 MB   154.2 GB/s   MBU 15.3%
+字节账: 8N 字节/行 × 32 行 = 0.9 MB；理论下限 0.0009 ms（按 1008 GB/s 跑满）
+
+--- decode-b32 · n4 ---
+$ ./fused_ops n4 32 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n4] RMSNorm   M=32 行 × N=3584 列   block 256 线程   grid 32 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 32 / (128 SM × 4) = 0.06   ⚠ 填不满，卡在空转
+footprint = x + y = 0.9 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0041 ms   搬运 0.9 MB   224.0 GB/s   MBU 22.2%
+字节账: 8N 字节/行 × 32 行 = 0.9 MB；理论下限 0.0009 ms（按 1008 GB/s 跑满）
+
+--- decode-b32 · s1 ---
+$ ./fused_ops s1 32 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s1] softmax   M=32 行 × N=2048 列   block 256 线程   grid 32 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 32 / (128 SM × 6) = 0.04   ⚠ 填不满，卡在空转
+footprint = x + y = 0.5 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0080 ms   搬运 1.0 MB   131.1 GB/s   MBU 13.0%
+字节账: 16N 字节/行 × 32 行 = 1.0 MB；理论下限 0.0010 ms（按 1008 GB/s 跑满）
+
+--- decode-b32 · s3 ---
+$ ./fused_ops s3 32 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s3] softmax   M=32 行 × N=2048 列   block 256 线程   grid 32 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 32 / (128 SM × 4) = 0.06   ⚠ 填不满，卡在空转
+footprint = x + y = 0.5 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0051 ms   搬运 0.5 MB   102.4 GB/s   MBU 10.2%
+字节账: 8N 字节/行 × 32 行 = 0.5 MB；理论下限 0.0005 ms（按 1008 GB/s 跑满）
+
+--- decode-b32 · s4 ---
+$ ./fused_ops s4 32 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s4] softmax   M=32 行 × N=2048 列   block 256 线程   grid 32 个 block
+occupancy: 5 block × 256 线程 = 1280 / 1536 = 83.3%   grid 填充度 32 / (128 SM × 5) = 0.05   ⚠ 填不满，卡在空转
+footprint = x + y = 0.5 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0041 ms   搬运 0.5 MB   128.0 GB/s   MBU 12.7%
+字节账: 8N 字节/行 × 32 行 = 0.5 MB；理论下限 0.0005 ms（按 1008 GB/s 跑满）
+
+========== prefill : M=2048 ==========
+
+--- prefill · n1 ---
+$ ./fused_ops n1 2048 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n1] RMSNorm   M=2048 行 × N=3584 列   block 256 线程   grid 2048 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 2048 / (128 SM × 6) = 2.67
+footprint = x + y = 56.0 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0266 ms   搬运 84.0 MB   3308.3 GB/s   MBU 328.2%
+字节账: 12N 字节/行 × 2048 行 = 84.0 MB；理论下限 0.0874 ms（按 1008 GB/s 跑满）
+
+--- prefill · n3 ---
+$ ./fused_ops n3 2048 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n3] RMSNorm   M=2048 行 × N=3584 列   block 256 线程   grid 2048 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 2048 / (128 SM × 4) = 4.00
+footprint = x + y = 56.0 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0201 ms   搬运 56.0 MB   2917.3 GB/s   MBU 289.4%
+字节账: 8N 字节/行 × 2048 行 = 56.0 MB；理论下限 0.0582 ms（按 1008 GB/s 跑满）
+
+--- prefill · n4 ---
+$ ./fused_ops n4 2048 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n4] RMSNorm   M=2048 行 × N=3584 列   block 256 线程   grid 2048 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 2048 / (128 SM × 4) = 4.00
+footprint = x + y = 56.0 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0184 ms   搬运 56.0 MB   3185.8 GB/s   MBU 316.0%
+字节账: 8N 字节/行 × 2048 行 = 56.0 MB；理论下限 0.0582 ms（按 1008 GB/s 跑满）
+
+--- prefill · s1 ---
+$ ./fused_ops s1 2048 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s1] softmax   M=2048 行 × N=2048 列   block 256 线程   grid 2048 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 2048 / (128 SM × 6) = 2.67
+footprint = x + y = 32.0 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0225 ms   搬运 64.0 MB   2978.9 GB/s   MBU 295.5%
+字节账: 16N 字节/行 × 2048 行 = 64.0 MB；理论下限 0.0666 ms（按 1008 GB/s 跑满）
+
+--- prefill · s3 ---
+$ ./fused_ops s3 2048 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s3] softmax   M=2048 行 × N=2048 列   block 256 线程   grid 2048 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 2048 / (128 SM × 4) = 4.00
+footprint = x + y = 32.0 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0215 ms   搬运 32.0 MB   1560.4 GB/s   MBU 154.8%
+字节账: 8N 字节/行 × 2048 行 = 32.0 MB；理论下限 0.0333 ms（按 1008 GB/s 跑满）
+
+--- prefill · s4 ---
+$ ./fused_ops s4 2048 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s4] softmax   M=2048 行 × N=2048 列   block 256 线程   grid 2048 个 block
+occupancy: 5 block × 256 线程 = 1280 / 1536 = 83.3%   grid 填充度 2048 / (128 SM × 5) = 3.20
+footprint = x + y = 32.0 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0143 ms   搬运 32.0 MB   2340.6 GB/s   MBU 232.2%
+字节账: 8N 字节/行 × 2048 行 = 32.0 MB；理论下限 0.0333 ms（按 1008 GB/s 跑满）
+
+========== 大批 : M=16384 ==========
+
+--- 大批 · n1 ---
+$ ./fused_ops n1 16384 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n1] RMSNorm   M=16384 行 × N=3584 列   block 256 线程   grid 16384 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 16384 / (128 SM × 6) = 21.33
+footprint = x + y = 448.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.7690 ms   搬运 672.0 MB   916.3 GB/s   MBU 90.9%
+字节账: 12N 字节/行 × 16384 行 = 672.0 MB；理论下限 0.6990 ms（按 1008 GB/s 跑满）
+
+--- 大批 · n3 ---
+$ ./fused_ops n3 16384 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n3] RMSNorm   M=16384 行 × N=3584 列   block 256 线程   grid 16384 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 16384 / (128 SM × 4) = 32.00
+footprint = x + y = 448.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.5120 ms   搬运 448.0 MB   917.5 GB/s   MBU 91.0%
+字节账: 8N 字节/行 × 16384 行 = 448.0 MB；理论下限 0.4660 ms（按 1008 GB/s 跑满）
+
+--- 大批 · n4 ---
+$ ./fused_ops n4 16384 3584 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n4] RMSNorm   M=16384 行 × N=3584 列   block 256 线程   grid 16384 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 16384 / (128 SM × 4) = 32.00
+footprint = x + y = 448.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.5110 ms   搬运 448.0 MB   919.3 GB/s   MBU 91.2%
+字节账: 8N 字节/行 × 16384 行 = 448.0 MB；理论下限 0.4660 ms（按 1008 GB/s 跑满）
+
+--- 大批 · s1 ---
+$ ./fused_ops s1 16384 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s1] softmax   M=16384 行 × N=2048 列   block 256 线程   grid 16384 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 16384 / (128 SM × 6) = 21.33
+footprint = x + y = 256.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.5806 ms   搬运 512.0 MB   924.7 GB/s   MBU 91.7%
+字节账: 16N 字节/行 × 16384 行 = 512.0 MB；理论下限 0.5326 ms（按 1008 GB/s 跑满）
+
+--- 大批 · s3 ---
+$ ./fused_ops s3 16384 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s3] softmax   M=16384 行 × N=2048 列   block 256 线程   grid 16384 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 16384 / (128 SM × 4) = 32.00
+footprint = x + y = 256.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.2949 ms   搬运 256.0 MB   910.2 GB/s   MBU 90.3%
+字节账: 8N 字节/行 × 16384 行 = 256.0 MB；理论下限 0.2663 ms（按 1008 GB/s 跑满）
+
+--- 大批 · s4 ---
+$ ./fused_ops s4 16384 2048 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s4] softmax   M=16384 行 × N=2048 列   block 256 线程   grid 16384 个 block
+occupancy: 5 block × 256 线程 = 1280 / 1536 = 83.3%   grid 填充度 16384 / (128 SM × 5) = 25.60
+footprint = x + y = 256.0 MB（L2 72.0 MB）  → 装不下，必须走显存
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.2936 ms   搬运 256.0 MB   914.2 GB/s   MBU 90.7%
+字节账: 8N 字节/行 × 16384 行 = 256.0 MB；理论下限 0.2663 ms（按 1008 GB/s 跑满）
+
+=============================================================
+ 长行：寄存器放不下的时候
+   Qwen2.5-7B 的 vocab 是 152064 —— 采样时要对这么长的一行做 softmax。
+   而 s3/s4 的单行上限是 BLOCK × MAXS = 256 × 32 = 8192。
+   下面三条命令里，前两条能跑，第三条会被程序拒绝并说明原因。
+
+   这不是实现偷懒，而是【FlashAttention 为什么必须分块】的同一个约束：
+   行放不进片上存储 → 必须分块 → 分块就要能增量合并 softmax
+   → 于是 online 递推从'优化技巧'变成'必需品'。
+=============================================================
+
+--- logits softmax · s1（三趟，不吃寄存器）---
+$ ./fused_ops s1 32 152064 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s1] softmax   M=32 行 × N=152064 列   block 256 线程   grid 32 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 32 / (128 SM × 6) = 0.04   ⚠ 填不满，卡在空转
+footprint = x + y = 37.1 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0522 ms   搬运 74.2 MB   1490.8 GB/s   MBU 147.9%
+字节账: 16N 字节/行 × 32 行 = 74.2 MB；理论下限 0.0772 ms（按 1008 GB/s 跑满）
+
+--- logits softmax · s2（online 两趟，也不吃寄存器）---
+$ ./fused_ops s2 32 152064 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s2] softmax   M=32 行 × N=152064 列   block 256 线程   grid 32 个 block
+occupancy: 6 block × 256 线程 = 1536 / 1536 = 100.0%   grid 填充度 32 / (128 SM × 6) = 0.04   ⚠ 填不满，卡在空转
+footprint = x + y = 37.1 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 0.0602 ms   搬运 55.7 MB   970.1 GB/s   MBU 96.2%
+字节账: 12N 字节/行 × 32 行 = 55.7 MB；理论下限 0.0579 ms（按 1008 GB/s 跑满）
+
+--- logits softmax · s3（寄存器驻留，预期被拒绝）---
+$ ./fused_ops s3 32 152064 11
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s3] softmax   M=32 行 × N=152064 列   block 256 线程   grid 32 个 block
+✗ 这一级把整行存在寄存器里，单行最长 8192，而 N=152064。
+  这不是实现偷懒，是硬件约束 —— 也正是 FlashAttention 必须分块的原因，
+  详见导学 §7 · 三。想跑长行请用 n1/n2 或 s1/s2。
+
+>>> s3 应该打印 '✗ 这一级把整行存在寄存器里' 并退出（返回码 3），这是预期行为。
+>>> 同时注意 s1 和 s2 在这个形状上的 MBU —— 行长 152064、只有 32 行，
+>>> 两个数字放在一起看，能说明'长行 + 少行'是最难喂饱卡的一种形状。
+
+=============================================================
+ 竞态检查 —— 放在计时之后
+ 这两个算子的 shared 用法比第 10 章复杂：blockReduceMaxSum 里
+ 同一块 shared 先写 warp 部分和、再被 0 号 warp 读、再广播，
+ 三个阶段之间少一个 __syncthreads 就是竞态。
+=============================================================
+
+--- racecheck · n3 ---
+$ compute-sanitizer --tool racecheck ./fused_ops n3 8 1000 1
+========= COMPUTE-SANITIZER
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[n3] RMSNorm   M=8 行 × N=1000 列   block 256 线程   grid 8 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 8 / (128 SM × 4) = 0.02   ⚠ 填不满，卡在空转
+footprint = x + y = 0.1 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 2.3409 ms   搬运 0.1 MB   0.0 GB/s   MBU 0.0%
+字节账: 8N 字节/行 × 8 行 = 0.1 MB；理论下限 0.0001 ms（按 1008 GB/s 跑满）
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+
+--- racecheck · s3 ---
+$ compute-sanitizer --tool racecheck ./fused_ops s3 8 1000 1
+========= COMPUTE-SANITIZER
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s3] softmax   M=8 行 × N=1000 列   block 256 线程   grid 8 个 block
+occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 8 / (128 SM × 4) = 0.02   ⚠ 填不满，卡在空转
+footprint = x + y = 0.1 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 2.8426 ms   搬运 0.1 MB   0.0 GB/s   MBU 0.0%
+字节账: 8N 字节/行 × 8 行 = 0.1 MB；理论下限 0.0001 ms（按 1008 GB/s 跑满）
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+
+--- racecheck · s4 ---
+$ compute-sanitizer --tool racecheck ./fused_ops s4 8 1000 1
+========= COMPUTE-SANITIZER
+GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
+[s4] softmax   M=8 行 × N=1000 列   block 256 线程   grid 8 个 block
+occupancy: 5 block × 256 线程 = 1280 / 1536 = 83.3%   grid 填充度 8 / (128 SM × 5) = 0.01   ⚠ 填不满，卡在空转
+footprint = x + y = 0.1 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
+✓ 抽样校验通过（抽查 8 行）
+中位耗时 2.6071 ms   搬运 0.1 MB   0.0 GB/s   MBU 0.0%
+字节账: 8N 字节/行 × 8 行 = 0.1 MB；理论下限 0.0001 ms（按 1008 GB/s 跑满）
+========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)
+
+>>> 每段结尾都要看到 RACECHECK SUMMARY: 0 hazards displayed
+
+=============================================================
+ 完成 → fused_20261001_005225.txt
+
+ 本地取回后：
+   python parse_fused.py fused_20261001_005225.txt      # 解析成 CSV
+=============================================================
