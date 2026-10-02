@@ -272,7 +272,7 @@
       <ol>
         <li id="t8-1"><a href="#s8-1">一、验收清单</a></li>
         <li id="t8-2"><a href="#s8-2">二、fused_ops.cu 全文</a></li>
-        <li id="t8-3"><a href="#s8-3">三、compute-sanitizer 在干啥</a></li>
+        <li id="t8-3"><a href="#s8-3">三、compute-sanitizer 在查什么</a></li>
         <li id="t8-4"><a href="#s8-4">四、run_fused.sh 全文</a></li>
       </ol>
     </div>
@@ -6207,125 +6207,155 @@ int main(int argc, char **argv) {
   </div>
 
   <div class="sec">
-    <h3 id="s8-3">三、<code>compute-sanitizer</code> 到底在干啥 —— 读懂 racecheck 那段日志<a class="up" href="#t8-3" title="回到目录">↑</a></h3>
+    <h3 id="s8-3">三、<code>compute-sanitizer</code> 在查什么：读懂 racecheck 日志<a class="up" href="#t8-3" title="回到目录">↑</a></h3>
     <p class="prose">
-      <strong>一句话：<code>compute-sanitizer</code> 是 CUDA 自带的运行时检查器。
-      它把你的程序原样跑一遍，但在每条访存指令上都加了监控。</strong>
-      <span style="color:var(--ink-3)">这里用的 <code>--tool racecheck</code> 只查一件事：
-      <b>同一个 block 里，有没有两个线程在没有 <code>__syncthreads()</code> 隔开的情况下访问了同一个 shared 地址，而且其中至少一次是写。</b></span>
+      <strong><code>compute-sanitizer</code> 是 CUDA 自带的运行时检查工具。</strong>
+      <span style="color:var(--ink-3)">它照常运行你的程序，同时监控每一条访存指令。</span>
     </p>
+    <p class="prose">
+      <b>这里用的是它的 <code>racecheck</code> 工具，只查一类错误：shared memory 上的竞态。</b>
+      <span style="color:var(--ink-3)">同时满足下面三个条件，就是一处竞态：</span>
+    </p>
+    <ul class="pts">
+      <li>同一个 block 里的两个线程，访问同一个 shared memory 地址；</li>
+      <li>两次访问中，至少有一次是写；</li>
+      <li>两次访问之间，没有 <code>__syncthreads()</code>。</li>
+    </ul>
 
-    <h4>一、它为什么必须存在：这类 bug 靠校验抓不住</h4>
+    <h4>一、为什么需要它：抽样校验抓不住竞态</h4>
     <p class="prose">
-      <span style="color:var(--ink-3)"><a href="#s3-2">§3 · 二</a>讲过，block 级归约要把同一块 shared 用三次：
-      先写入各 warp 的部分和，再由 0 号 warp 读出来，最后把结果广播给全 block。
-      漏掉任何一个 <code>__syncthreads()</code> 都</span>
-      <span style="color:var(--crit);font-weight:650">不会崩溃、不会报错，只会让结果偏一点点</span><span style="color:var(--ink-3)">。
-      而且偏不偏要看 warp 调度的先后，换个形状、换张卡就可能不一样。</span>
-      <b>所以日志里的「✓ 抽样校验通过」证明不了没有竞态，可能只是这一次运气好。</b>
+      <b>漏写 <code>__syncthreads()</code> 不会让程序崩溃，也不会报错。</b>
+      <span style="color:var(--ink-3)">它只会让结果偏一点点。偏多少取决于 warp 的执行顺序。
+      换一个形状或换一张卡，结果可能就不同。</span>
+      <span style="color:var(--crit);font-weight:650">所以「✓ 抽样校验通过」不能证明没有竞态。
+      这一次结果对，可能只是执行顺序碰巧合适。</span>
     </p>
     <p class="prose">
-      <b>racecheck 的价值在于：它不需要竞态真的造成错误结果。</b>
-      <span style="color:var(--ink-3)">它记录每个 shared 地址最近被哪个线程读过、写过，以及两次访问之间有没有隔着 barrier。
-      只要出现「线程 A 写、线程 B 读或写同一地址、中间没有 barrier」这种<b>访问模式</b>，
-      就算这次读到的值碰巧是对的，它也照样报 hazard。按冲突的先后顺序分三类：</span>
+      <b>racecheck 不看结果对不对，只看访问顺序。</b>
+      <span style="color:var(--ink-3)">只要访问顺序满足上面三个条件，它就报告一处竞态，哪怕这次读到的值碰巧正确。
+      racecheck 把每一处竞态记为一个 hazard，按读写的先后分三类：</span>
     </p>
     <div class="tw"><table>
-      <caption>racecheck 报的三类 hazard</caption>
-      <thead><tr><th>类型</th><th>含义</th><th>放到 <code>blockReduceSum</code> 里</th></tr></thead>
+      <caption>racecheck 报告的三类 hazard</caption>
+      <thead><tr><th>类型</th><th>含义</th><th>在 <code>blockReduceSum</code> 里的例子</th></tr></thead>
       <tbody>
         <tr><td class="cn"><b>RAW</b><span class="sub">Read-After-Write</span></td>
-            <td>B 想读 A 写的新值，但两者之间没有 barrier</td>
-            <td>删掉 ⑥ → 1–7 号 warp 读 <code>smem[0]</code> 时，0 号线程可能还没写</td></tr>
+            <td>线程 B 要读线程 A 写的新值，但 A 可能还没写</td>
+            <td>删掉同步点 ⑥：1–7 号 warp 读 <code>smem[0]</code> 时，0 号线程可能还没写入</td></tr>
         <tr><td class="cn"><b>WAR</b><span class="sub">Write-After-Read</span></td>
-            <td>B 还没读完旧值，A 就把它覆盖了</td>
-            <td>同一个 kernel 里连续调两次归约，第二次的 ② 可能覆盖第一次还没被读完的 <code>smem[0]</code></td></tr>
+            <td>线程 B 还没读完旧值，线程 A 就把它覆盖了</td>
+            <td>同一个 kernel 连续做两次归约：第二次的 ② 可能覆盖第一次还没读完的 <code>smem[0]</code></td></tr>
         <tr><td class="cn"><b>WAW</b><span class="sub">Write-After-Write</span></td>
-            <td>两个线程写同一地址，谁最后写进去不确定</td>
-            <td>要是把 <code>smem[warp]</code> 错写成 <code>smem[lane]</code>，8 个 warp 的 lane 0 都会去写 <code>smem[0]</code></td></tr>
+            <td>两个线程写同一个地址，最后留下哪个值不确定</td>
+            <td>把 <code>smem[warp]</code> 错写成 <code>smem[lane]</code>：8 个 warp 的 lane 0 都写 <code>smem[0]</code></td></tr>
       </tbody>
     </table></div>
 
-    <h4>二、对着源码看：racecheck 盯的是哪几行</h4>
+    <h4>二、对照源码：racecheck 检查哪几行</h4>
     <p class="prose">
-      <span style="color:var(--ink-3)">下面是 <code>fused_ops.cu</code> 里的 <code>blockReduceSum</code>（n3 用的就是它），
-      加了一层<b>从 racecheck 角度看</b>的注释。<span style="color:var(--accent);font-weight:600">蓝色</span>是 shared 访问，
-      <span style="color:var(--crit);font-weight:600">红色</span>是删掉以后 racecheck 会报的位置。</span>
+      <b>下面是 <code>fused_ops.cu</code> 里的 <code>blockReduceSum</code>，n3 用的就是它。</b>
+      <span style="color:var(--ink-3)">注释说明 racecheck 怎样看每一行。
+      <span style="color:var(--accent);font-weight:600">蓝色</span>是 shared memory 访问；
+      <span style="color:var(--crit);font-weight:600">红色</span>是 <code>__syncthreads()</code>，删掉任何一个，racecheck 都会报告竞态。</span>
     </p>
     <pre>__inline__ __device__ float blockReduceSum(float v, float *smem) {
     const int lane = threadIdx.x &amp; 31;
     const int warp = threadIdx.x &gt;&gt; 5;
-    v = warpReduceSum(v);                <span class="c">// warp 内部用 shuffle，数据在寄存器里 → racecheck 不管</span>
-    <span class="a">if (lane == 0) smem[warp] = v;</span>       <span class="c">// ② 写：8 个线程各写各的槽 smem[0..7]，互不重叠 → 没有 WAW</span>
-    <span class="x">__syncthreads();</span>                     <span class="c">// ③ 第一道墙：删掉它 → smem[1..7] 报 RAW</span>
-                                         <span class="c">//    （0 号 warp 来读的时候，7 号 warp 可能还没写）</span>
+    v = warpReduceSum(v);                <span class="c">// warp 内用 shuffle 交换，数据在寄存器里，racecheck 不检查</span>
+    <span class="a">if (lane == 0) smem[warp] = v;</span>       <span class="c">// ② 写：8 个线程各写一个槽 smem[0..7]，地址不重叠，没有 WAW</span>
+    <span class="x">__syncthreads();</span>                     <span class="c">// ③ 同步：删掉它，smem[1..7] 报 RAW</span>
+                                         <span class="c">//    （0 号 warp 读的时候，7 号 warp 可能还没写）</span>
     <span class="a">v = (threadIdx.x &lt; (BLOCK &gt;&gt; 5)) ? smem[lane] : 0.0f;</span>
-                                         <span class="c">// ④ 读：只有 0 号 warp 的前 8 个 lane 读</span>
+                                         <span class="c">// ④ 读：只有 0 号 warp 的前 8 个线程读</span>
     if (warp == 0) v = warpReduceSum(v);
-    <span class="a">if (threadIdx.x == 0) smem[0] = v;</span>   <span class="c">// ⑤ 写回 smem[0]。④ 里读 smem[0] 的也是 0 号线程，</span>
-                                         <span class="c">//    同一个线程先读后写不算竞态，所以这里不用加墙</span>
-    <span class="x">__syncthreads();</span>                     <span class="c">// ⑥ 第二道墙：删掉它 → smem[0] 报 RAW</span>
-                                         <span class="c">//    （其余 255 个线程可能读到 ② 留下的 warp 0 部分和）</span>
-    <span class="a">return smem[0];</span>                      <span class="c">// ⑦ 读：全 block 256 个线程读同一个地址，只读不写，不冲突</span>
+    <span class="a">if (threadIdx.x == 0) smem[0] = v;</span>   <span class="c">// ⑤ 写回 smem[0]：④ 里读 smem[0] 的也是 0 号线程</span>
+                                         <span class="c">//    同一个线程先读后写，不算竞态，所以这里不需要同步</span>
+    <span class="x">__syncthreads();</span>                     <span class="c">// ⑥ 同步：删掉它，smem[0] 报 RAW</span>
+                                         <span class="c">//    （其余 255 个线程可能读到 ② 写入的部分和）</span>
+    <span class="a">return smem[0];</span>                      <span class="c">// ⑦ 读：256 个线程读同一个地址，只读不写，没有竞态</span>
 }</pre>
     <div class="callout link">
-      <p class="k"><code>blockReduceMaxSum</code>（s3 / s4 用的那个）多了一处讲究</p>
-      <p style="margin-bottom:0"><b>它把最终结果写进 <code>smem[2*nwarp]</code> 和 <code>smem[2*nwarp+1]</code>，
-        而不是覆盖 <code>smem[0]</code>。</b>
-        <span style="color:var(--ink-3)">部分和占 <code>smem[0..15]</code>（m 和 s 各 8 个），广播用的是另外两个槽。
-        读部分和和写最终值的地址根本不重叠，所以不需要像 ⑤ 那样靠「同一个线程」来证明安全。
-        这种写法更不容易出错，racecheck 也很容易判过。</span></p>
+      <p class="k"><code>blockReduceMaxSum</code>（s3 和 s4 用）把结果写到单独的槽</p>
+      <p style="margin-bottom:0"><b>它把最终结果写进 <code>smem[2*nwarp]</code> 和 <code>smem[2*nwarp+1]</code>，不覆盖 <code>smem[0]</code>。</b>
+        <span style="color:var(--ink-3)">部分和占 <code>smem[0..15]</code>（m 和 s 各 8 个），最终结果占另外两个槽。
+        读部分和与写最终值的地址不重叠，所以不需要像 ⑤ 那样依赖「同一个线程」来保证安全。
+        这种写法更不容易出错。</span></p>
     </div>
 
-    <h4>三、逐行读 <code>fused_20261001_005225.txt</code> 的竞态段</h4>
+    <h4>三、逐行读 <code>fused_20261001_005225.txt</code> 的 racecheck 段</h4>
+    <p class="prose">
+      <span style="color:var(--warn);font-weight:650">注意：只看最后一行 <code>RACECHECK SUMMARY</code>。</span>
+      <span style="color:var(--ink-3)">racecheck 运行时，程序打印的耗时、GB/s 和 MBU 都没有意义。</span>
+    </p>
     <pre><span class="c">--- racecheck · n3 ---</span>
 $ <span class="a">compute-sanitizer --tool racecheck</span> ./fused_ops n3 8 1000 1
-<span class="a">========= COMPUTE-SANITIZER</span>                <span class="c">// sanitizer 打印的，以 ========= 开头；下面是程序自己的输出</span>
+<span class="a">========= COMPUTE-SANITIZER</span>                <span class="c">// 以 ========= 开头的行由 sanitizer 打印；其余行是程序自己的输出</span>
 GPU: NVIDIA GeForce RTX 4090  sm_89  128 SM  L2 72.0 MB   显存带宽峰值 1008 GB/s
 [n3] RMSNorm   M=8 行 × N=1000 列   block 256 线程   grid 8 个 block
 occupancy: 4 block × 256 线程 = 1024 / 1536 = 66.7%   grid 填充度 8 / (128 SM × 4) = 0.02   ⚠ 填不满，卡在空转
-                                           <span class="c">// ⚠ 是故意的：形状特意取得很小，这一步不测性能</span>
+                                           <span class="c">// 这里的 ⚠ 是预期的：这一步故意用很小的形状，不测性能</span>
 footprint = x + y = 0.1 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
 ✓ 抽样校验通过（抽查 8 行）                <span class="c">// 程序自己的正确性校验，和 racecheck 无关</span>
 中位耗时 <span class="w">2.3409 ms</span>   搬运 0.1 MB   0.0 GB/s   MBU 0.0%
-                                           <span class="c">// 这么小的形状本该是微秒级，插桩把它拖慢了几百倍 → 这个数字没有意义</span>
+                                           <span class="c">// 正常应是微秒级；插桩让程序慢了几百倍，这个数字没有意义</span>
 字节账: 8N 字节/行 × 8 行 = 0.1 MB；理论下限 0.0001 ms（按 1008 GB/s 跑满）
 <span class="a">========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)</span>
-                                           <span class="c">// ← 真正要看的只有这一行</span></pre>
+                                           <span class="c">// 只看这一行：0 hazards 表示没有发现竞态</span></pre>
     <p class="prose">
-      <span style="color:var(--ink-3)">s3、s4 两段结构完全一样，结尾也都是 <b>0 hazards</b>，
-      对上了 <a href="#s8-1">验收清单</a>里「三段 racecheck 都要 0 hazards」那一条。</span>
-      <span style="color:var(--ink-3)">要是哪天有人删了一道墙，SUMMARY 前面会多出若干条 <code>=========</code> 开头的报告，
-      写明冲突类型、发生冲突的 shared 地址，以及读写两侧对应的 kernel 和源码位置（编译时加 <code>-lineinfo</code> 才能定位到行号）。
-      SUMMARY 里的 hazard 数也不再是 0。</span>
+      <b>s3 和 s4 两段的格式相同，结尾也都是 0 hazards。</b>
+      <span style="color:var(--ink-3)">这满足<a href="#s8-1">验收清单</a>里「三段 racecheck 都要 0 hazards」的要求。</span>
+    </p>
+    <p class="prose">
+      <b>如果有人删掉一个 <code>__syncthreads()</code>，SUMMARY 前面会多出几条报告。</b>
+      <span style="color:var(--ink-3)">每条报告写明竞态类型、shared memory 地址，以及读写两侧的源码位置。
+      编译时要加 <code>-lineinfo</code>，报告才能定位到行号。SUMMARY 里的 hazard 数也不再是 0。</span>
     </p>
 
-    <h4>四、为什么只测这三个、为什么形状这么小</h4>
+    <h4>四、为什么只测三个 kernel，为什么形状这么小</h4>
     <div class="tw"><table>
-      <caption><code>run_fused.sh</code> 第 5 段的几处取舍</caption>
+      <caption><code>run_fused.sh</code> 第 5 段的四个取舍</caption>
       <thead><tr><th>取舍</th><th>原因</th></tr></thead>
       <tbody>
         <tr><td class="cn">只测 <code>n3 s3 s4</code></td>
-            <td>它们代表了两种 block 归约（<code>blockReduceSum</code> 和 <code>blockReduceMaxSum</code>），竞态风险都在这里。n4 和 n3 共用 <code>blockReduceSum</code>；s3 和 s4 都用 <code>blockReduceMaxSum</code>，s4 是它的 float4 版</td></tr>
-        <tr><td class="cn"><code>M=8 N=1000</code> 只跑 1 次</td>
-            <td>插桩会慢几百倍，拿主基准的 8192 行去跑基本等于死机。竞态是 <b>block 内部</b>的问题，每个 block 跑的代码一模一样，8 个 block 和 8192 个 block 覆盖到的代码路径相同</td></tr>
-        <tr><td class="cn"><code>N=1000</code> 不取整</td>
-            <td>1000 不是 256 的整数倍，顺带能走到每行末尾的边界分支</td></tr>
+            <td>竞态只可能出现在 block 级归约里。n3 代表 <code>blockReduceSum</code>（n4 用同一个函数）；
+            s3、s4 代表 <code>blockReduceMaxSum</code>（s4 是它的 float4 版）。</td></tr>
+        <tr><td class="cn"><code>M=8 N=1000</code>，只跑 1 次</td>
+            <td>racecheck 让程序慢几百倍，用主基准的 8192 行跑不完。
+            竞态发生在 <b>block 内部</b>，每个 block 执行的代码相同。
+            所以 8 个 block 和 8192 个 block 检查到的代码路径相同。</td></tr>
+        <tr><td class="cn"><code>N=1000</code></td>
+            <td>1000 不是 256 的整数倍，所以每行末尾的边界分支也会被执行到。</td></tr>
         <tr><td class="cn">放在计时<b>之后</b></td>
-            <td>racecheck 很慢，而且只看 0/非 0。放在最后，即使机器上没装它（<code>command -v</code> 检测不到）也只会跳过这一段，前面的性能数据不受影响</td></tr>
+            <td>racecheck 很慢，结果只有「0」和「非 0」两种。
+            放在最后，机器上没装 compute-sanitizer 时只跳过这一段，前面的性能数据不受影响。</td></tr>
       </tbody>
     </table></div>
     <div class="callout warn">
-      <p class="k">racecheck 管不到的地方</p>
-      <p style="margin-bottom:0"><b>它只盯 shared memory。</b>
-        <span style="color:var(--ink-3)">global 越界、读到未初始化的数据、<code>__syncthreads()</code> 被放进了不是所有线程都会走到的分支，
-        这几类问题要分别用同一个工具的 <code>--tool memcheck</code>（默认）、<code>initcheck</code>、<code>synccheck</code> 来查。
-        warp 内的 <code>__shfl_xor_sync</code> 走的是寄存器，也不在它的检查范围内。</span></p>
+      <p class="k">racecheck 不检查的错误</p>
+      <p><b>racecheck 只检查 shared memory。</b>
+        <span style="color:var(--ink-3)">其他错误要换用同一个程序的其他工具：</span></p>
+      <div class="tw"><table>
+        <thead><tr><th>错误</th><th>工具</th></tr></thead>
+        <tbody>
+          <tr><td>全局内存越界</td><td><code>--tool memcheck</code>（默认）</td></tr>
+          <tr><td>读到未初始化的数据</td><td><code>--tool initcheck</code></td></tr>
+          <tr><td><code>__syncthreads()</code> 放在了不是所有线程都会执行的分支里</td><td><code>--tool synccheck</code></td></tr>
+        </tbody>
+      </table></div>
+      <p style="margin-bottom:0"><span style="color:var(--ink-3)">warp 内的 <code>__shfl_xor_sync</code> 只在寄存器之间交换数据，
+        不经过 shared memory，所以也不在检查范围内。</span></p>
     </div>
     <p class="prose">
-      <strong>小结：计时说明它「快」，抽样校验说明这次「对」，racecheck 检查的是对的原因是不是运气 ——
-      也就是有没有漏掉 barrier。</strong>
-      <span style="color:var(--ink-3)">三段都是 0 hazards，说明那两个 <code>__syncthreads()</code> 放的位置是对的。</span>
+      <strong>小结：三项检查各回答一个问题。</strong>
+    </p>
+    <ul class="pts">
+      <li><strong>计时：</strong>kernel 快不快。</li>
+      <li><strong>抽样校验：</strong>这一次结果对不对。</li>
+      <li><strong>racecheck：</strong>结果对，是不是只因为执行顺序碰巧合适。</li>
+    </ul>
+    <p class="prose">
+      <span style="color:var(--ink-3)">三段都是 0 hazards，说明 <code>blockReduceSum</code> 和 <code>blockReduceMaxSum</code> 里的
+      <code>__syncthreads()</code> 位置正确。</span>
     </p>
   </div>
 
