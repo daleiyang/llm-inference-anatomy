@@ -187,19 +187,19 @@
   <p class="eyebrow">02 · CUDA from a Systems Engineer’s Eyes · 报告 04</p>
   <h1>两个融合算子：RMSNorm 与 online softmax</h1>
   <p class="lede prose">
-    <strong>第 10 章练的是"把长数组归约成标量"，归约就是终点。</strong>
-    <b>这里练的是归约之后那一步 —— 拿归约结果回头缩放整行。
-    「回头」是要么再读一次显存，要么把数据留在片上，两条路差 1.5 到 2 倍带宽。</b>
-    <span style="color:var(--ink-3)">SGEMM 那一章在 roofline 的左半边（算力密集），
+    <strong>第 10 章练的是「把长数组归约成标量」，归约就是终点。</strong>
+    <b>这里练归约之后的一步：拿归约结果回头缩放整行。
+    「回头」有两条路：再读一次显存，或者把数据留在片上。两条路的带宽差 1.5 到 2 倍。</b>
+    <span style="color:var(--ink-3)">SGEMM 那一章在 roofline 的左半边（算力密集）；
     这两个算子在右半边（访存密集），指标从「占峰值算力」换成 MBU。</span>
-    <span style="color:var(--crit);font-weight:650">而 online softmax 的那三行递推，
-    就是 FlashAttention 的全部数学内核 —— 在这里吃透，能省下 <a href="../../">04 阶段</a>（FlashAttention 前向）的两天。</span>
+    <span style="color:var(--crit);font-weight:650">online softmax 的三行递推，就是 FlashAttention 的全部数学核心。
+    在这里弄懂，能省下 <a href="../../">04 阶段</a>（FlashAttention 前向）的两天。</span>
   </p>
   <p class="lede prose">
-    <strong>实测（RTX 4090 · 2026-10-01）：寄存器驻留的 N3/N4 与 S3/S4 全部收在峰值带宽的 90–91%（MBU），相对基线（N1 两趟 / S1 三趟）快 1.51× 和 1.70×。</strong>
-    <span style="color:var(--ink-3)">开跑前写死的十四条预测成立 9 条；落空的 5 条全部栽在同一件事上 ——
-    字节账算的是「指令发出的字节」，而耗时取决于「到 DRAM 的字节」，中间隔着一层 72 MiB 的 L2。</span>
-    <span style="color:var(--crit);font-weight:650">融合省带宽的机制不是少发访存指令，而是把重用距离压进 cache 装得下的范围 —— 见 <a href="#s9">§9</a>。</span>
+    <strong>实测（RTX 4090 · 2026-10-01）：寄存器驻留的 N3/N4 与 S3/S4 全部达到峰值带宽的 90–91%（MBU），比基线（N1 两趟 / S1 三趟）分别快 1.51× 和 1.70×。</strong>
+    <span style="color:var(--ink-3)">开跑前写下的十四条预测成立 9 条。落空的 5 条错在同一处：
+    字节账算的是「指令发出的字节」，耗时却取决于「到显存的字节」，两者之间隔着一层 72 MiB 的 L2。</span>
+    <span style="color:var(--crit);font-weight:650">融合省带宽，靠的不是少发访存指令，而是把重用距离压进 cache 装得下的范围（见 <a href="#s9">§9</a>）。</span>
   </p>
 </header>
 
@@ -299,34 +299,34 @@
 <section>
 <h2 id="s1"><span class="num">为什么</span>是这两个算子<a class="up" href="#t1" title="回到目录">↑</a></h2>
   <p class="lede prose">
-    <strong>SGEMM 那一整章练的是 roofline 的左半边：算力密集，看「占峰值算力」。</strong>
+    <strong>SGEMM 那一章练的是 roofline 的左半边：算力密集，看「占峰值算力」。</strong>
     <b>这两个算子在右半边：访存密集，看 MBU。</b>
-    <span style="color:var(--ink-3)">同一张 roofline 图，两端各来一次，这套方法才算学完整。</span>
-    <span style="color:var(--crit);font-weight:650">而且它们不是玩具——RMSNorm 是 Qwen2.5 每层都要调两次的真算子，
-    online softmax 的那三行递推就是 FlashAttention 的全部数学内核。</span>
+    <span style="color:var(--ink-3)">roofline 图的两端各练一次，这套方法才完整。</span>
+    <span style="color:var(--crit);font-weight:650">它们也不是玩具：RMSNorm 是 Qwen2.5 每层调两次的真实算子；
+    online softmax 的三行递推就是 FlashAttention 的全部数学核心。</span>
   </p>
 
   <div class="sec">
     <h3 id="s1-1">一、第 10 章练的是归约，这里练的是「归约之后呢」<a class="up" href="#t1-1" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>第 10 章 R1–R6 解决的问题是「把一个长数组变成一个标量」</b>，
-      归约就是终点，算完 <code>atomicAdd</code> 出去就结束了。
+      <b>第 10 章的 R1–R6 只解决一个问题：把一个长数组变成一个标量。</b>
+      归约就是终点，用 <code>atomicAdd</code> 写出结果就结束。
     </p>
     <p class="prose">
-      <b>真实算子里归约几乎从来不是终点。</b>
-      RMSNorm 要先把一行求平方和，<u>然后立刻拿这个和回头去缩放这一行的每个元素</u>；
-      softmax 要先求出一行的 max 和 exp 和，<u>然后回头把每个元素除掉</u>。
-      <span style="color:var(--crit);font-weight:650">归约是中间步骤，"回头"才是花钱的地方。</span>
+      <b>在真实算子里，归约几乎从来不是终点。</b>
+      RMSNorm 先求一行的平方和，<u>然后立刻用这个和回头缩放这一行的每个元素</u>；
+      softmax 先求一行的 max 和 exp 和，<u>然后回头对每个元素做除法</u>。
+      <span style="color:var(--crit);font-weight:650">归约只是中间步骤，「回头」才是花钱的地方。</span>
     </p>
     <div class="callout">
-      <p class="k">这一句差别，决定了两处写法必须改</p>
+      <p class="k">这个差别要求改两处写法</p>
       <p><b>① 归约结果要广播给全 block，不能只汇到 0 号 lane。</b>
-        <span style="color:var(--ink-3)">R6 用 <code>__shfl_down_sync</code>，因为只有 0 号 lane 需要结果；
-        这里 256 个线程每一个都要拿归一化因子去缩放自己手里的元素，
-        所以要换成 <code>__shfl_xor_sync</code>（蝶形），归约完人手一份。</span></p>
-      <p style="margin-bottom:0"><b>② 「回头」意味着要么再读一次显存，要么把数据留在片上。</b>
-        <span style="color:var(--crit);font-weight:650">这两条路的带宽差 1.5 倍到 2 倍，
-        而这就是本文四级阶梯里最值钱的那一级。</span></p>
+        <span style="color:var(--ink-3)">R6 用 <code>__shfl_down_sync</code>，因为只有 0 号 lane 需要结果。
+        这里 256 个线程都要用归一化因子缩放自己手里的元素，
+        所以要换成 <code>__shfl_xor_sync</code>（蝶形）：归约完每个线程各有一份。</span></p>
+      <p style="margin-bottom:0"><b>② 「回头」有两条路：再读一次显存，或者把数据留在片上。</b>
+        <span style="color:var(--crit);font-weight:650">两条路的带宽差 1.5 倍到 2 倍，
+        这就是本文四级阶梯里最值钱的一级。</span></p>
     </div>
   </div>
 
@@ -352,14 +352,14 @@
       </tbody>
     </table></div>
     <p class="prose">
-      <b>先说一句诚实话：在 7B 的 decode 里，这两个算子都不是瓶颈。</b>
-      <span style="color:var(--ink-3)">decode 一个 token，57 次 RMSNorm 一共搬 1.6 MB，
-      按 1008 GB/s 算是 1.6 微秒；而同一步要把 15 GB 的权重读一遍，要 15 毫秒。
-      RMSNorm 占万分之一。</span>
+      <b>在 7B 的 decode 里，这两个算子都不是瓶颈。</b>
+      <span style="color:var(--ink-3)">decode 一个 token 时，57 次 RMSNorm 一共搬 1.6 MB，
+      按 1008 GB/s 算要 1.6 微秒。同一步要把 15 GB 权重读一遍，要 15 毫秒。
+      RMSNorm 只占万分之一。</span>
     </p>
     <div class="callout crit">
-      <p class="k">但 prefill 的 softmax 是另一回事 —— 这个数值得记住</p>
-      <p><b>上下文 4096、28 个头，打分矩阵有多大？</b></p>
+      <p class="k">prefill 的 softmax 不一样：这个数要记住</p>
+      <p><b>上下文 4096、28 个头时，打分矩阵有多大？</b></p>
       <pre>28 头 × 4096 × 4096 × 4 字节 = <span class="x">1.88 GB</span>   <span class="c">// 每层，fp32</span>
 
 <span class="c">// 朴素三趟 softmax 要搬 16N/行：</span>
@@ -369,21 +369,21 @@
 <span class="c">// 就算用本文最好的 s3（8N/行）：</span>
 3.76 GB → 3.73 ms/层 × 28 = <span class="w">104 ms</span></pre>
       <p style="margin-bottom:0"><b>这就是 FlashAttention 存在的理由。</b>
-        <span style="color:var(--ink-3)">它的做法不是"把 softmax kernel 写得更快"，
-        而是<u>根本不把打分矩阵写进显存</u>——在 shared memory 里分块算完就地消掉。</span>
-        <span style="color:var(--crit);font-weight:650">而"分块算 softmax"这件事能成立，
-        唯一的前提就是 §5 要推的那三行递推式。</span>
-        <b>所以本文的 s3 会输给"没有 softmax kernel"，这不是失败，是终点的指路牌。</b></p>
+        <span style="color:var(--ink-3)">它不是把 softmax kernel 写得更快，
+        而是<u>根本不把打分矩阵写进显存</u>：在 shared memory 里分块算完，就地消掉。</span>
+        <span style="color:var(--crit);font-weight:650">「分块算 softmax」能成立，
+        唯一的前提是 §5 要推的三行递推式。</span>
+        <b>所以本文的 s3 会输给「没有 softmax kernel」。这不是失败，是指向终点的路牌。</b></p>
     </div>
 
     <div class="callout">
       <p class="k">先把 16N 的单位说清楚</p>
       <p><b><code>16N</code> 的单位是「字节 / 行」，不是「访问 16 次」。</b>
-        <span style="color:var(--ink-3)">N 是一行的元素个数，fp32 一个元素 4 字节，
-        朴素三趟要把整行过显存 4 遍（3 读 + 1 写），所以</span>
+        <span style="color:var(--ink-3)">N 是一行的元素个数，fp32 每个元素 4 字节。
+        朴素三趟让整行经过显存 4 遍（3 读 + 1 写），所以</span>
         <b><code>16N = 4 趟 × 4 字节 × N</code></b>。</p>
-      <p style="margin-bottom:0"><span style="color:var(--ink-3)">这本账只数<u>必须经过显存（HBM）的字节</u>——
-        每行那 4 字节的 <code>mx[]</code> / <code>sm[]</code> 中间数组待在 L2 里，不计入。</span></p>
+      <p style="margin-bottom:0"><span style="color:var(--ink-3)">这本账只数<u>必须经过显存的字节</u>。
+        每行 4 字节的 <code>mx[]</code> / <code>sm[]</code> 中间数组待在 L2 里，不计入。</span></p>
     </div>
 
     <div class="fig">
@@ -466,7 +466,7 @@
       上半：一层的打分矩阵是 28 个 4096×4096 的头（1.879 GB），
       softmax 沿 key 维做，所以行长 <code>N = 4096</code>、行数 <code>M = 28 × 4096 = 114,688</code>。
       下半：每行 16N = 64 KB，乘行数得 7.516 GB/层，除 4090 的峰值带宽 1008 GB/s 得 7.46 ms/层，乘 28 层得 209 ms。
-      注意这是 <b>MBU = 100% 的理论下界</b>——假设一次 <code>exp</code> 都不要钱，现实只会更慢。</p>
+      这是 <b>MBU = 100% 时的理论下界</b>：假设 <code>exp</code> 不花时间，现实只会更慢。</p>
     </div>
 
   </div>
@@ -488,11 +488,9 @@
           <tr><td class="cn">天花板</td><td>0.25 周期/warp圈</td><td>MBU 100%（现实里 80% 就很好）</td></tr>
         </tbody>
       </table></div>
-      <p style="margin-bottom:0"><b>值得玩味的一点：</b>
-        <span style="color:var(--ink-3)">SGEMM 那一章里字节账七次失效五次，我们一路在拆它的台；
-        到了这里它反而是唯一靠谱的那本账。</span>
-        <span style="color:var(--crit);font-weight:650">账本没有对错，只有适用区间 ——
-        这正是那一章最后想说的话，在这里得到了反面的印证。</span></p>
+      <p style="margin-bottom:0"><b>SGEMM 那一章里字节账七次失效五次；到了这里，它是唯一靠谱的账。</b>
+        <span style="color:var(--crit);font-weight:650">账本没有对错，只有适用区间。
+        这正是那一章最后的结论，在这里从反面得到了印证。</span></p>
     </div>
   </div>
 </section>
@@ -501,8 +499,8 @@
 <section>
 <h2 id="s2"><span class="num">字节账</span>这一次它是主角<a class="up" href="#t2" title="回到目录">↑</a></h2>
   <p class="lede prose">
-    <strong>两条阶梯，每一级的"理论加速比"都是纯字节数之比。</strong>
-    <b>量出来接近理论值，就说明分析对了；差得远，就得去查是哪一本别的账在起作用。</b>
+    <strong>两条阶梯里，每一级理论上快多少倍，就是纯字节数之比。</strong>
+    <b>实测接近理论值，说明分析对了；差得远，就要查是哪一本别的账在起作用。</b>
   </p>
 
   <div class="sec">
@@ -511,7 +509,7 @@
 
     <p class="prose">
       <b>一句话：把一行（一个 token 的 3584 维向量）<u>整体缩放到固定长度</u>，再逐维乘一个学出来的增益。</b>
-      <span style="color:var(--ink-3)">公式里只有三个动作 —— 求均方、取倒数平方根、逐维相乘。</span>
+      <span style="color:var(--ink-3)">公式里只有三个动作：求均方、取倒数平方根、逐维相乘。</span>
     </p>
 
     <div class="fig">
@@ -587,10 +585,10 @@
       <text class="t-dim" x="150" y="336">③ 才改变形状：w 是学出来的，每一维一个增益，和这一行的内容无关</text>
     </svg>
     <p class="cap"><b>图 2 · RMSNorm 全部内容就是这三步。</b>
-      <b>①→②</b> 整行只做一件事：乘同一个标量 <code>r</code>（这组数据 r ≈ 0.5），所以形状分毫不变，只是整体矮了一半。
-      归一之后整行的模恒等于 <code>√N</code>（N = 3584 时约 59.87）—— <b>不管输入多大多小，出来的长度都一样</b>，
-      这正是「Norm」二字的含义。<b>②→③</b> 乘 <code>w</code> 才改变形状，而 <code>w</code> 是训练学出来的，
-      对这一行来说是个常量。</p>
+      <b>①→②</b> 整行只做一件事：乘同一个标量 <code>r</code>（这组数据 r ≈ 0.5），所以形状不变，只是整体矮了一半。
+      归一后整行的模恒等于 <code>√N</code>（N = 3584 时约 59.87）。<b>不管输入多大多小，输出的长度都一样</b>，
+      这就是「Norm」的含义。<b>②→③</b> 乘 <code>w</code> 才改变形状；<code>w</code> 是训练学出来的，
+      对这一行是常量。</p>
     </div>
 
     <div class="tw"><table>
@@ -608,18 +606,18 @@
       </tbody>
     </table></div>
     <p class="prose">
-      <span style="color:var(--ink-3)">砍掉「减均值」是 Zhang &amp; Sennrich 2019 的发现：
-      效果几乎不掉，却省掉一个统计量和一遍减法。</span>
       <b>今天的主流模型（Llama、Qwen、Mistral）全部用 RMSNorm。</b>
+      <span style="color:var(--ink-3)">砍掉「减均值」来自 Zhang &amp; Sennrich 2019：
+      效果几乎不降，还省掉一个统计量和一遍减法。</span>
     </p>
 
     <div class="callout crit">
       <p class="k">这个算子为什么会有 12N 和 8N 之争</p>
       <p style="margin-bottom:0"><b>关键在 <code>r</code>：它是<u>整行归约出来的一个标量</u>，
-        必须把整行看完才能算出来；可算出来之后，又要拿它去缩放<u>整行的每一个元素</u>。</b>
-        <span style="color:var(--crit);font-weight:650">于是「回头」这一步就有两条路：
-        要么把 x 从显存再读一遍（12N），要么在第一遍读的时候就把它留在寄存器里（8N）。</span>
-        <span style="color:var(--ink-3)">下面这张表的四级台阶，量的就是这件事。</span></p>
+        要看完整行才能算出；算出后又要用它缩放<u>整行的每一个元素</u>。</b>
+        <span style="color:var(--crit);font-weight:650">所以「回头」有两条路：
+        把 x 从显存再读一遍（12N），或者第一遍读时就把 x 留在寄存器里（8N）。</span>
+        <span style="color:var(--ink-3)">下表的四级台阶量的就是这件事。</span></p>
     </div>
     <div class="tw"><table>
       <caption>每行必须经过显存的字节数（fp32）</caption>
@@ -627,7 +625,7 @@
       <tbody>
         <tr><td class="cn">N1</td><td>两个 kernel：先算 rstd，再归一化</td>
             <td class="en">2 次 8N</td><td class="en">4N</td><td class="en"><b>12N</b></td><td class="en">基准</td></tr>
-        <tr><td class="cn">N2</td><td>融成一个 kernel，但 x 仍从 global 读两次</td>
+        <tr><td class="cn">N2</td><td>融成一个 kernel，但 x 仍从 global memory 读两次</td>
             <td class="en">2 次 8N</td><td class="en">4N</td><td class="en"><b>12N</b></td>
             <td class="en"><span class="tag warn">1.00×</span></td></tr>
         <tr><td class="cn">N3</td><td>x 留在寄存器，只读一次</td>
@@ -640,8 +638,8 @@
     </table></div>
     <p class="prose">
       <span style="color:var(--ink-3)">权重 <code>w</code> 只有 4N = 14 KB，所有行共用，
-      稳稳待在 L1/L2 里，不计入显存流量。</span>
-      <span style="color:var(--ink-3)">N1 额外有一个长度 M 的 <code>rstd</code> 数组一写一读，
+      一直待在 L1/L2 里，不计入显存流量。</span>
+      <span style="color:var(--ink-3)">N1 还要把长度为 M 的 <code>rstd</code> 数组写一次、读一次，
       相对 12NM 可以忽略。</span>
     </p>
   </div>
@@ -651,9 +649,9 @@
 
     <pre>softmax(x)_i = exp(x_i − m) / Σ_j exp(x_j − m)      <span class="c">// m = max(x)，N = 上下文长度</span></pre>
     <p class="prose">
-      <b>一句话：把一行任意实数变成一个<u>概率分布</u> —— 全为正、加起来等于 1、大小顺序不变。</b>
-      <span style="color:var(--ink-3)">注意力里这一行是「这个 query 对 N 个 key 的打分」，
-      softmax 之后就成了「该把多少注意力分给每个 key」。</span>
+      <b>一句话：把一行任意实数变成一个<u>概率分布</u>：全为正、和为 1、大小顺序不变。</b>
+      <span style="color:var(--ink-3)">注意力里这一行是「这个 query 对 N 个 key 的打分」；
+      softmax 后变成「分给每个 key 多少注意力」。</span>
     </p>
 
     <div class="fig">
@@ -723,11 +721,11 @@
     </svg>
     <p class="cap"><b>图 3 · softmax 也是「先归约、再回头缩放整行」，只是归约出两个标量。</b>
       <b>①→②</b> <code>exp</code> 把所有数变成正数，并<u>把差距按指数放大</u>：
-      输入里 1.5 和 0.8 只差 0.7，出来却是 1.00 和 0.50，差了一倍。
-      <b>②→③</b> 除以同一个标量 <code>s</code> —— 整行乘同一个数、形状分毫不变，
+      输入里 1.5 和 0.8 只差 0.7，输出是 1.00 和 0.50，差了一倍。
+      <b>②→③</b> 除以同一个标量 <code>s</code>：整行乘同一个数，形状不变，
       和 <a href="#s2-1">图 2</a> 的 ①→② 是<u>同一件事</u>。
-      ③ 画成一条 <b>总宽 = 1 的带子</b>：12 段宽度就是 12 个概率，正好铺满，这就是「归一化」。
-      均匀分布该是 8.3%，这里最高 23.4%、最低 1.2%。</p>
+      ③ 画成一条<b>总宽 = 1 的带子</b>：12 段宽度就是 12 个概率，正好铺满，这就是「归一化」。
+      均匀分布每段 8.3%；这里最高 23.4%，最低 1.2%。</p>
     </div>
 
     <div class="tw"><table>
@@ -750,12 +748,12 @@
     <div class="callout crit">
       <p class="k">softmax 为什么比 RMSNorm 多一级台阶</p>
       <p><b>RMSNorm 的归约量 <code>mean(x²)</code> 一趟就能累出来；
-        而 softmax 的 <code>s = Σ exp(x − m)</code> <u>要先知道 m 才能开始算</u>。</b>
-        <span style="color:var(--ink-3)">于是朴素实现被迫扫三趟：求 max → 求 exp 和 → 归一化，
+        softmax 的 <code>s = Σ exp(x − m)</code> 却<u>要先知道 m 才能开始算</u>。</b>
+        <span style="color:var(--ink-3)">所以朴素实现只能扫三趟：求 max → 求 exp 和 → 归一化，
         加上写回一共 16N。</span></p>
-      <p style="margin-bottom:0"><span style="color:var(--crit);font-weight:650">而这一趟是可以省掉的 ——
-        靠的不是代码技巧，是一个数学改写：online 递推让 max 和 sum 在一趟里同时推进。</span>
-        <b>这就是下面 S1 → S2 那一级（16N → 12N）的全部来源，推导在 <a href="#s5">§5</a>。</b></p>
+      <p style="margin-bottom:0"><span style="color:var(--crit);font-weight:650">多出的这一趟可以省掉。
+        靠的不是代码技巧，而是一个数学改写：online 递推让 max 和 sum 在一趟里同时推进。</span>
+        <b>下面 S1 → S2 这一级（16N → 12N）全部来自这里，推导在 <a href="#s5">§5</a>。</b></p>
     </div>
     <div class="tw"><table>
       <caption>每行必须经过显存的字节数（fp32）</caption>
@@ -833,44 +831,44 @@
       <text class="t-dim" x="176" y="296">S1 → S2 省的是「求 max」那一趟，靠数学改写（§5·二）；S2 → S3 省的是「回头读」那一趟，靠寄存器驻留。</text>
       <text class="t-dim" x="176" y="314">S4 = S3 + float4：字节数和 S3 完全相同，动的只是访存指令条数（§6·四）。</text>
     </svg>
-    <p class="cap"><b>图 4 · 四级台阶，长度就是字节数。</b>
+    <p class="cap"><b>图 4 · 四级台阶，条形长度就是字节数。</b>
       每格是一趟 4N，格数就是趟数，条形总长就是那一级的 16N / 12N / 8N。
-      <b>两级收益的来源完全不同</b>：S1→S2 是把「先扫一遍求 max」这件事用递推消掉（数学），
-      S2→S3 是把 x 留在片上不再回头读（硬件）。而 FlashAttention 不在这把尺子上——它把整张矩阵从显存里拿掉了。</p>
+      <b>两级收益的来源完全不同</b>：S1→S2 用递推消掉「先扫一遍求 max」（数学）；
+      S2→S3 把 x 留在片上，不再回头读（硬件）。FlashAttention 不在这把尺子上：它把整张矩阵从显存里拿掉了。</p>
     </div>
     <p class="prose">
-      <b>注意 S1 → S2 省掉的那一趟，靠的不是代码技巧，是一个数学改写。</b>
-      <span style="color:var(--ink-3)">朴素做法必须先看完整行才知道 max，才能开始算 exp 和；
-      online 递推让两者可以同时推进。</span>
+      <b>S1 → S2 省掉的那一趟靠数学改写，不靠代码技巧。</b>
+      <span style="color:var(--ink-3)">朴素做法要看完整行才知道 max，才能开始算 exp 和；
+      online 递推让两者同时推进。</span>
       <b>推导在 <a href="#s5">§5</a>。</b>
     </p>
   </div>
 
   <div class="sec">
-    <h3 id="s2-3">三、一个必须分清的区别：融合 ≠ 省带宽<a class="up" href="#t2-3" title="回到目录">↑</a></h3>
+    <h3 id="s2-3">三、融合 ≠ 省带宽<a class="up" href="#t2-3" title="回到目录">↑</a></h3>
     <div class="callout warn">
       <p class="k">N2 这一级是故意留的陷阱</p>
-      <p><b>N1 是两个 kernel，N2 是一个 kernel —— 按通常的说法，N2 就是"融合版"了。
-        可它的字节数和 N1 一模一样，都是 12N。</b></p>
-      <p style="margin-bottom:0"><span style="color:var(--ink-3)">因为 N2 虽然只发射了一次 kernel，
-        但它在算完 rstd 之后，<u>又从 global memory 把同一行 x 读了第二遍</u>。
+      <p><b>N2 的字节数和 N1 完全一样，都是 12N。</b>
+        按通常的说法，N2 已是「融合版」：N1 是两个 kernel，N2 是一个 kernel。</p>
+      <p style="margin-bottom:0"><span style="color:var(--ink-3)">N2 只发射一次 kernel，
+        但算完 rstd 后<u>又从 global memory 把同一行 x 读了第二遍</u>，
         显存流量一个字节都没省。</span>
-        <span style="color:var(--crit);font-weight:650">省下的只有一次 kernel launch（几微秒）
-        和 rstd 数组的往返（4M 字节）。</span></p>
+        <span style="color:var(--crit);font-weight:650">它只省下一次 kernel launch（几微秒）
+        和 rstd 数组的一写一读（各 4M 字节）。</span></p>
     </div>
     <p class="prose">
       <b>真正省带宽的是 N2 → N3：把 x 留在寄存器里。</b>
-      <span style="color:var(--ink-3)">"融合"这个词在工程讨论里被用得很松，
-      有人指"合并 kernel"，有人指"数据留在片上"。</span>
-      <span style="color:var(--crit);font-weight:650">这两件事的收益差了整整一个数量级，
-      而 N1/N2/N3 三级并排跑一次，就把它们分得清清楚楚。</span>
+      <span style="color:var(--ink-3)">工程讨论里「融合」一词用得很松：
+      有人指合并 kernel，有人指数据留在片上。</span>
+      <span style="color:var(--crit);font-weight:650">这两件事的收益差一个数量级。
+      N1/N2/N3 三级并排跑一次，就能把它们分清。</span>
     </p>
     <div class="callout link">
       <p class="k">这正是 SGEMM 那一章的方法论</p>
       <p style="margin-bottom:0"><b>每一级只动一个变量。</b>
         <span style="color:var(--ink-3)">N1→N2 只动 kernel 个数（字节不变）；
         N2→N3 只动数据驻留位置（字节减 1/3）；N3→N4 只动访存指令宽度（字节不变）。
-        三级下来，每一份收益归谁所有，没有含糊的余地。</span></p>
+        每一份收益归谁都很明确。</span></p>
     </div>
   </div>
 </section>
@@ -895,17 +893,17 @@ for (int off = 16; off > 0; off >>= 1)
 <span class="a">// 五轮之后每个 lane 手里都是全和 —— 少一个线程知道都不行</span></pre>
 
     <div class="callout">
-      <p class="k">先把这条指令本身说清楚</p>
-      <p><b>一个 warp 有 32 个 lane，每个 lane 手里的 <code>v</code> 是<u>它自己的一份寄存器</u>，
-        彼此看不见。</b>
-        <span style="color:var(--ink-3)">要让 lane 之间交换数据，常规办法是绕一圈 shared memory：
-        我写进去、<code>__syncthreads()</code>、你读出来。</span>
-        <span style="color:var(--crit);font-weight:650">shuffle 指令是唯一的捷径 ——
-        它让一个 lane 直接读另一个 lane 的寄存器，不过 shared、不过显存、不用同步。</span></p>
-      <p style="margin-bottom:0"><b>而 <code>__shfl_xor_sync</code> 做的事只有一件：
+      <p class="k">shuffle 指令做什么</p>
+      <p><b>一个 warp 有 32 个 lane。每个 lane 手里的 <code>v</code> 是<u>它自己的一份寄存器</u>，
+        别的 lane 看不见。</b>
+        <span style="color:var(--ink-3)">lane 之间交换数据，常规办法是绕道 shared memory：
+        一方写入，<code>__syncthreads()</code>，另一方读出。</span>
+        <span style="color:var(--crit);font-weight:650">shuffle 指令是唯一的捷径：
+        一个 lane 直接读另一个 lane 的寄存器，不经过 shared memory 和显存，也不用同步。</span></p>
+      <p style="margin-bottom:0"><b><code>__shfl_xor_sync</code> 只做一件事：
         <u>把伙伴手里的 <code>v</code> 取回来交给我</u>。</b>
-        <span style="color:var(--ink-3)">它<u>不做加法</u>。代码里那个 <code>+=</code> 是你自己写的。
-        这是这行代码最容易看错的地方 —— 下面第一张图就是拆这一步。</span></p>
+        <span style="color:var(--ink-3)">它<u>不做加法</u>，代码里的 <code>+=</code> 是你自己写的。
+        这是这行代码最容易看错的地方，图 5 拆开的就是这一步。</span></p>
     </div>
 
     <div class="fig">
@@ -1005,9 +1003,9 @@ for (int off = 16; off > 0; off >>= 1)
       <text class="t-hi" x="803" y="266" text-anchor="middle">6+1=7</text>
     </svg>
     <p class="cap"><b>图 5 · 这条指令只负责「取」，不负责「算」。</b>
-      第一行是每个 lane 自己寄存器里的 <code>v</code>；一条 <code>__shfl_xor_sync(..., v, 4)</code> 之后，
-      每个 lane 拿到的是<b>伙伴那一份 v</b>（第二行）；第三行的加法是 <code>+=</code> 自己做的。
-      把这三步分开看，<code>v += __shfl_xor_sync(0xffffffffu, v, off)</code> 就不再神秘了。</p>
+      第一行是每个 lane 寄存器里的 <code>v</code>。执行一条 <code>__shfl_xor_sync(..., v, 4)</code> 之后，
+      每个 lane 拿到<b>伙伴那一份 v</b>（第二行）。第三行的加法由 <code>+=</code> 完成。
+      分开看这三步，就能读懂 <code>v += __shfl_xor_sync(0xffffffffu, v, off)</code>。</p>
     </div>
 
     <div class="tw"><table>
@@ -1018,36 +1016,36 @@ for (int off = 16; off > 0; off >>= 1)
             <td><b>参与掩码</b>：32 个 1，表示这个 warp 的 32 个 lane 全部参与。
               哪一位是 0，就表示那个 lane 不参与，读它是未定义行为</td></tr>
         <tr><td class="cn">第 2 个参数</td><td class="en">v</td>
-            <td><b>我贡献出去的值</b> —— 伙伴会读到我的这一份。
-              它同时也是我自己要用的那个变量，但在这个位置上的角色是「给出去」</td></tr>
+            <td><b>我交出去的值</b>：伙伴读到的就是这一份。
+              这个变量我自己也要用，但在这个位置上它的角色是「交出去」</td></tr>
         <tr><td class="cn">第 3 个参数</td><td class="en">off</td>
             <td><b>伙伴是谁</b>：伙伴的 lane 号 = 我的 lane 号 <code>^</code> off。
-              这是 <code>xor</code> 版和 <code>down</code> 版唯一的区别（后者是 <code>+</code> off）</td></tr>
+              <code>xor</code> 版和 <code>down</code> 版只差这一处（<code>down</code> 版是 <code>+</code> off）</td></tr>
         <tr><td class="cn">返回值</td><td class="en">—</td>
             <td><b>伙伴那一份 <code>v</code></b>。<span class="bad">不是和</span>，
-              也不是我自己的值 —— 要得到和，必须自己写 <code>+=</code></td></tr>
+              也不是我自己的值。要得到和，必须自己写 <code>+=</code></td></tr>
       </tbody>
     </table></div>
 
     <div class="callout warn">
-      <p class="k">为什么函数名后面非要带 _sync</p>
-      <p><b>Volta（sm_70）之后 GPU 有了独立线程调度，同一个 warp 里的 32 个 lane
+      <p class="k">函数名为什么必须带 _sync</p>
+      <p><b>从 Volta（sm_70）开始，GPU 有独立线程调度，同一个 warp 的 32 个 lane
         <u>不再保证锁步执行</u>。</b>
-        <span style="color:var(--ink-3)">分支之后它们可能停在不同的指令上。
-        这时候「读伙伴的寄存器」就必须先说清楚：哪些 lane 要在这条指令上会合。
-        掩码就是在回答这个问题，硬件据此把它们重新收拢。</span></p>
+        <span style="color:var(--ink-3)">分支之后，各 lane 可能停在不同的指令上。
+        所以读伙伴的寄存器之前，必须先说明哪些 lane 要在这条指令上会合。
+        掩码回答的就是这个问题，硬件按掩码把这些 lane 重新收拢。</span></p>
       <p style="margin-bottom:0"><span style="color:var(--crit);font-weight:650">所以不带 <code>_sync</code>
         的老版本 <code>__shfl_xor</code> 已经废弃</span>
-        <span style="color:var(--ink-3)">—— 它在新架构上会安静地读到垃圾。
-        另外：掩码里列出的 lane <u>必须全部真的执行到这一句</u>，
-        把它写进一个只有一半 lane 会进的 <code>if</code> 里，同样是未定义行为。</span></p>
+        <span style="color:var(--ink-3)">：为 sm_70 及以上编译时，它已经不再提供，直接用会编译报错。
+        另外，掩码里列出的 lane <u>必须全部真的执行到这一句</u>。
+        把它写进只有一半 lane 会进入的 <code>if</code> 里，同样是未定义行为。</span></p>
     </div>
 
     <h4>为什么 <code>xor</code> 一定是「两两互读」</h4>
     <p class="prose">
       <b>因为异或是对合运算：<code>(lane ^ off) ^ off == lane</code>。</b>
-      <span style="color:var(--ink-3)">我算出伙伴是 p，那么 p 按同一条规则算出来的伙伴正好是我。
-      于是「我读你、你读我」天然成对，一条指令就完成一次双向交换。</span>
+      <span style="color:var(--ink-3)">我算出伙伴是 p，p 按同一规则算出的伙伴正好是我。
+      所以「我读你、你读我」天然成对，一条指令完成一次双向交换。</span>
     </p>
     <pre><span class="c">// xor：对合，成对</span>
 lane 2 的伙伴 = 2 ^ 4 = 6
@@ -1163,14 +1161,14 @@ lane 6 读 lane 6 + 4 = <span class="x">10</span>  <span class="c">// 不是 2�
       <text class="t-dim" x="112" y="320">三轮之后 8 个 lane 手里全是 31 = 3+1+4+1+5+9+2+6 —— 每一个都拿到了全和，不用再广播</text>
     </svg>
     <p class="cap"><b>图 6 · 每轮「我知道的 lane 数」翻一倍。</b>
-      初始每个 lane 只知道自己（1 个）；<code>off=4</code> 之后知道 2 个，<code>off=2</code> 之后 4 个，
-      <code>off=1</code> 之后 8 个 —— 正好覆盖全部。
-      <b>8 = 2³ 要 3 轮，32 = 2⁵ 就要 5 轮</b>，这就是 <code>off</code> 从 16 起步、循环 5 次的由来。
-      注意连线是完全对称的蝶形，没有任何一个 lane 处在特殊位置。</p>
+      初始时每个 lane 只知道自己（1 个）。<code>off=4</code> 之后知道 2 个，<code>off=2</code> 之后 4 个，
+      <code>off=1</code> 之后 8 个，正好覆盖全部。
+      <b>8 = 2³ 要 3 轮，32 = 2⁵ 就要 5 轮</b>，所以 <code>off</code> 从 16 起步、循环 5 次。
+      连线是完全对称的蝶形，没有哪个 lane 处在特殊位置。</p>
     </div>
 
     <div class="tw"><table>
-      <caption>同一组数据 x = [3, 1, 4, 1, 5, 9, 2, 6]（真和 = 31）两个版本逐轮对照 —— 红色是不能用的值</caption>
+      <caption>同一组数据 x = [3, 1, 4, 1, 5, 9, 2, 6]（真和 = 31）两个版本逐轮对照，红色是不能用的值</caption>
       <thead><tr><th>版本</th><th>轮次</th><th>L0</th><th>L1</th><th>L2</th><th>L3</th>
         <th>L4</th><th>L5</th><th>L6</th><th>L7</th></tr></thead>
       <tbody>
@@ -1201,22 +1199,22 @@ lane 6 读 lane 6 + 4 = <span class="x">10</span>  <span class="c">// 不是 2�
       </tbody>
     </table></div>
     <p class="prose">
-      <b>两张表跑的是同一组数、同样三轮、同样三条 shuffle 指令。</b>
-      <span style="color:var(--ink-3)">区别只在 <code>down</code> 版里 lane 4–7 从一开始就在往「warp 外面」要数
-      （越界时硬件把自己的值还给你），于是它们累出来的是一堆没有意义的部分和。</span>
-      <span style="color:var(--crit);font-weight:650">lane 0 那一格两边都是 31 —— 这正是 R6 只敢让 lane 0
-      去做 <code>atomicAdd</code> 的原因。</span>
+      <b>两个版本用的是同一组数、同样三轮、同样三条 shuffle 指令。</b>
+      <span style="color:var(--ink-3)">区别在于：<code>down</code> 版里 lane 4–7 从第一轮起就向「warp 外面」要数
+      （越界时硬件返回自己的值），所以它们累加出的是没有意义的部分和。</span>
+      <span style="color:var(--crit);font-weight:650">只有 lane 0 那一格两边都是 31。这就是 R6 只敢让 lane 0
+      做 <code>atomicAdd</code> 的原因。</span>
     </p>
 
     <h4>五轮为什么正好够：off 就是在逐位翻 lane 号</h4>
     <p class="prose">
       <b><code>off</code> 取 16、8、4、2、1，二进制正好是 <code>10000</code>、<code>01000</code>、
-      <code>00100</code>、<code>00010</code>、<code>00001</code> —— 每轮翻 lane 号的一个 bit。</b>
-      <span style="color:var(--ink-3)">lane 号有 5 个 bit，翻完这 5 个 bit，就能从任意一个 lane 走到任意另一个 lane。
+      <code>00100</code>、<code>00010</code>、<code>00001</code>，每轮翻 lane 号的一个 bit。</b>
+      <span style="color:var(--ink-3)">lane 号有 5 个 bit。翻完这 5 个 bit，就能从任意一个 lane 走到任意另一个 lane。
       以 lane 5（<code>00101</code>）为例：</span>
     </p>
     <div class="tw"><table>
-      <caption>lane 5 = 00101 的五个伙伴 —— 每轮翻掉一个 bit</caption>
+      <caption>lane 5 = 00101 的五个伙伴：每轮翻掉一个 bit</caption>
       <thead><tr><th>轮次</th><th>偏移量</th><th>偏移量二进制</th><th>伙伴 lane 号</th>
         <th>伙伴二进制</th><th>这轮之后我掌握几个 lane</th></tr></thead>
       <tbody>
@@ -1234,24 +1232,24 @@ lane 6 读 lane 6 + 4 = <span class="x">10</span>  <span class="c">// 不是 2�
     </table></div>
     <div class="callout link">
       <p class="k">xor 版还白送一个性质：轮次顺序无关</p>
-      <p style="margin-bottom:0"><b>五个 bit 谁先翻谁后翻，结果完全一样</b>
-        <span style="color:var(--ink-3)">—— 因为「翻掉一个 bit」这件事把我掌握的 lane 集合按该 bit 对称地扩大一倍，
+      <p style="margin-bottom:0"><b>五个 bit 先翻哪个、后翻哪个，结果都一样。</b>
+        <span style="color:var(--ink-3)">每翻一个 bit，我掌握的 lane 集合就按这个 bit 对称地扩大一倍；
         五个 bit 翻完就是全集，和顺序无关。</span>
-        <span style="color:var(--crit);font-weight:650">而 <code>down</code> 版必须严格从大到小</span>
-        <span style="color:var(--ink-3)">，因为它靠的是「把数据一段段往低位 lane 推」，顺序错了数据就丢了。
+        <span style="color:var(--crit);font-weight:650"><code>down</code> 版则必须严格从大到小</span>
+        <span style="color:var(--ink-3)">，因为它靠「把数据一段段推向低位 lane」，顺序错了数据就会丢。
         这也是为什么 <a href="#s3-3"><code>warpReduceMaxSum</code></a> 里同样可以放心写 <code>off = 16 … 1</code>。</span></p>
     </div>
 
     <div class="callout crit">
       <p class="k">看着像数据竞争，其实不是</p>
       <p style="margin-bottom:0"><b><code>v += __shfl_xor_sync(0xffffffffu, v, off);</code>
-        这一句里 <code>v</code> 同时是「读出去的源」和「写回来的目标」，看上去像是我改了 <code>v</code>、
+        这一句里，<code>v</code> 既是读出去的源，又是写回来的目标。看上去像是我改了 <code>v</code>，
         伙伴却读到了新值。</b>
-        <span style="color:var(--ink-3)">不会。这是<u>一条</u>指令：硬件先把 32 个 lane 的 <code>v</code>
-        整体取一份快照，交换完成之后，各 lane 才各自做那个 <code>+=</code>。
-        所有人读到的都是<u>本轮开始时</u>的值。</span>
-        <span style="color:var(--crit);font-weight:650">但要注意：这个保证只在 warp 内部成立。
-        跨 warp 就没有这回事了 —— 那里必须走 shared + <code>__syncthreads()</code>，也就是下一节的事。</span></p>
+        <span style="color:var(--ink-3)">实际不会。这是<u>一条</u>指令：硬件先给 32 个 lane 的 <code>v</code>
+        取一份快照，交换完成后，各 lane 才各自做 <code>+=</code>。
+        所有 lane 读到的都是<u>本轮开始时</u>的值。</span>
+        <span style="color:var(--crit);font-weight:650">注意：这个保证只在 warp 内部成立。
+        跨 warp 必须走 shared memory + <code>__syncthreads()</code>，见下一节。</span></p>
     </div>
     <div class="tw"><table>
       <thead><tr><th></th><th><code>__shfl_down_sync</code></th><th><code>__shfl_xor_sync</code></th></tr></thead>
@@ -1263,10 +1261,10 @@ lane 6 读 lane 6 + 4 = <span class="x">10</span>  <span class="c">// 不是 2�
       </tbody>
     </table></div>
     <p class="prose">
-      <b>关键是：xor 版不多花钱。</b>
-      <span style="color:var(--ink-3)">同样五轮、同样每轮一条 shuffle。
-      它只是把"漏斗"换成了"全交换"，代价完全相同，却省掉了之后再广播一次的麻烦。</span>
-      <span style="color:var(--crit);font-weight:650">所以凡是"归约完所有线程都要用结果"的场合，直接用 xor。</span>
+      <b>xor 版不多花钱。</b>
+      <span style="color:var(--ink-3)">两版都是五轮、每轮一条 shuffle。
+      xor 版只把「漏斗」换成「全交换」，代价相同，还省掉了之后再广播一次。</span>
+      <span style="color:var(--crit);font-weight:650">所以凡是归约后所有线程都要用结果的场合，直接用 xor。</span>
     </p>
   </div>
 
@@ -1274,7 +1272,7 @@ lane 6 读 lane 6 + 4 = <span class="x">10</span>  <span class="c">// 不是 2�
     <h3 id="s3-2">二、block 级两段式归约<a class="up" href="#t3-2" title="回到目录">↑</a></h3>
     <p class="prose">
       <b>BLOCK = 256 = 8 个 warp。</b>
-      warp 内部用 shuffle 解决，跨 warp 只能走 shared。
+      warp 内部用 shuffle 归约，跨 warp 只能走 shared memory。
     </p>
     <pre>__inline__ __device__ float blockReduceSum(float v, float *smem) {
     const int lane = threadIdx.x &amp; 31;
@@ -1375,29 +1373,29 @@ lane 6 读 lane 6 + 4 = <span class="x">10</span>  <span class="c">// 不是 2�
       <text class="t-hi" x="481" y="346" text-anchor="middle">⑤ 线程 0 写 smem[0] → ⑥ __syncthreads() → ⑦ 全部 256 个线程一起读走</text>
 
     </svg>
-    <p class="cap"><b>图 7 · 两段的分界就在 shared 这一层。</b>
-      256 个线程里真正经过 shared 的只有 <b>8 个数</b>（一个 warp 交一个），
-      <code>smem</code> 也只占 8 个 float —— 其余全在寄存器里解决。
+    <p class="cap"><b>图 7 · 两段的分界就在 shared memory 这一层。</b>
+      256 个线程里，真正经过 shared memory 的只有 <b>8 个数</b>（每个 warp 交一个），
+      <code>smem</code> 也只占 8 个 float，其余都在寄存器里完成。
       注意中间那条红线：④ 跑完，结果还只在 warp 0 手里。</p>
     </div>
 
     <div class="callout crit">
       <p class="k">④ 跑完，另外 224 个线程还不知道结果</p>
-      <p style="margin-bottom:0"><b><a href="#s3-1">§3 · 一</a> 说过「xor 版五轮之后<u>每个</u> lane 都有全和」——
+      <p style="margin-bottom:0"><b><a href="#s3-1">§3 · 一</a> 说过「xor 版五轮之后<u>每个</u> lane 都有全和」。
         那为什么还要 ⑤⑥⑦ 再广播一次？</b>
         <span style="color:var(--crit);font-weight:650">因为第 ④ 步外面套着 <code>if (warp == 0)</code>。</span>
         <span style="color:var(--ink-3)">只有 0 号 warp 的 32 个 lane 参与了那次归约，
         另外 224 个线程<u>连这条指令都没执行</u>。</span>
-        <b>xor 的「全员都有」从来只在一个 warp 之内成立。</b></p>
+        <b>xor 的「全员都有」只在一个 warp 之内成立。</b></p>
     </div>
 
     <div class="tw"><table>
-      <caption><code>blockReduceSum</code> 和第 10 章 R6 的对照 —— 骨架 ①②③④ 完全一样，连 <code>: 0.0f</code> 那个幺元技巧都一样</caption>
+      <caption><code>blockReduceSum</code> 和第 10 章 R6 的对照：骨架 ①②③④ 相同，连 <code>: 0.0f</code> 那个幺元技巧也相同</caption>
       <thead><tr><th></th><th>R6 · 第 10 章</th><th>这里 · 融合算子</th></tr></thead>
       <tbody>
         <tr><td class="cn">warp 内用哪条</td><td class="en">__shfl_down_sync 漏斗</td>
             <td class="en"><b>__shfl_xor_sync 蝶形</b></td></tr>
-        <tr><td class="cn">归约完给谁用</td><td>只有 lane 0 —— 它去 <code>atomicAdd</code></td>
+        <tr><td class="cn">归约完给谁用</td><td>只有 lane 0，它去做 <code>atomicAdd</code></td>
             <td><b>全部 256 个线程</b>都要拿去缩放自己手上的元素</td></tr>
         <tr><td class="cn">尾巴</td><td>到 ④ 就结束</td>
             <td><b>多了 ⑤⑥⑦ 把结果广播回去</b></td></tr>
@@ -1409,27 +1407,27 @@ lane 6 读 lane 6 + 4 = <span class="x">10</span>  <span class="c">// 不是 2�
       </tbody>
     </table></div>
     <div class="callout">
-      <p class="k">为什么是两个 <code>__syncthreads()</code>，一个都不能少</p>
-      <p><b>③ 保证"写 shared"发生在"读 shared"之前。</b>
-        <span style="color:var(--ink-3)">少了它，0 号 warp 可能在 7 号 warp 还没写完时就去读 <code>smem[7]</code>。</span></p>
-      <p><b>⑥ 保证"0 号 warp 写完最终值"发生在"其余 warp 读它"之前。</b>
-        <span style="color:var(--ink-3)">少了它，1–7 号 warp 读到的是 ② 留下的旧值（那是某个 warp 的部分和，不是全和）。</span></p>
-      <p style="margin-bottom:0"><span style="color:var(--crit);font-weight:650">这类错误不会崩溃、不会报错，
+      <p class="k">两个 <code>__syncthreads()</code> 一个都不能少</p>
+      <p><b>③ 保证「写 shared memory」发生在「读 shared memory」之前。</b>
+        <span style="color:var(--ink-3)">少了它，0 号 warp 可能在 7 号 warp 写完之前就读 <code>smem[7]</code>。</span></p>
+      <p><b>⑥ 保证「0 号 warp 写完最终值」发生在「其余 warp 读它」之前。</b>
+        <span style="color:var(--ink-3)">少了它，1–7 号 warp 读到的是 ② 留下的旧值（某个 warp 的部分和，不是全和）。</span></p>
+      <p style="margin-bottom:0"><span style="color:var(--crit);font-weight:650">这类错误不会崩溃，也不报错，
         只会让结果偏一点点。</span>
-        <b>所以 <code>run_fused.sh</code> 里专门留了 <code>compute-sanitizer --tool racecheck</code> 那一步</b>（它到底在查什么，见 <a href="#s8-3">§8 · 三</a>）。</p>
+        <b>所以 <code>run_fused.sh</code> 里专门留了 <code>compute-sanitizer --tool racecheck</code> 这一步</b>（它查什么，见 <a href="#s8-3">§8 · 三</a>）。</p>
     </div>
     <p class="prose">
-      <b>第 ④ 步那个 <code>: 0.0f</code> 不是随便填的 —— 它是加法的幺元。</b>
-      <span style="color:var(--ink-3)">8 个 warp 只用了前 8 个 lane，其余 24 个 lane 必须喂一个
-      "参与运算但不改变结果"的值。求和用 0，求最大值用 <code>-FLT_MAX</code>，
-      求乘积就得用 1。<u>填错幺元是这类代码最隐蔽的一种错。</u></span>
+      <b>第 ④ 步的 <code>: 0.0f</code> 是加法的幺元，不是随便填的。</b>
+      <span style="color:var(--ink-3)">8 个 warp 只用到前 8 个 lane，其余 24 个 lane 必须填一个
+      「参与运算但不改变结果」的值：求和用 0，求最大值用 <code>-FLT_MAX</code>，
+      求乘积用 1。<u>填错幺元是这类代码里最隐蔽的错误。</u></span>
     </p>
   </div>
 
   <div class="sec">
     <h3 id="s3-3">三、联合归约：把 (m, s) 当成一个整体<a class="up" href="#t3-3" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>online softmax 要同时归约两个量，而且它们不是各归各的</b>——
+      <b>online softmax 要同时归约两个量，而且两者不能各归各的</b>：
       <code>s</code> 的合并方式依赖 <code>m</code>。
     </p>
     <pre>__inline__ __device__ void warpReduceMaxSum(float &amp;m, float &amp;s) {
@@ -1442,32 +1440,32 @@ lane 6 读 lane 6 + 4 = <span class="x">10</span>  <span class="c">// 不是 2�
     }
 }</pre>
     <p class="prose">
-      <b>两边都先换算到新基准 <code>m_n</code> 再相加。</b>
-      <span style="color:var(--ink-3)">谁的 max 小，谁的 <code>exp</code> 就是个小于 1 的数，把它的和缩下去；
-      两边相等时两个 <code>exp</code> 都是 1，退化成普通加法。</span>
+      <b>两边都先换算到新基准 <code>m_n</code>，再相加。</b>
+      <span style="color:var(--ink-3)">max 较小的一边，<code>exp</code> 因子小于 1，会把它的和缩小；
+      两边 max 相等时，两个 <code>exp</code> 都是 1，退化成普通加法。</span>
     </p>
 
     <div class="callout crit">
-      <p class="k">先回答两个最容易卡住的疑问</p>
-      <p><b>「这循环只跑了一次？」——不，它跑 5 轮</b>：<code>off</code> 依次是 16、8、4、2、1，
-        <span style="color:var(--ink-3)">和 <a href="#s3-1">§3 · 一</a> 图 6 是<u>同一个蝶形</u>，
-        只是每个格子从「一个标量」变成了「一对 <code>(m, s)</code>」，
-        每轮也从 1 条 shuffle 变成 2 条（<code>m</code> 一条、<code>s</code> 一条）。</span></p>
-      <p style="margin-bottom:0"><b>「一轮只碰一个伙伴，怎么可能覆盖 32 个 lane？」</b>
-        <span style="color:var(--crit);font-weight:650">因为伙伴递过来的<u>从来不是它自己那一个元素</u>，
+      <p class="k">两个常见疑问</p>
+      <p><b>「这个循环只跑一次？」不，它跑 5 轮</b>：<code>off</code> 依次是 16、8、4、2、1。
+        <span style="color:var(--ink-3)">它和 <a href="#s3-1">§3 · 一</a> 图 6 是<u>同一个蝶形</u>，
+        只是每个格子从「一个标量」变成「一对 <code>(m, s)</code>」，
+        每轮也从 1 条 shuffle 变成 2 条（<code>m</code>、<code>s</code> 各一条）。</span></p>
+      <p style="margin-bottom:0"><b>「一轮只碰一个伙伴，怎么能覆盖 32 个 lane？」</b>
+        <span style="color:var(--crit);font-weight:650">因为伙伴递过来的<u>不是它自己那一个元素</u>，
         而是它已经汇总好的一摞。</span>
         <span style="color:var(--ink-3)">第 k 轮结束时，每个 lane 手里的 <code>(m, s)</code>
-        已经概括了 2<sup>k</sup> 个 lane；2⁵ = 32，正好覆盖全 warp。下面第二张图就是拆这个。</span></p>
+        已经概括了 2<sup>k</sup> 个 lane；2⁵ = 32，正好覆盖全 warp。图 9 拆的就是这一点。</span></p>
     </div>
 
-    <h4>一、循环体那一行到底在算什么</h4>
+    <h4>一、循环体那一行算什么</h4>
     <p class="prose">
-      <b>每个 lane 手里的 <code>s</code> 不是一个裸和，而是<u>「以我自己的 m 为基准」的和</u>：</b>
+      <b>每个 lane 手里的 <code>s</code> 不是裸和，而是<u>「以我自己的 m 为基准」的和</u>：</b>
       <code>s = Σ exp(x_j − m)</code>。
-      <span style="color:var(--ink-3)">我和伙伴的 <code>m</code> 通常不一样，
-      也就是说两个 <code>s</code> <u>量纲不同</u>，直接相加是错的。</span>
-      <span style="color:var(--crit);font-weight:650">所以必须先把两边都换算到同一个新基准
-      <code>m_n = max(m, m_o)</code> 上，再相加 —— 这就是那一行干的全部事情。</span>
+      <span style="color:var(--ink-3)">我和伙伴的 <code>m</code> 通常不同，
+      所以两个 <code>s</code> 的<u>量纲不同</u>，不能直接相加。</span>
+      <span style="color:var(--crit);font-weight:650">必须先把两边换算到同一个新基准
+      <code>m_n = max(m, m_o)</code>，再相加。那一行做的就是这件事。</span>
     </p>
 
     <div class="fig">
@@ -1511,10 +1509,10 @@ lane 6 读 lane 6 + 4 = <span class="x">10</span>  <span class="c">// 不是 2�
       <text class="t-dim" x="0" y="346">两个因子里必有一个是 exp(0) = 1，另一个 ≤ 1 —— 换基准只会把小的那边缩下去，永远不会溢出</text>
     </svg>
     <p class="cap"><b>图 8 · 「换算到新基准再相加」，一行代码三件事。</b>
-      <code>s</code> 和 <code>s_o</code> 各自以不同的 <code>m</code> 为基准，量纲不同，不能直接加；
-      取 <code>m_n = max</code> 之后，两边各乘一个 <code>exp(自己的 m − m_n)</code> 把量纲对齐，再相加。
-      <b>基准大的那一边因子恰好是 <code>exp(0) = 1</code></b>，所以真正被缩的永远只有小的那一边。
-      两边 <code>m</code> 相等时两个因子都是 1，整行退化成普通加法。</p>
+      <code>s</code> 和 <code>s_o</code> 的基准是不同的 <code>m</code>，量纲不同，不能直接加。
+      取 <code>m_n = max</code> 之后，两边各乘 <code>exp(自己的 m − m_n)</code> 对齐量纲，再相加。
+      <b>基准大的一边，因子恰好是 <code>exp(0) = 1</code></b>，所以被缩小的总是基准小的一边。
+      两边 <code>m</code> 相等时，两个因子都是 1，整行退化成普通加法。</p>
     </div>
 
     <h4>二、一轮只碰一个伙伴，为什么能覆盖全 warp</h4>
@@ -1662,24 +1660,24 @@ lane 6 读 lane 6 + 4 = <span class="x">10</span>  <span class="c">// 不是 2�
     </svg>
     <p class="cap"><b>图 9 · 伙伴递过来的是「一摞」，不是「一个」。</b>
       数据仍是 <a href="#s3-1">§3 · 一</a> 那组 <code>x = [3,1,4,1,5,9,2,6]</code>，每个 lane 初始持有 <code>(x, 1)</code>。
-      <code>off=4</code> 那一轮，lane 0 的伙伴 lane 4 递来的是它自己的 <code>(5, 1.000)</code>；
-      但到 <code>off=2</code> 那一轮，lane 2 递来的 <code>(4, 1.135)</code>
+      <code>off=4</code> 那一轮，lane 0 的伙伴 lane 4 递来的是它自己的 <code>(5, 1.000)</code>。
+      到 <code>off=2</code> 那一轮，lane 2 递来的 <code>(4, 1.135)</code>
       <b>已经是 lane 2 和 lane 6 合并后的结果</b>。
-      信息就是这样每轮翻一倍：1 → 2 → 4 → 8。真实 warp 里 1 → 2 → 4 → 8 → 16 → 32，正好 5 轮。</p>
+      信息每轮翻一倍：1 → 2 → 4 → 8。真实 warp 里是 1 → 2 → 4 → 8 → 16 → 32，正好 5 轮。</p>
     </div>
 
     <div class="callout link">
-      <p class="k">两个顺带的问题</p>
-      <p><b>为什么不干脆先 <code>warpReduceMax</code> 求出全局 max，再 <code>warpReduceSum</code>？</b>
-        <span style="color:var(--ink-3)">那样也对，而且 <code>__expf</code> 只要算 1 次（融合版要算 10 次）。
-        但那是<u>两个前后依赖的归约</u>，关键路径 5 + 5 = 10 步；
-        融合版每轮的两条 shuffle 互不依赖、可以背靠背发射，关键路径只有 5 步。
-        何况这是个访存瓶颈的 kernel，<code>exp</code> 根本不是成本所在。</span></p>
-      <p style="margin-bottom:0"><b>更要紧的理由：这个合并运算必须能「两两合并」。</b>
+      <p class="k">两个附带问题</p>
+      <p><b>为什么不先用 <code>warpReduceMax</code> 求出全局 max，再 <code>warpReduceSum</code>？</b>
+        <span style="color:var(--ink-3)">那样也对，而且 <code>__expf</code> 只算 1 次（融合版算 10 次）。
+        但那是<u>两个前后依赖的归约</u>，关键路径是 5 + 5 = 10 步。
+        融合版每轮的两条 shuffle 互不依赖，可以背靠背发射，关键路径只有 5 步。
+        而且这是访存瓶颈的 kernel，<code>exp</code> 不是成本所在。</span></p>
+      <p style="margin-bottom:0"><b>更重要的理由：这个合并运算必须支持「两两合并」。</b>
         <span style="color:var(--crit);font-weight:650">FlashAttention 分块算 softmax 时，
-        块是一块一块来的，<u>根本拿不到全局 max</u></span>
-        <span style="color:var(--ink-3)">—— 只能每块算出自己的 <code>(m, s)</code> 再两两合并。
-        这里写成融合形式，就是把它和 <a href="#s5-3">§5 · 三</a> 要证结合律的那个 <code>⊕</code>
+        块是逐个到来的，<u>拿不到全局 max</u></span>
+        <span style="color:var(--ink-3)">，只能每块算出自己的 <code>(m, s)</code>，再两两合并。
+        这里写成融合形式，就是把它和 <a href="#s5-3">§5 · 三</a> 要证明结合律的那个 <code>⊕</code>
         统一成同一个算子。</span></p>
     </div>
     <div class="callout crit">
@@ -1694,8 +1692,9 @@ s = 0 × NaN + 0 × NaN = <span class="x">NaN</span>   <span class="c">// 然后
 m - m_n = (-FLT_MAX) - (-FLT_MAX) = 0
 s = 0 × exp(0) + 0 × exp(0) = <span class="a">0</span>   <span class="c">// 安全退化</span></pre>
       <p style="margin-bottom:0"><b>什么时候会有线程分不到元素？</b>
-        <span style="color:var(--ink-3)">N 不是 BLOCK 的整数倍时的最后一轮，
-        以及 N &lt; BLOCK 的情况（比如 <code>./fused_ops s3 64 1000 3</code>）。</span>
+        <span style="color:var(--ink-3)">两种情况：N 不是 BLOCK 的整数倍时，最后一轮有线程闲着
+        （比如 <code>./fused_ops s3 64 1000 3</code>：1000 = 3×256 + 232，最后一轮有 24 个线程闲着）；
+        N &lt; BLOCK 时，有的线程一个元素也分不到。</span>
         <span style="color:var(--crit);font-weight:650">所以脚本里专门有一条 N=1000 的边界测试。</span></p>
     </div>
   </div>
@@ -1707,17 +1706,15 @@ s = 0 × exp(0) + 0 × exp(0) = <span class="a">0</span>   <span class="c">// �
   <p class="lede prose">
     <strong>每一级只动一个变量。</strong>
     <b>N1→N2 动 kernel 个数，N2→N3 动数据驻留位置，N3→N4 动访存指令宽度。</b>
-    <span style="color:var(--crit);font-weight:650">只有 N2→N3 会改变字节数，所以理论上只有它能带来提速。</span>
+    <span style="color:var(--crit);font-weight:650">只有 N2→N3 改变字节数，所以理论上只有这一步能变快。</span>
   </p>
 
   <div class="sec">
     <h3 id="s4-1">一、N1：两趟，两个 kernel<a class="up" href="#t4-1" title="回到目录">↑</a></h3>
 
     <p class="prose">
-      <b>读代码之前先把变量对上号。</b>
-      <span style="color:var(--ink-3)">RMSNorm <u>只沿最后一维做</u> ——
-      每个 token 拿自己那 3584 个数独立归一化，和它在第几个 batch、第几个位置毫无关系。
-      所以前两维可以直接拉平。</span>
+      <b>先把变量对上号：RMSNorm <u>只沿最后一维做</u>，所以前两维可以直接拉平。</b>
+      <span style="color:var(--ink-3)">每个 token 用自己的 3584 个数独立归一化，与它在哪个 batch、哪个位置无关。</span>
     </p>
 
     <div class="fig">
@@ -1802,9 +1799,9 @@ s = 0 × exp(0) + 0 × exp(0) = <span class="a">0</span>   <span class="c">// �
       <text class="t-acc" x="60" y="384">归约时：warp 内用 shuffle，warp 之间走 shared —— 就是 §3 那两块积木</text>
     </svg>
     <p class="cap"><b>图 10 · 从张量到线程，四层对应关系。</b>
-      <code>blockIdx.x</code> 就是行号，也就是第几个 token；<code>threadIdx.x</code> 决定这个线程在行内取哪些元素。
-      <b>因为行与行完全独立，grid 这一层不需要任何通信</b> ——
-      这正是它和第 10 章 R6 最大的结构差别（R6 还要多一层 <code>atomicAdd</code> 把 block 间的结果汇总）。</p>
+      <code>blockIdx.x</code> 是行号，即第几个 token；<code>threadIdx.x</code> 决定这个线程取行内哪些元素。
+      <b>行与行完全独立，所以 grid 这一层不需要通信。</b>
+      这是它和第 10 章 R6 最大的结构差别：R6 还要多一层 <code>atomicAdd</code>，汇总 block 间的结果。</p>
     </div>
 
     <div class="tw"><table>
@@ -1820,17 +1817,17 @@ s = 0 × exp(0) + 0 × exp(0) = <span class="a">0</span>   <span class="c">// �
         <tr><td class="cn"><code>dy</code></td><td class="en">M × N</td><td class="en">58.7 MB</td>
             <td>输出，同形状</td></tr>
         <tr><td class="cn"><code>dw</code></td><td class="en">N</td><td class="en"><b>14 KB</b></td>
-            <td>可学权重，<b>所有行共用</b>，每个 hidden 维一个增益 ——
-              太小，稳稳待在 L1/L2 里，<u>不计入字节账</u></td></tr>
+            <td>可学权重，<b>所有行共用</b>，每个 hidden 维一个增益。
+              它很小，一直留在 L1/L2 里，<u>不计入字节账</u></td></tr>
         <tr><td class="cn"><code>dm</code></td><td class="en">M</td><td class="en">16 KB</td>
-            <td>每行的 <code>rstd</code>，<b>只有 N1 才有</b>；N2/N3/N4 把两趟并了，它活在寄存器里，
-              这个数组根本不存在</td></tr>
+            <td>每行的 <code>rstd</code>，<b>只有 N1 有</b>。N2/N3/N4 把两个 kernel 并成一个，
+              rstd 留在寄存器里，不需要这个数组</td></tr>
       </tbody>
     </table></div>
     <p class="prose">
-      <span style="color:var(--ink-3)">命令行 <code>./fused_ops n1 4096 3584</code> 里那两个数字就是 M 和 N。
-      <code>n1 1 3584</code> 就是 decode batch=1 —— </span>
-      <b>M=1，整张卡只有一个 block 在干活</b>（这就是下面那个 callout 要说的事）。
+      <span style="color:var(--ink-3)">命令行 <code>./fused_ops n1 4096 3584</code> 里的两个数字就是 M 和 N。
+      <code>n1 1 3584</code> 对应 decode batch=1：</span>
+      <b>M=1，整张卡只有一个 block 在工作</b>（本节末尾的 callout 讲这件事）。
     </p>
 
     <div class="fig">
@@ -1887,18 +1884,18 @@ s = 0 × exp(0) + 0 × exp(0) = <span class="a">0</span>   <span class="c">// �
       <text class="t-dim" x="0" y="184">格子里的数字是该 lane 取到的 xr 下标。两种写法算出来的结果一模一样，差的只是「谁取哪一个」。</text>
     </svg>
     <p class="cap"><b>图 11 · 索引怎么映射到线程，决定的不是代码好不好看。</b>
-      跨步循环 <code>i = threadIdx.x; i += BLOCK</code> 让同一轮里 warp 的 32 个线程落在
-      <b>32 个连续 float = 128 字节 = 正好一个 cache line</b> 上，天然完美合并。
-      <span style="color:var(--ink-3)">（NVIDIA 的 cache line 是 128 字节，由 4 个 32 字节的 sector 组成；一人一段那边 32 个地址散在 1792 字节里，正好横跨 14 条 cache line。）</span>
-      <span style="color:var(--ink-3)">这和第 3 章 K1/K2 那个"索引映射写反"的教训是同一回事。</span></p>
+      跨步循环 <code>i = threadIdx.x; i += BLOCK</code> 让 warp 的 32 个线程在同一轮落在
+      <b>32 个连续 float = 128 字节 = 正好一个 cache line</b> 上，访存完全合并。
+      <span style="color:var(--ink-3)">（NVIDIA 的 cache line 是 128 字节，由 4 个 32 字节的 sector 组成。「一人一段」的写法里，32 个地址散在 1792 字节里，横跨 14 条 cache line。）</span>
+      <span style="color:var(--ink-3)">这和第 3 章 K1/K2「索引映射写反」的教训是同一回事。</span></p>
     </div>
 
 
     <p class="prose">
       <b><code>rms_n1_pass1</code> 拿到一行之后只做三件事：<u>累加 → 归约 → 写回</u>。</b>
-      <span style="color:var(--ink-3)">其中「归约」是一次<u>两层嵌套</u>的调用：
-      <code>blockReduceSum</code> 内部调了两次 <code>warpReduceSum</code> ——
-      第一次 8 个 warp 同时各做各的，第二次只有 0 号 warp 做。</span>
+      <span style="color:var(--ink-3)">其中「归约」是<u>两层嵌套</u>的调用：
+      <code>blockReduceSum</code> 内部调两次 <code>warpReduceSum</code>。
+      第一次 8 个 warp 并行各做各的，第二次只有 0 号 warp 做。</span>
     </p>
 
     <div class="fig">
@@ -1954,20 +1951,20 @@ s = 0 × exp(0) + 0 × exp(0) = <span class="a">0</span>   <span class="c">// �
       <text class="t-dim" x="0" y="392">整个过程只有 ② 里那一次 __syncthreads() 是全 block 必须对齐的点；① 和 ③ 各线程互不打扰。</text>
     </svg>
     <p class="cap"><b>图 12 · 三个阶段，两层归约。</b>
-      注意 <code>warpReduceSum</code> 被调了<b>两次，但角色完全不同</b>：
-      第一次是 8 个 warp <u>并行</u>各归各的（得到 8 个部分和），第二次是 0 号 warp 把这 8 个数收成 1 个。
-      中间必须绕一次 shared，因为 <a href="#s3-1">shuffle 跨不了 warp</a>。
-      <span style="color:var(--ink-3)">图中的数只是示意，但内部自洽：8 个 warp 和相加正好 5943.2，
-      <code>rsqrt(5943.2/3584)</code> 正好 0.7766。</span></p>
+      <code>warpReduceSum</code> 调了<b>两次，角色完全不同</b>：
+      第一次是 8 个 warp <u>并行</u>各归各的，得到 8 个部分和；第二次是 0 号 warp 把这 8 个数收成 1 个。
+      中间必须经过一次 shared memory，因为 <a href="#s3-1">shuffle 跨不了 warp</a>。
+      <span style="color:var(--ink-3)">图中的数只是示意，但内部自洽：8 个 warp 的和相加是 5943.2，
+      <code>rsqrt(5943.2/3584)</code> 是 0.7766。</span></p>
     </div>
 
 
     <h4>换个角度：同一份代码，不同的层面</h4>
     <p class="prose">
-      <b>CUDA 最别扭的一点是：你写的是<u>一个线程</u>的代码，跑起来却是 256 个线程<u>同时</u>在跑同一份。</b>
-      <span style="color:var(--ink-3)">所以读这三个函数，光看「它算什么」不够，还得随时问一句
-      <u>「这一句是作用在哪个层面上的」</u>—— 是每个线程各管各的，还是一个 warp 32 个人一起，
-      还是整个 block 256 个人一起。</span>
+      <b>CUDA 最别扭的一点：你写的是<u>一个线程</u>的代码，运行时却有 256 个线程<u>同时</u>跑这一份。</b>
+      <span style="color:var(--ink-3)">所以读这三个函数，不能只看「它算什么」，还要对每一句问
+      <u>「这一句作用在哪个层面」</u>：每个线程各算各的，一个 warp 的 32 个线程一起，
+      还是整个 block 的 256 个线程一起。</span>
     </p>
 
     <div class="fig">
@@ -1998,11 +1995,11 @@ s = 0 × exp(0) + 0 × exp(0) = <span class="a">0</span>   <span class="c">// �
       <text class="t-dim" x="0" y="306">越往里越便宜：warp 内是寄存器直通；block 内要过一次 shared 并全员等齐；grid 之间只能重启一个 kernel。</text>
     </svg>
     <p class="cap"><b>图 13 · 三层作用域，三种通信手段。</b>
-      <b><code>__shared__</code> 和 <code>__syncthreads()</code> 都在中间那个框上</b> ——
-      它们是 <u>block 级</u>的：每个 block 拿到自己独立的一份 <code>smem</code>，
-      屏障也只管住自己 block 里那 256 个线程。
-      <span style="color:var(--ink-3)">往里，warp 内部根本用不着它们（shuffle 直接读寄存器）；
-      往外，block 之间压根没有这种东西 —— 这正是 N1 必须拆成两个 kernel 的原因。</span></p>
+      <b><code>__shared__</code> 和 <code>__syncthreads()</code> 都在中间的框里</b>，
+      它们是 <u>block 级</u>的：每个 block 有自己独立的一份 <code>smem</code>，
+      <code>__syncthreads()</code> 也只同步本 block 的 256 个线程。
+      <span style="color:var(--ink-3)">往里，warp 内部用不着它们（shuffle 直接读寄存器）；
+      往外，block 之间没有这种机制。这就是 N1 必须拆成两个 kernel 的原因。</span></p>
     </div>
 
     <div class="tw"><table>
@@ -2022,9 +2019,9 @@ s = 0 × exp(0) + 0 × exp(0) = <span class="a">0</span>   <span class="c">// �
       </tbody>
     </table></div>
     <p class="prose">
-      <span style="color:var(--ink-3)">第二行最容易被忽略：<code>row</code> 也是个普通寄存器变量、也是 256 份，
-      只不过 <code>blockIdx.x</code> 对同一个 block 里所有线程都一样，所以算出来的值一样。</span>
-      <b>这不叫「共享」—— 它们只是恰好相等。</b>
+      <b>第二行最容易看错：这不叫「共享」，它们只是恰好相等。</b>
+      <span style="color:var(--ink-3)"><code>row</code> 也是普通寄存器变量，也有 256 份。
+      只是 <code>blockIdx.x</code> 对同一个 block 的所有线程都相同，所以算出来的值相同。</span>
     </p>
 
     <div class="fig">
@@ -2120,33 +2117,33 @@ s = 0 × exp(0) + 0 × exp(0) = <span class="a">0</span>   <span class="c">// �
     </svg>
     <p class="cap"><b>图 14 · 逐行看：这一句到底在哪个层面上。</b>
       上半是 <code>rms_n1_pass1</code>：开头几句 256 个线程算出<u>相同</u>的值（定位到本行），
-      中间的累加每个线程<u>各不相同</u>，最后靠一句 <code>if</code> 选出一个代表落笔。
-      下半是 <code>blockReduceSum</code>：<b>八行里层面来回切了四次</b> ——
-      warp 内（shuffle）→ block（shared + 屏障）→ warp 内 → block，
-      这正是「两段式」三个字的含义。</p>
+      中间的累加每个线程<u>各不相同</u>，最后用一句 <code>if</code> 选一个代表落笔。
+      下半是 <code>blockReduceSum</code>：<b>八行里层面来回切了四次</b>：
+      warp 内（shuffle）→ block（shared memory + <code>__syncthreads()</code>）→ warp 内 → block。
+      这就是「两段式」的含义。</p>
     </div>
 
     <div class="callout crit">
       <p class="k"><code>if (threadIdx.x == 0)</code> 不是「汇总」，是「选代表」</p>
-      <p><b>汇总在它之前就已经做完了</b> —— <code>blockReduceSum</code> 返回时，
-        256 个线程<u>每一个</u>手里都握着完整的 <code>Σx²</code>。
-        <span style="color:var(--ink-3)">那为什么还要加这个 <code>if</code>？
-        因为接下来要往显存写 <code>rstd[row]</code>，那是<u>一个地址、一个 float</u>。
-        256 个线程都去写会得到 256 次冗余写（值一样，不会错，但纯属浪费）。</span></p>
-      <p style="margin-bottom:0"><span style="color:var(--crit);font-weight:650">所以它是并行编程里一个固定套路：
+      <p><b>汇总在它之前已经做完</b>：<code>blockReduceSum</code> 返回时，
+        256 个线程<u>每一个</u>手里都有完整的 <code>Σx²</code>。
+        <span style="color:var(--ink-3)">加这个 <code>if</code>，是因为接下来要往显存写 <code>rstd[row]</code>，
+        那是<u>一个地址、一个 float</u>。
+        256 个线程都写，就是 256 次冗余写：值相同，结果不会错，但全是浪费。</span></p>
+      <p style="margin-bottom:0"><span style="color:var(--crit);font-weight:650">这是并行编程的一个固定套路：
         <u>归约负责「算出来」，选代表负责「落笔」，两件事分开</u>。</span>
-        <span style="color:var(--ink-3)">同样的套路在 <code>blockReduceSum</code> 里出现了两次：
-        <code>if (lane == 0) smem[warp] = v;</code> 是每个 warp 选一个代表交作业，
+        <span style="color:var(--ink-3)">这个套路在 <code>blockReduceSum</code> 里出现了两次：
+        <code>if (lane == 0) smem[warp] = v;</code> 是每个 warp 选一个代表交结果，
         <code>if (threadIdx.x == 0) smem[0] = v;</code> 是全 block 选一个代表。</span></p>
     </div>
 
 
     <h4>选几个代表？—— <code>lane == 0</code> 和 <code>threadIdx.x == 0</code> 不是一回事</h4>
     <p class="prose">
-      <b>这是读这段代码时最容易看错的地方。</b>
-      <span style="color:var(--ink-3)"><code>threadIdx.x</code> 是<u>整个 block 内</u>的编号（0…255），
-      而 <code>lane</code> 是<u>每个 warp 内</u>的编号（0…31，每个 warp 都从 0 重新数）。
-      两者是这么拆出来的：</span>
+      <b>这是这段代码最容易看错的地方。</b>
+      <span style="color:var(--ink-3)"><code>threadIdx.x</code> 是<u>整个 block 内</u>的编号（0…255）；
+      <code>lane</code> 是<u>每个 warp 内</u>的编号（0…31，每个 warp 都从 0 重新数）。
+      两者的拆法如下：</span>
     </p>
     <pre>const int lane = threadIdx.x <span class="a">&amp; 31</span>;   <span class="c">// 低 5 位 → 在本 warp 里排第几  0…31</span>
 const int warp = threadIdx.x <span class="a">&gt;&gt; 5</span>;   <span class="c">// 高位   → 是第几个 warp      0…7</span></pre>
@@ -2233,10 +2230,10 @@ const int warp = threadIdx.x <span class="a">&gt;&gt; 5</span>;   <span class="c
       <text class="t-dim" x="0" y="286">threadIdx.x == 0 等价于「lane == 0 而且 warp == 0」，比 lane == 0 严格得多。</text>
     </svg>
     <p class="cap"><b>图 15 · 同样长得像「选 0 号」，选出来的人数差 8 倍。</b>
-      <code>lane == 0</code> 在<b>每个 warp 里都有一个</b>，共 8 个线程 —— 但它们写的是
-      <code>smem[warp]</code>，<b>8 个不同的下标</b>，所以并不冲突。
+      <code>lane == 0</code> 在<b>每个 warp 里都有一个</b>，共 8 个线程。它们写的是
+      <code>smem[warp]</code>，<b>8 个不同的下标</b>，所以不冲突。
       <code>threadIdx.x == 0</code> 在整个 block 里<b>只有一个</b>，所以
-      <code>smem[0] = v</code> 只被一个线程执行。</p>
+      <code>smem[0] = v</code> 只由一个线程执行。</p>
     </div>
 
     <div class="tw"><table>
@@ -2250,7 +2247,7 @@ const int warp = threadIdx.x <span class="a">&gt;&gt; 5</span>;   <span class="c
         <tr><td class="cn"><code>warp == 0</code></td>
             <td class="en">0 … 31</td>
             <td class="en"><b>32 个</b></td>
-            <td>只让头一个 warp 去收那 8 个数（不写 shared，只算）</td></tr>
+            <td>只让 0 号 warp 收那 8 个数（只算，不写 shared memory）</td></tr>
         <tr><td class="cn"><code>threadIdx.x == 0</code></td>
             <td class="en">只有 0</td>
             <td class="en"><b>1 个</b></td>
@@ -2260,58 +2257,57 @@ const int warp = threadIdx.x <span class="a">&gt;&gt; 5</span>;   <span class="c
 
     <div class="callout link">
       <p class="k"><code>smem[0]</code> 被写了两次，为什么安全</p>
-      <p><b>它先在 ② 存过 warp 0 的部分和，又在 ⑥ 被覆写成全 block 的和。</b>
-        <span style="color:var(--ink-3)">关键在于「读」一定发生在「覆写」之前：</span></p>
+      <p><b>它先在 ② 存 warp 0 的部分和，又在 ⑥ 被覆写成全 block 的和。</b>
+        <span style="color:var(--ink-3)">安全的关键是：「读」一定发生在「覆写」之前。</span></p>
       <p style="margin-bottom:0"><span style="color:var(--ink-3)">
         ④ 那一行 <code>v = (threadIdx.x &lt; 8) ? smem[lane] : 0.0f;</code> 里，
-        <u>真正读 shared 的只有线程 0–7</u>（其余直接拿幺元 <code>0.0f</code>），而这 8 个线程全在 warp 0 里；
-        ⑤ 的 <code>warpReduceSum</code> 用的是<u>全掩码 shuffle</u>，会把 warp 0 的 32 个 lane 同步一次 ——
-        所以读必然完成在覆写之前。warp 1–7 从头到尾没碰 <code>smem[0]</code>，它们要到 ⑦ 之后才读。</span>
+        <u>只有线程 0–7 真正读 shared memory</u>（其余线程直接取幺元 <code>0.0f</code>），这 8 个线程都在 warp 0 里。
+        ⑤ 的 <code>warpReduceSum</code> 用<u>全掩码 shuffle</u>，会让 warp 0 的 32 个 lane 同步一次，
+        所以读一定在覆写之前完成。warp 1–7 从头到尾不碰 <code>smem[0]</code>，它们到 ⑦ 之后才读。</span>
         <b>两个 <code>__syncthreads()</code> 各挡一头</b>：③ 挡在「写 8 个部分和」与「读它们」之间，
         ⑦ 挡在「覆写全和」与「全员读走」之间。</p>
     </div>
     <p class="prose">
-      <span style="color:var(--ink-3)">顺带一个隐含前提：④ 那行假定 <u>warp 数 ≤ 32</u>，
-      这样 ⑤ 一个 warp 就能把它们收完。<code>BLOCK = 256</code> 只有 8 个 warp，
-      而 CUDA 本来就限制一个 block 最多 1024 线程（= 32 个 warp），</span>
-      <b>所以这个前提永远成立。</b>
+      <b>④ 那行有一个隐含前提：<u>warp 数 ≤ 32</u>。这个前提永远成立。</b>
+      <span style="color:var(--ink-3)">有了它，⑤ 用一个 warp 就能收完。<code>BLOCK = 256</code> 只有 8 个 warp；
+      CUDA 也限制一个 block 最多 1024 线程（= 32 个 warp）。</span>
     </p>
     <div class="callout warn">
-      <p class="k">与之相对：屏障绝不能放进分支</p>
+      <p class="k">与之相对：<code>__syncthreads()</code> 绝不能放进分支</p>
       <p style="margin-bottom:0"><b>「选代表」可以写在 <code>if</code> 里，
         <code>__syncthreads()</code> 绝对不行。</b>
-        <span style="color:var(--ink-3)">屏障要求 block 里<u>每一个</u>线程都到达；
-        少一个没到就是未定义行为 —— 可能挂死，也可能结果悄悄偏一点。
+        <span style="color:var(--ink-3)">它要求 block 里<u>每一个</u>线程都到达；
+        少一个就是未定义行为：可能挂死，也可能结果悄悄偏一点。
         所以代码里两次 <code>__syncthreads()</code> 都写在 <code>if</code> 外面，
-        而 <code>if (lane == 0)</code>、<code>if (warp == 0)</code> 里头一个屏障都没有。</span>
-        <span style="color:var(--crit);font-weight:650">哪天想把它「优化」进
-        <code>if (warp == 0) { … }</code> 里，就炸了。</span></p>
+        <code>if (lane == 0)</code>、<code>if (warp == 0)</code> 里一个都没有。</span>
+        <span style="color:var(--crit);font-weight:650">如果把它「优化」进
+        <code>if (warp == 0) { … }</code> 里，就会触发这种未定义行为。</span></p>
     </div>
     <div class="callout warn">
       <p class="k">两个容易忽略的细节</p>
-      <p><b>① <code>smem</code> 为什么要当参数传进去？</b>
-        <span style="color:var(--ink-3)"><code>__shared__ float smem[BLOCK/32]</code> 是在 <u>kernel 里</u>声明的，
-        归约函数只是借用它。这样写 <code>blockReduceSum</code> 才能被四级台阶反复调用，
-        而由调用方决定这块 shared 什么时候分配、给谁用。</span></p>
-      <p style="margin-bottom:0"><b>② pass1 里那次广播其实白做了。</b>
+      <p><b>① <code>smem</code> 为什么当参数传进去？</b>
+        <span style="color:var(--ink-3)"><code>__shared__ float smem[BLOCK/32]</code> 在 <u>kernel 里</u>声明，
+        归约函数只是借用。这样 <code>blockReduceSum</code> 能被四级台阶反复调用，
+        由调用方决定这块 shared memory 何时分配、给谁用。</span></p>
+      <p style="margin-bottom:0"><b>② pass1 里那次广播是多余的。</b>
         <span style="color:var(--ink-3)"><code>blockReduceSum</code> 结尾的
         <code>smem[0]</code> → <code>__syncthreads()</code> → 全员读走，是为了让 256 个线程都拿到结果；
-        可 pass1 只有 <code>thread 0</code> 要用。</span>
-        <span style="color:var(--crit);font-weight:650">这是共用同一个 helper 的代价 ——
-        真正需要全员拿到结果的是 N2/N3/N4，那里每个线程都要拿 <code>r</code> 去缩放自己手上的元素。</span>
-        <span style="color:var(--ink-3)">量级上完全可以忽略（相对一行 14 KB 的显存流量），
-        但它正好解释了<u>为什么第 10 章 R6 只用一次 <code>__syncthreads()</code></u>。</span></p>
+        但 pass1 只有 <code>thread 0</code> 用它。</span>
+        <span style="color:var(--crit);font-weight:650">这是共用同一个 helper 的代价。
+        真正需要全员拿到结果的是 N2/N3/N4，那里每个线程都要用 <code>r</code> 缩放自己负责的元素。</span>
+        <span style="color:var(--ink-3)">这点开销相对一行 14 KB 的显存流量可以忽略，
+        但它解释了<u>为什么第 10 章 R6 只用一次 <code>__syncthreads()</code></u>。</span></p>
     </div>
     <div class="callout">
       <p class="k">两趟之间靠 <code>dm</code> 接力</p>
       <p style="margin-bottom:0"><b>pass1 里只有 <code>thread 0</code> 写 <code>dm[row]</code>；
         pass2 里 256 个线程<u>读同一个地址</u> <code>dm[row]</code>，硬件广播一次就够。</b>
-        <span style="color:var(--ink-3)">整笔账对得上：读 x 两次 + 写 y 一次 = 12N × M = 168 MB，
-        加上 <code>dm</code> 往返的 32 KB（占 0.02%，可忽略）。</span></p>
+        <span style="color:var(--ink-3)">总账对得上：读 x 两次 + 写 y 一次 = 12N × M = 168 MB，
+        再加 <code>dm</code> 往返的 32 KB（占 0.02%，可忽略）。</span></p>
     </div>
     <p class="prose">
-      <b>为了能一口气读完，下面把 <a href="#s3">§3</a> 那两块归约积木、两个 kernel、以及<u>怎么调</u>一次贴全。</b>
-      <span style="color:var(--ink-3)">四级台阶共用同一份 <code>blockReduceSum</code>，后面 N2/N3/N4 就不再重复贴了。
+      <b>下面把 <a href="#s3">§3</a> 的两块归约积木、两个 kernel 和<u>调用方式</u>一次贴全，方便连续读完。</b>
+      <span style="color:var(--ink-3)">四级台阶共用同一份 <code>blockReduceSum</code>，后面 N2/N3/N4 不再重复贴。
       完整文件见 <a href="#s8-2">§8 · 二</a>。</span>
     </p>
     <pre><span class="c">// ═══ 积木：warp 内 + 跨 warp 的两段式求和（§3 · 一、二）══════════════════</span>
@@ -2381,8 +2377,8 @@ CUDA_CHECK(cudaMalloc(&amp;dm, M * sizeof(float)));
 
     <h4>代码里那两个关键字</h4>
     <p class="prose">
-      <b><code>__inline__</code> 就是 C++ <code>inline</code> 的 GNU / CUDA 拼法</b>，nvcc 预定义了它 ——
-      <span style="color:var(--ink-3)">不是什么 CUDA 特有的加速开关。这里写它基本是习惯写法，
+      <b><code>__inline__</code> 是 C++ <code>inline</code> 的 GNU / CUDA 写法</b>，nvcc 预定义了它。
+      <span style="color:var(--ink-3)">它不是 CUDA 特有的加速开关，这里写它主要是习惯。
       有三处容易误解：</span>
     </p>
     <div class="tw"><table>
@@ -2400,25 +2396,25 @@ CUDA_CHECK(cudaMalloc(&amp;dm, M * sizeof(float)));
       </tbody>
     </table></div>
     <p class="prose">
-      <span style="color:var(--ink-3)">想真正表态，关键字是 <code>__forceinline__</code>（强制）
-      和 <code>__noinline__</code>（禁止）。</span>
+      <span style="color:var(--ink-3)">要明确指定，用 <code>__forceinline__</code>（强制）
+      或 <code>__noinline__</code>（禁止）。</span>
     </p>
     <div class="callout warn">
-      <p class="k">不过「真的被内联」这件事，到 N3 就性命攸关了</p>
-      <p style="margin-bottom:0"><b>N3 把整行 32 个 float 存进 <code>xs[MAXS]</code>，必须待在寄存器里。</b>
+      <p class="k">但到了 N3，「真的被内联」至关重要</p>
+      <p style="margin-bottom:0"><b>N3 让每个线程把自己负责的元素（最多 32 个 float）存进 <code>xs[MAXS]</code>，这个数组必须留在寄存器里。</b>
         <span style="color:var(--ink-3)">如果 <code>blockReduceSum</code> 真以函数调用的形式存在，
-        寄存器分配就得跨调用点保活 <code>xs[]</code>，很可能被迫 spill 进 local memory（也就是显存），
-        「数据留在片上」的前提当场作废。</span>
-        <span style="color:var(--crit);font-weight:650">所以这里要的是<u>真</u>内联 ——
-        但功劳属于 nvcc 对 <code>__device__</code> 的默认行为，不是这个关键字；真要钉死该写
+        寄存器分配就要在调用点前后保住 <code>xs[]</code>，很可能被迫 spill 进 local memory（也就是显存），
+        「数据留在片上」的前提就不成立了。</span>
+        <span style="color:var(--crit);font-weight:650">所以这里需要<u>真</u>内联。
+        但这要归功于 nvcc 对 <code>__device__</code> 的默认行为，不是这个关键字；要确保内联，应写
         <code>__forceinline__</code>。</span></p>
     </div>
 
     <h4><code>__restrict__</code>：一个你对编译器的承诺</h4>
     <p class="prose">
+      <b>含义：在这个指针的作用域内，它指向的内存<u>只通过它访问</u>，不和别的指针重叠。</b>
       <span style="color:var(--ink-3)">它是 C99 <code>restrict</code> 的 C++ 写法
-      （C++ 标准没有 restrict，各家用 <code>__restrict__</code> 扩展）。</span>
-      <b>含义：在这个指针的作用域内，它指向的内存<u>只会通过它访问</u>，不会和别的指针重叠。</b>
+      （C++ 标准没有 restrict，各编译器用 <code>__restrict__</code> 扩展）。</span>
     </p>
 
     <div class="fig">
@@ -2460,17 +2456,17 @@ CUDA_CHECK(cudaMalloc(&amp;dm, M * sizeof(float)));
       <text class="t-dim"  x="430" y="278" text-anchor="middle">哪天做 in-place、把 y 和 x 传成同一个指针 —— 未定义行为，不报错，结果悄悄错</text>
     </svg>
     <p class="cap"><b>图 16 · <code>__restrict__</code> 让编译器敢做的事。</b>
-      没有它，编译器必须假设 <code>yr[i] = xr[i] * r * w[i]</code> 里那个<u>写</u>可能改到 <code>xr</code> 或 <code>w</code>
-      （毕竟都是 <code>float*</code>），于是每轮都得重新 load，也不敢走只读缓存。
-      这份代码里 <code>dx</code> / <code>dy</code> 是两次独立的 <code>cudaMalloc</code>，承诺成立。</p>
+      没有它，编译器必须假设 <code>yr[i] = xr[i] * r * w[i]</code> 里的<u>写</u>可能改到 <code>xr</code> 或 <code>w</code>
+      （它们都是 <code>float*</code>），于是每轮都要重新 load，也不能走只读缓存。
+      这份代码里 <code>dx</code> / <code>dy</code> 来自两次独立的 <code>cudaMalloc</code>，承诺成立。</p>
     </div>
 
     <p class="prose">
-      <b><code>const</code> 和 <code>__restrict__</code> 是一对，缺一不可。</b>
+      <b><code>const</code> 和 <code>__restrict__</code> 要成对使用，缺一不可。</b>
       <span style="color:var(--ink-3)">nvcc 只有在能证明「这块数据在整个 kernel 执行期间只读」时，
-      才会生成走只读数据缓存的 load（<code>LDG.E.CI</code>，也就是 <code>__ldg()</code> 那条路径，sm_35 起）：
-      <code>const</code> 说「我不写它」，<code>__restrict__</code> 说「别人也不会通过别名写它」——
-      两句话凑齐，编译器才敢用那条路径。</span>
+      才生成走只读数据缓存的 load（<code>LDG.E.CI</code>，即 <code>__ldg()</code> 的路径，sm_35 起）。
+      <code>const</code> 说明「我不写它」，<code>__restrict__</code> 说明「别人也不会通过别名写它」。
+      两条都有，编译器才用这条路径。</span>
     </p>
     <pre>const float *<span class="a">__restrict__</span> x    <span class="c">// __restrict__ 在 * 右边 → 修饰指针本身</span>
                                <span class="c">// const 在 * 左边       → 修饰指向的数据</span>
@@ -2479,19 +2475,19 @@ float *<span class="x">const</span> x                 <span class="c">// 这才�
       <p class="k">怎么自己验</p>
       <p style="margin-bottom:0"><b>仓库里的 <code>check_sass.sh</code> 支持换二进制：
         <code>BIN=./fused_ops bash check_sass.sh</code>。</b>
-        <span style="color:var(--ink-3)">然后在反汇编里对比 <code>LDG.E.CI</code>（走只读缓存）
-        和 <code>LDG.E</code>（普通 global load）的条数；把 <code>__restrict__</code> 去掉重编一遍再数一次。</span>
-        <span style="color:var(--crit);font-weight:650">这正是这个系列一贯的「条数账」做法 ——
+        <span style="color:var(--ink-3)">在反汇编里数 <code>LDG.E.CI</code>（走只读缓存）
+        和 <code>LDG.E</code>（普通 global load）的条数；去掉 <code>__restrict__</code> 重编，再数一次。</span>
+        <span style="color:var(--crit);font-weight:650">这是本系列一贯的「条数账」做法，
         和 N3→N4 的 float4 属于同一类改动：字节数不变，只动指令条数。</span></p>
     </div>
     <div class="callout">
       <p class="k">一个 block 一行，合适吗</p>
       <p style="margin-bottom:0"><b>N=3584，BLOCK=256 → 每个线程负责 14 个元素，循环 14 轮。</b>
         <span style="color:var(--ink-3)">行数 M 就是 grid 大小。M=8192 时有 8192 个 block 排队，
-        128 个 SM 轮着跑，填得很满。</span>
-        <span style="color:var(--crit);font-weight:650">但 decode batch=1 时 M=1 ——
-        整张卡只有一个 block 在干活，127 个 SM 在看戏。</span>
-        <b>这就是 §7 形状扫描要测的东西。</b></p>
+        128 个 SM 轮流执行，填得很满。</span>
+        <span style="color:var(--crit);font-weight:650">但 decode batch=1 时 M=1：
+        整张卡只有一个 block 在工作，另外 127 个 SM 空闲。</span>
+        <b>§7 的形状扫描测的就是这件事。</b></p>
     </div>
   </div>
 
@@ -2553,15 +2549,15 @@ float *<span class="x">const</span> x                 <span class="c">// 这才�
       <text class="t-dim" x="0" y="224">两行里那个红色的「读 x（4N）」都还在 —— 这就是为什么字节账纹丝不动。</text>
     </svg>
     <p class="cap"><b>图 17 · N2 拿掉的是中间那个小方块，不是两头的读写。</b>
-      <code>rstd</code> 从「显存里一个长度 M 的数组」变成「寄存器里一个 <code>float r</code>」，
-      少了一次 launch、少了 <code>dm[]</code> 的往返。
-      <b>可 <code>xr[i]</code> 仍然出现了两次</b> —— 第一遍算平方和、第二遍算输出，
-      同一个地址从显存读了两遍。字节账里的大头一分没动。</p>
+      <code>rstd</code> 从「显存里长度为 M 的数组」变成「寄存器里的一个 <code>float r</code>」，
+      省掉一次 launch 和 <code>dm[]</code> 的往返。
+      <b>但 <code>xr[i]</code> 仍然出现两次</b>：第一趟算平方和，第二趟算输出，
+      同一个地址从显存读两次。字节账的大头没变。</p>
     </div>
 
     <div class="tw"><table>
       <caption>每行的字节账，逐项对齐着看</caption>
-      <thead><tr><th>级</th><th>第一遍读</th><th>第二遍读</th><th>写回</th><th>中间数组往返</th><th>合计</th></tr></thead>
+      <thead><tr><th>级</th><th>第一趟读</th><th>第二趟读</th><th>写回</th><th>中间数组往返</th><th>合计</th></tr></thead>
       <tbody>
         <tr><td class="cn">N1</td><td class="en">4N</td><td class="en">4N</td><td class="en">4N</td>
             <td class="en">8 字节</td><td class="en"><b>12N + 8 B</b></td></tr>
@@ -2570,32 +2566,32 @@ float *<span class="x">const</span> x                 <span class="c">// 这才�
       </tbody>
     </table></div>
     <p class="prose">
-      <b>代码短了，kernel 少了一个，但 <code>xr[i]</code> 出现了两次。</b>
-      <span style="color:var(--crit);font-weight:650">显存流量还是 12N，和 N1 一模一样。</span>
+      <b>代码变短了，kernel 少了一个，但 <code>xr[i]</code> 仍出现两次。</b>
+      <span style="color:var(--crit);font-weight:650">显存流量还是 12N，与 N1 相同。</span>
     </p>
     <div class="callout warn">
       <p class="k">那 N2 到底省了什么</p>
       <p><b>省了三样，都很小：</b>
-        <span style="color:var(--ink-3)">① 一次 kernel launch（几微秒，而且对 M=8192 来说分摊到每行几乎为零）；
-        ② <code>rstd</code> 数组的一写一读（4M 字节，相对 12NM 是万分之一）；
-        ③ 第二趟不用再等第一趟整个 grid 结束（两个 kernel 之间有隐式同步）。</span></p>
-      <p style="margin-bottom:0"><b>③ 其实是唯一可能有点量的一项</b><span style="color:var(--ink-3)">，
-        但它也只在 M 小、grid 填不满时才明显。</span>
-        <span style="color:var(--crit);font-weight:650">预测：M=8192 时 N2 相对 N1 的提速在 1.00×–1.05× 之间。</span></p>
+        <span style="color:var(--ink-3)">① 一次 kernel launch（几微秒；M=8192 时分摊到每行几乎为零）；
+        ② <code>rstd</code> 数组的一写一读（4M 字节，约为 12NM 的万分之一）；
+        ③ 第二趟不必等第一趟的整个 grid 结束（两个 kernel 之间有隐式同步）。</span></p>
+      <p style="margin-bottom:0"><b>只有 ③ 可能有一点量</b><span style="color:var(--ink-3)">，
+        而且只在 M 小、grid 填不满时才明显。</span>
+        <span style="color:var(--crit);font-weight:650">预测：M=8192 时 N2 比 N1 快 1.00×–1.05×。</span></p>
     </div>
 
     <div class="callout crit">
       <p class="k">跑完之后：这条预测错了，而且错得很有价值</p>
-      <p><b>实测 N2 相对 N1 是 <span style="font-family:var(--font-mono)">1.49×</span>，
+      <p><b>实测 N2 比 N1 快 <span style="font-family:var(--font-mono)">1.49×</span>，
         不是 1.00×–1.05×。</b>
-        <span style="color:var(--ink-3)">上面那张表没算错 —— <code>xr[i]</code> 确实出现了两次，
-        访存指令确实发了 12N 字节。</span>
-        <b>错的是把「指令发出的字节」当成了「DRAM 搬运的字节」。</b></p>
-      <p style="margin-bottom:0"><span style="color:var(--ink-3)">第二次读和第一次读之间，这个 block 只走了自己这一行 ——
-        14 KB，稳稳躺在 L2 里。反推下来 N2 真正搬的是 <b>8.1N</b>，和 N3 的 8.0N 几乎一样，
+        <span style="color:var(--ink-3)">上面那张表没算错：<code>xr[i]</code> 确实出现两次，
+        访存指令确实发出了 12N 字节。</span>
+        <b>错在把「指令发出的字节」当成了「显存实际搬运的字节」。</b></p>
+      <p style="margin-bottom:0"><span style="color:var(--ink-3)">两次读之间，这个 block 只读了自己这一行，
+        共 14 KB，数据还在 L2 里。反推下来，N2 实际搬的是 <b>8.1N</b>，和 N3 的 8.0N 几乎一样，
         所以耗时也几乎一样（0.2591 ms vs 0.2560 ms）。</span>
         <b>完整的追查过程见 <a href="#s9-3">§9 · 三</a>。</b>
-        <span style="color:var(--crit);font-weight:650">读到这里先别急着改上面的账 ——
+        <span style="color:var(--crit);font-weight:650">先不要改上面的账：
         §7 的预测要保持原样，这是这套方法的规矩。</span></p>
     </div>
   </div>
@@ -2692,13 +2688,13 @@ if (needReg &amp;&amp; <span class="x">N &gt; BLOCK * MAXS</span>) {            
       <text class="t-good" x="0" y="300">✓　xs[c] 配 #pragma unroll（展开后 xs[0] xs[1] … 全是常量下标）　→　真的分到 32 个寄存器　→　8N 达成</text>
     </svg>
     <p class="cap"><b>图 18 · N3 改的不是算法，是数据住在哪里。</b>
-      N2 里第一遍读进来的 <code>v</code> 用完就丢，所以第二遍只能回显存拿；
-      N3 把整行摊在 <code>xs[MAXS]</code> 上<b>一直留着</b>，归约完直接拿寄存器里的值算输出。
-      <b>这是四级台阶里唯一真正改变字节数的一步</b>（12N → 8N，理论 1.5×）。
-      下半张是它的前提 —— 只要下标不是编译期常量，<code>xs</code> 就进不了寄存器，整级白做。</p>
+      N2 第一趟读进来的 <code>v</code> 用完就丢，所以第二趟只能回显存读；
+      N3 把整行摊在 <code>xs[MAXS]</code> 上<b>一直留着</b>，归约完直接用寄存器里的值算输出。
+      <b>这是四级台阶里唯一改变字节数的一步</b>（12N → 8N，理论 1.5×）。
+      下半张是它的前提：只要下标不是编译期常量，<code>xs</code> 就进不了寄存器，这一级就白做了。</p>
     </div>
     <div class="callout crit">
-      <p class="k">这里有个会让整级失效、而且从耗时上看不出原因的坑</p>
+      <p class="k">一个让整级失效、从耗时上看不出原因的坑</p>
       <p><b>循环<u>必须</u>写成"固定 MAXS 次 + 边界判断"，不能写成跨步循环配 <code>xs[cnt++]</code>。</b></p>
       <pre><span class="x">// 错的写法（看起来更自然，但会毁掉这一级）</span>
 int cnt = 0;
@@ -2714,18 +2710,18 @@ for (int c = 0; c &lt; MAXS; ++c) {              <span class="a">// 展开后 xs
     ...
 }</pre>
       <p><b>原因：GPU 的寄存器不能动态寻址。</b>
-        <span style="color:var(--ink-3)">下标只要不是编译期常量，编译器就没法把 <code>xs</code> 放进寄存器，
-        只好把它塞进 <u>local memory</u> —— 而 local memory 物理上就在显存里。</span></p>
-      <p style="margin-bottom:0"><span style="color:var(--crit);font-weight:650">后果：x 还是被读了两次，
-        只不过第二次是从 local memory 读的。字节数一点没省，1.5× 不会出现，
-        而你从耗时上完全看不出是为什么。</span>
+        <span style="color:var(--ink-3)">下标只要不是编译期常量，编译器就不能把 <code>xs</code> 放进寄存器，
+        只能放进 <u>local memory</u>，而 local memory 物理上就在显存里。</span></p>
+      <p style="margin-bottom:0"><span style="color:var(--crit);font-weight:650">后果：x 还是读了两次，
+        只是第二次从 local memory 读。字节数没省，1.5× 不会出现，
+        而且从耗时上看不出原因。</span>
         <b>唯一的线索在 <code>ptxas -v</code> 的输出里：<code>N bytes spill stores</code>。
-        这就是 <code>run_fused.sh</code> 第 0 步要死盯 spill 的原因。</b></p>
+        所以 <code>run_fused.sh</code> 第 0 步要检查 spill。</b></p>
     </div>
     <p class="prose">
-      <b>代价是单行长度被卡死：<code>N ≤ BLOCK × MAXS = 256 × 32 = 8192</code>。</b>
-      <span style="color:var(--ink-3)">超过就放不下。程序会直接拒绝并说明原因，而不是偷偷 spill。</span>
-      <span style="color:var(--crit);font-weight:650">这个约束不是实现偷懒 ——
+      <b>代价是单行长度有上限：<code>N ≤ BLOCK × MAXS = 256 × 32 = 8192</code>。</b>
+      <span style="color:var(--ink-3)">超过就放不下。程序会直接拒绝并说明原因，不会悄悄 spill。</span>
+      <span style="color:var(--crit);font-weight:650">这个限制不是实现偷懒，
       它和 FlashAttention 必须分块是同一个物理限制，<a href="#s5-5">§5 · 五</a> 细说。</span>
     </p>
   </div>
@@ -2844,19 +2840,19 @@ if (needVec4 &amp;&amp; <span class="x">(N &amp; 3)</span>) {                   
       <text class="t-good" x="450" y="234">搬完 32 个 float 只发 8 条</text>
     </svg>
     <p class="cap"><b>图 19 · 搬的字节一个不多不少，发的指令少了 3/4。</b>
-      两边都是完全合并的访存 —— 每字节的效率一样，
+      两边都是完全合并的访存，每字节的效率相同，
       <b>差别只在「同样多的字节，用几条指令搬完」</b>。
-      <span style="color:var(--ink-3)">所以字节账纹丝不动（还是 8N），能不能变快要看另一本账：
-      访存指令的发射是不是已经成了瓶颈。如果 N3 的 MBU 已经很高，说明瓶颈在带宽不在指令，
-      N4 就不会有提升 —— 这本身就是个判据。</span></p>
+      <span style="color:var(--ink-3)">所以字节账不变（还是 8N）。能不能变快要看另一本账：
+      访存指令的发射是否已成瓶颈。如果 N3 的 MBU 已经很高，说明瓶颈在带宽而不在指令，
+      N4 就不会变快。这本身就是一个判据。</span></p>
     </div>
 
     <h4>两个读入循环到底差在哪</h4>
     <p class="prose">
       <b>两边的 <code>int i = threadIdx.x + c * BLOCK;</code> 一字不差</b>
-      <span style="color:var(--ink-3)">—— 可 N3 里 <code>i</code> 是「第几个 <u>float</u>」，
+      <span style="color:var(--ink-3)">，但 N3 里 <code>i</code> 是「第几个 <u>float</u>」，
       N4 里是「第几个 <u>float4</u>」。</span>
-      <b>这是全部差异的源头，其余几处都是被它带出来的。</b>
+      <b>这是全部差异的来源，其余几处差异都由它引出。</b>
     </p>
 
     <div class="fig">
@@ -2931,10 +2927,10 @@ if (needVec4 &amp;&amp; <span class="x">(N &amp; 3)</span>) {                   
       <text class="t-crit" x="712" y="259">同一个 i，落点差 4 倍</text>
     </svg>
     <p class="cap"><b>图 20 · 同一个 <code>c</code>，N4 扫过的范围是 N3 的 4 倍。</b>
-      所以轮数从 14 降到 4。<b>两边都是完全连续的访存</b>，谁也不比谁更「合并」——
+      所以轮数从 14 降到 4。<b>两边都是完全连续的访存</b>，合并程度相同，
       区别只在一条指令覆盖多宽。
-      <span style="color:var(--ink-3)">下半张最能说明问题：<code>c = 1</code> 时同一个
-      <code>i = 0 + 1×256</code>，N3 落在 float #256，N4 落在 float #1024。</span></p>
+      <span style="color:var(--ink-3)">下半张最能说明问题：<code>c = 1</code> 时两边的
+      <code>i = 0 + 1×256</code> 相同，N3 落在 float #256，N4 落在 float #1024。</span></p>
     </div>
 
     <div class="tw"><table>
@@ -2968,13 +2964,13 @@ if (needVec4 &amp;&amp; <span class="x">(N &amp; 3)</span>) {                   
     <div class="callout warn">
       <p class="k">一个容易忽略的不对称</p>
       <p style="margin-bottom:0"><b>N3 里 <code>3584 ÷ 256 = 14</code> 正好整除，每个线程都取 14 个 float。
-        N4 里 <code>n4 = 896</code>，而 <code>896 ÷ 256 = 3.5</code> ——</b>
+        N4 里 <code>n4 = 896</code>，而 <code>896 ÷ 256 = 3.5</code>：</b>
         <span style="color:var(--ink-3)">线程 0–127 取 4 个 float4（16 个 float），
         线程 128–255 只取 3 个（12 个 float）。
         <code>128×16 + 128×12 = 3584</code> ✓ 总数对得上，只是<u>负载不再均匀</u>。</span>
-        <span style="color:var(--crit);font-weight:650">差半轮，对这个访存瓶颈的 kernel 可以忽略；
-        但它解释了 <code>MAXV = 8</code> 为什么要留一倍余量 —— 3.5 轮向上取整才 4，
-        剩下的冗余是留给更长的行的。</span></p>
+        <span style="color:var(--crit);font-weight:650">差半轮，对这个受访存限制的 kernel 可以忽略。
+        但它解释了 <code>MAXV = 8</code> 为什么要留一倍余量：3.5 轮向上取整是 4，
+        余下的空间留给更长的行。</span></p>
     </div>
 
     <div class="tw"><table>
@@ -2990,25 +2986,25 @@ if (needVec4 &amp;&amp; <span class="x">(N &amp; 3)</span>) {                   
       </tbody>
     </table></div>
     <p class="prose">
-      <b><code>MAXV = 8</code> 是故意选的：8 个 float4 = 32 个 float，和 N3 的 <code>MAXS = 32</code> 完全相同。</b>
-      <span style="color:var(--crit);font-weight:650">两条路径的寄存器压力做成一样，
-      N3→N4 才是干净的单变量对照 —— 只动指令宽度，不动寄存器数。</span>
+      <b><code>MAXV = 8</code> 是故意选的：8 个 float4 = 32 个 float，与 N3 的 <code>MAXS = 32</code> 相同。</b>
+      <span style="color:var(--crit);font-weight:650">两条路径的寄存器压力相同，
+      N3→N4 才是干净的单变量对照：只动指令宽度，不动寄存器数。</span>
     </p>
     <div class="callout">
       <p class="k">对齐要求，以及为什么这里是安全的</p>
       <p style="margin-bottom:0"><b><code>float4</code> 访存要求地址 16 字节对齐。</b>
-        <span style="color:var(--ink-3)"><code>cudaMalloc</code> 返回的指针是 256 字节对齐的；
-        行首地址是 <code>base + row·N·4</code>，只要 <code>N % 4 == 0</code> 就仍然 16 字节对齐。
-        程序在启动前会检查 N 是不是 4 的倍数，不是就拒绝跑。</span>
+        <span style="color:var(--ink-3)"><code>cudaMalloc</code> 返回的指针 256 字节对齐；
+        行首地址是 <code>base + row·N·4</code>，只要 <code>N % 4 == 0</code>，行首仍 16 字节对齐。
+        程序启动前检查 N 是否为 4 的倍数，不是就拒绝运行。</span>
         <span style="color:var(--ink-3)">3584 % 4 == 0 ✓，2048 % 4 == 0 ✓。</span></p>
     </div>
     <p class="prose">
-      <b>预测：N4 相对 N3 大约 1.0×–1.15×。</b>
-      <span style="color:var(--ink-3)">字节数完全没变，理论上不该快。能快一点的话，
-      来自更少的访存指令和更少的内存请求（4 条 32 位并成 1 条 128 位），
-      也就是 SGEMM 那边的"条数账"和"请求账"。</span>
-      <span style="color:var(--crit);font-weight:650">但这两本账只有在带宽没跑满时才有空间 ——
-      如果 N3 的 MBU 已经很高，N4 应该几乎没有提升。这一条本身就是个判据。</span>
+      <b>预测：N4 比 N3 快约 1.0×–1.15×。</b>
+      <span style="color:var(--ink-3)">字节数没变，理论上不该变快。如果快一点，
+      原因是访存指令更少、内存请求更少（4 条 32 位并成 1 条 128 位），
+      即 SGEMM 那边的「条数账」和「请求账」。</span>
+      <span style="color:var(--crit);font-weight:650">但这两本账只在带宽没跑满时才有空间：
+      如果 N3 的 MBU 已经很高，N4 应该几乎不变快。这一条本身就是判据。</span>
     </p>
   </div>
 </section>
@@ -3018,8 +3014,8 @@ if (needVec4 &amp;&amp; <span class="x">(N &amp; 3)</span>) {                   
 <h2 id="s5"><span class="num">推导</span>online softmax 的三行递推<a class="up" href="#t5" title="回到目录">↑</a></h2>
   <p class="lede prose">
     <strong>这一节没有 CUDA，只有数学。</strong>
-    <b>但它是整份报告里最该花时间的一节 —— FlashAttention 的全部核心就是这三行。</b>
-    <span style="color:var(--crit);font-weight:650">在这里花两小时吃透，能省下 04 阶段（FlashAttention 前向）的两天。</span>
+    <b>但它是整份报告最该花时间的一节：FlashAttention 的全部核心就是这三行。</b>
+    <span style="color:var(--crit);font-weight:650">在这里花两小时弄懂，能省下 04 阶段（FlashAttention 前向）的两天。</span>
   </p>
 
   <div class="sec">
@@ -3028,15 +3024,15 @@ if (needVec4 &amp;&amp; <span class="x">(N &amp; 3)</span>) {                   
     <p class="prose">
       <b>直接照着算会溢出。</b>
       <span style="color:var(--ink-3)">fp32 能表示的最大值约 3.4×10³⁸，而 <code>exp(89)</code> 就超了。
-      注意力打分经过 <code>1/√d</code> 缩放后通常在 ±20 以内，但训练不稳或长上下文时冲到 90 以上完全可能，
-      一旦溢出就是 <code>inf / inf = NaN</code>。</span>
+      注意力打分经过 <code>1/√d</code> 缩放后通常在 ±20 以内，但训练不稳或上下文很长时可能超过 90。
+      一旦溢出，结果就是 <code>inf / inf = NaN</code>。</span>
     </p>
     <pre>softmax(x)_i = exp(x_i − m) / Σ_j exp(x_j − m)    <span class="c">// m = max(x)，恒等变形</span>
 
 <span class="c">// 为什么相等：分子分母同乘 exp(−m)，约掉了</span>
 <span class="c">// 为什么安全：x_i − m ≤ 0，所以 exp(·) ∈ (0, 1]，永远不会溢出</span></pre>
     <p class="prose">
-      <b>代价就是那一趟。</b>
+      <b>减 max 的代价是多扫一趟。</b>
       <span style="color:var(--crit);font-weight:650">要减 max，就得先知道 max；
       要知道 max，就得把整行看完 —— 于是朴素实现必须扫三趟。</span>
     </p>
@@ -3054,13 +3050,13 @@ if (needVec4 &amp;&amp; <span class="x">(N &amp; 3)</span>) {                   
   <div class="sec">
     <h3 id="s5-2">二、递推式怎么来的<a class="up" href="#t5-2" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>换个想法：如果我不等看完整行，而是边扫边维护一对 <code>(m, s)</code> 呢？</b>
+      <b>换个做法：不等看完整行，边扫边维护一对 <code>(m, s)</code>。</b>
       <span style="color:var(--ink-3)">约定 <code>m_k</code> 是前 k 个元素的最大值，
       <code>s_k = Σ_{j≤k} exp(x_j − m_k)</code> 是<u>以当前最大值为基准</u>的部分和。</span>
     </p>
     <p class="prose">
       现在来了第 k+1 个元素 <code>x</code>。新的最大值是 <code>m' = max(m_k, x)</code>。
-      问题是 <code>s_k</code> 用的基准是旧的 <code>m_k</code>，基准变了，它就不能直接加。
+      但 <code>s_k</code> 的基准是旧的 <code>m_k</code>。基准变了，<code>s_k</code> 就不能直接加。
     </p>
     <p class="prose">
       <b>先把两个记号分清楚 —— 同一批数 <code>x_1 … x_k</code>，用不同基准记账，得到的是<u>不同的数</u>：</b>
@@ -3097,8 +3093,8 @@ s_k(m')  = Σ_{j≤k} exp(x_j − m')       <span class="c">// <u>想要</u>的�
         而代码里用的是 <code>exp(m_k − m′)</code> —— 两者<u>指数正好相反</u>。</b>
         <span style="color:var(--ink-3)">不矛盾：④ 是「把新账<u>乘</u>成旧账」，⑤ 是「把旧账<u>除</u>成新账」，
         除以 <code>exp(m′ − m_k)</code> 就等于乘以 <code>exp(m_k − m′)</code>。</span>
-        <span style="color:var(--crit);font-weight:650">而我们手里有的是旧账 <code>s_k</code>、要的是新账，所以代码里出现的一定是
-        <code>exp(m_k − m′)</code>，且因为 <code>m′ ≥ m_k</code>，它恒 ≤ 1。</span></p>
+        <span style="color:var(--crit);font-weight:650">我们手里有旧账 <code>s_k</code>，要的是新账，所以代码里出现的一定是
+        <code>exp(m_k − m′)</code>。因为 <code>m′ ≥ m_k</code>，它恒 ≤ 1。</span></p>
     </div>
 
     <div class="tw"><table>
@@ -3157,8 +3153,8 @@ s_k(m')  = Σ_{j≤k} exp(x_j − m')       <span class="c">// <u>想要</u>的�
     <p class="cap"><b>图 21 · 基准只是记账单位，量本身没变。</b>
       同一批数的「真实和」<code>T</code> 是固定的；<code>s</code> 不过是把它乘上 <code>exp(−基准)</code> 缩到安全范围里。
       <b>换基准 = 换这个乘数，比例自然是两个 exp 之商</b>。
-      <span style="color:var(--ink-3)"><code>T</code> 只是想清楚问题用的中间量 ——
-      代码里绝不能真去算，那正是 <a href="#s5-3">§5 · 三</a> 证结合律时要再用一次的同一个技巧。</span></p>
+      <span style="color:var(--ink-3)"><code>T</code> 只是帮助思考的中间量，代码里绝不能真去算。
+      <a href="#s5-3">§5 · 三</a> 证结合律时还会再用一次这个技巧。</span></p>
     </div>
 
     <p class="prose">
@@ -3168,8 +3164,8 @@ s_k(m')  = Σ_{j≤k} exp(x_j − m')       <span class="c">// <u>想要</u>的�
 <span class="a">s' = s_k · exp(m_k − m') + exp(x − m')</span>
      <span class="c">└─── 旧账换算到新基准 ───┘   └─ 新项，本来就以 m' 记账 ─┘</span></pre>
     <p class="prose">
-      <b>就这两行。</b>
-      <span style="color:var(--ink-3)">直观理解：<u>遇到更大的 max，就把已经累计的和按比例"缩"回去</u>。
+      <b>递推只有这两行。</b>
+      <span style="color:var(--ink-3)">直观含义：<u>遇到更大的 max，就把已经累计的和按比例"缩"回去</u>。
       缩放因子 <code>exp(m_k − m')</code> 一定 ≤ 1，因为 <code>m' ≥ m_k</code>。
       没遇到更大的 max 时，<code>m' = m_k</code>，因子是 <code>exp(0) = 1</code>，退化成普通累加。</span>
     </p>
@@ -3252,16 +3248,16 @@ s_k(m')  = Σ_{j≤k} exp(x_j − m')       <span class="c">// <u>想要</u>的�
       </tbody>
     </table></div>
     <p class="prose">
-      <span style="color:var(--ink-3)">最后一行的校验：<code>exp(1−5) + exp(2−5) + exp(5−5) + exp(3−5)
-      = 0.0183 + 0.0498 + 1 + 0.1353 = 1.2034</code>。</span>
       <b>递推一路只维护两个标量，却和「先扫完整行拿到 max、再从头累加」得到同一个数。</b>
-      <span style="color:var(--ink-3)">注意第「加 3」步：max 没变，因子退化成 1，就是普通累加。</span>
+      <span style="color:var(--ink-3)">最后一行的校验：<code>exp(1−5) + exp(2−5) + exp(5−5) + exp(3−5)
+      = 0.0183 + 0.0498 + 1 + 0.1353 = 1.2034</code>。
+      「加 3」这一步 max 没变，因子退化成 1，就是普通累加。</span>
     </p>
     <div class="callout link">
       <p class="k">省下来的是哪一趟</p>
       <p style="margin-bottom:0"><b>朴素版要先扫完一趟拿 max，才能开始第二趟累加。
         online 版一趟就同时得到了 max 和 sum。</b>
-        <span style="color:var(--ink-3)">从 3 趟变成 2 趟（还剩一趟是写回），
+        <span style="color:var(--ink-3)">从 3 趟变成 2 趟（剩下的一趟读入、归一化、写回），
         字节从 16N 降到 12N。</span>
         <span style="color:var(--crit);font-weight:650">注意：online 递推本身<u>不能</u>把趟数降到 1 ——
         最后总要再扫一遍把每个元素除掉。降到 1 趟靠的是把 x 留在片上（S3），那是另一件事。</span></p>
@@ -3273,8 +3269,8 @@ s_k(m')  = Σ_{j≤k} exp(x_j − m')       <span class="c">// <u>想要</u>的�
     <div class="callout crit">
       <p class="k">这是最容易被跳过、但绝不能跳过的一步</p>
       <p style="margin-bottom:0"><b>上面的递推是<u>串行</u>推出来的：一个一个往里加。
-        但 GPU 上我们要用蝶形归约，256 个线程两两合并、合并顺序和串行扫描完全不同。</b>
-        <span style="color:var(--crit);font-weight:650">凭什么结果还一样？</span>
+        但 GPU 上用的是蝶形归约：256 个线程两两合并，合并顺序和串行扫描完全不同。</b>
+        <span style="color:var(--crit);font-weight:650">为什么结果还一样？</span>
         <b>因为这个合并运算满足结合律。不证明这一点，整个 kernel 的正确性就是悬空的。</b></p>
     </div>
     <p class="prose">
@@ -3284,8 +3280,8 @@ s_k(m')  = Σ_{j≤k} exp(x_j − m')       <span class="c">// <u>想要</u>的�
                          s₁·exp(m₁ − max) + s₂·exp(m₂ − max) )</pre>
 
     <div class="callout crit">
-      <p class="k">先别急着看式子 —— 它到底在干什么</p>
-      <p><b>最要紧的一句：<code>(m, s)</code> 不是「两个数」，它是<u>一整段数据的摘要</u>。</b>
+      <p class="k">先看式子在干什么</p>
+      <p><b><code>(m, s)</code> 不是「两个数」，它是<u>一整段数据的摘要</u>。</b>
         <span style="color:var(--ink-3)">一段数据 <code>A = {x₁ … x_k}</code> 可能有几千个数，
         压成摘要就只剩两个 float：<code>m = max(A)</code>，<code>s = Σ exp(x_j − m)</code>。</span></p>
       <p style="margin-bottom:0"><span style="color:var(--crit);font-weight:650">而 <code>⊕</code> 回答的问题是：
@@ -3343,9 +3339,8 @@ s_k(m')  = Σ_{j≤k} exp(x_j − m')       <span class="c">// <u>想要</u>的�
     </div>
 
     <p class="prose">
-      <b>回头看式子，两个分量各说一句就够了。</b>
-      <span style="color:var(--ink-3)">先给那个反复出现的量起个名 —— 式子里 <code>max</code> 出现三次，
-      指的都是同一个数：</span>
+      <b>式子的两个分量，各用一句话就能说清。</b>
+      <span style="color:var(--ink-3)">式子里 <code>max</code> 出现三次，指的是同一个数，先给它起个名：</span>
     </p>
     <pre>令 <span class="a">m = max(m₁, m₂)</span>
 
@@ -3374,10 +3369,10 @@ exp(m₂ − m) = exp(5−5) = <span class="a">1.0000</span>      <span class="c
       <pre style="margin:10px 0 0">(m_k, s_k) ⊕ <span class="a">(x, 1)</span>
   = ( max(m_k, x),  s_k·exp(m_k−m′) + <span class="a">1</span>·exp(x−m′) )
   = ( m′,           s_k·exp(m_k−m′) + exp(x−m′)   )   <span class="c">// 和 §5·二 一字不差</span></pre>
-      <p style="margin-bottom:0"><span style="color:var(--crit);font-weight:650">那为什么还要写成一般形式？
-        因为蝶形归约和分块合并时，第二个操作数<u>不是一个元素，而是另一整段的摘要</u>。</span>
-        <span style="color:var(--ink-3)">FlashAttention 尤其如此 —— 块是一块一块来的，
-        根本拿不到全局 max，只能拿摘要两两合并。</span></p>
+      <p style="margin-bottom:0"><span style="color:var(--crit);font-weight:650">写成一般形式，是因为蝶形归约和分块合并时，
+        第二个操作数<u>不是一个元素，而是另一整段的摘要</u>。</span>
+        <span style="color:var(--ink-3)">FlashAttention 尤其如此：块一块一块地来，
+        拿不到全局 max，只能把摘要两两合并。</span></p>
     </div>
 
     <div class="tw"><table>
@@ -3472,10 +3467,10 @@ exp(m₂ − m) = exp(5−5) = <span class="a">1.0000</span>      <span class="c
     </div>
     <h4>证法一：合出来的，就是并集的摘要</h4>
     <p class="prose">
-      <b>回头看 <a href="#s5-3">图 23</a> —— 它其实已经把结合律证掉了一大半。</b>
-      <span style="color:var(--ink-3)">图 23 说的就是一条引理：
+      <b><a href="#s5-3">图 23</a> 已经证完了结合律的一大半。</b>
+      <span style="color:var(--ink-3)">图 23 对应一条引理：
       <u>两段各自的摘要合并起来，正好等于「这两段并在一起」那一整段的摘要</u>。
-      把它当已知，剩下的只有三行：</span>
+      把引理当作已知，剩下的证明只有三行：</span>
     </p>
     <pre><span class="c">// 引理（就是图 23，直接代定义验算即可）</span>
     <span class="a">摘要(A) ⊕ 摘要(B)  =  摘要(A ∪ B)</span>
@@ -3490,8 +3485,7 @@ exp(m₂ − m) = exp(5−5) = <span class="a">1.0000</span>      <span class="c
 <span class="c">// 两边摘要的输入是同一个集合，输出自然相同</span>
     (摘要A ⊕ 摘要B) ⊕ 摘要C  =  摘要A ⊕ (摘要B ⊕ 摘要C)        <span class="c">// ∎</span></pre>
     <p class="prose">
-      <b>整个证明归结到「集合的并可结合」—— 这件事没人会怀疑。</b>
-      <span style="color:var(--ink-3)">一句话记住它：</span>
+      <b>整个证明归结到「集合的并可结合」，这一点无可怀疑。</b>
       <span style="color:var(--crit);font-weight:650">不管你怎么加括号，合出来的都是「这几段并在一起」
       那一整段的摘要；而并在一起，跟你怎么分组无关。</span>
     </p>
@@ -3502,8 +3496,8 @@ exp(m₂ − m) = exp(5−5) = <span class="a">1.0000</span>      <span class="c
         幺元 <code>(−∞, 0)</code> 是空集的摘要，合并出来的还是摘要 —— 永远跑不出这个范围。</span></p>
       <p style="margin-bottom:0"><span style="color:var(--crit);font-weight:650">下面折叠里那个证法对<u>任意</u>
         <code>(m, s)</code> 都成立，代价是要多绕一圈。</span>
-        <span style="color:var(--ink-3)">它的真正价值不在这里，而在于：哪天你要并行归约<u>别的东西</u>
-        —— top-k、方差、logsumexp 的变体 —— 需要一套可靠办法判断「这个算子能不能乱序合并」，
+        <span style="color:var(--ink-3)">它的价值在别处：以后要并行归约<u>别的东西</u>
+        （top-k、方差、logsumexp 的变体）时，需要一套可靠办法判断「这个算子能不能乱序合并」。
         「找一个到已知可结合结构的同态」就是那个通用办法。</span></p>
     </div>
 
@@ -3512,7 +3506,7 @@ exp(m₂ − m) = exp(5−5) = <span class="a">1.0000</span>      <span class="c
       <div class="body">
     <p class="prose">
       <b>证明思路：给 <code>(m, s)</code> 换一套坐标 —— 换到一个<u>不依赖基准</u>的表示上去。</b>
-      <span style="color:var(--ink-3)">注意到对任意一段数据 A，无论用什么基准 m，量</span>
+      <span style="color:var(--ink-3)">对任意一段数据 A，无论基准 m 取什么，下面这个量</span>
     </p>
     <pre>T(A) = s · exp(m) = Σ_{j∈A} exp(x_j)      <span class="c">// 真正的"无偏指数和"</span></pre>
     <p class="prose">
@@ -3564,9 +3558,9 @@ exp(m₂ − m) = exp(5−5) = <span class="a">1.0000</span>      <span class="c
 
 <span class="a">⟹  φ(A ⊕ B) = φ(A) ⊞ φ(B)</span></pre>
     <p class="prose">
-      <span style="color:var(--ink-3)">注意第二个分量里 <code>m</code> 一进一出、被彻底消掉了 ——
+      <span style="color:var(--ink-3)">第二个分量里的 <code>m</code> 一进一出，被彻底消掉。
       这就是「<code>T</code> 不依赖基准」的全部含义。</span>
-      <b>换句话说：⊕ 看着复杂，是因为它在「带基准」的坐标里干活；换到 T 坐标，它就是一个普通加法。</b>
+      <b>⊕ 看着复杂，是因为它在「带基准」的坐标里干活；换到 T 坐标，它就是一个普通加法。</b>
     </p>
 
     <h4>③ ⊞ 可结合、可交换</h4>
@@ -3646,7 +3640,7 @@ exp(m₂ − m) = exp(5−5) = <span class="a">1.0000</span>      <span class="c
        = s
 <span class="a">⟹  e ⊕ (m, s) = (m, s)</span>   <span class="c">// 另一侧同理，交换律已证</span></pre>
     <p class="prose">
-      <span style="color:var(--ink-3)">数学上 <code>−∞</code> 完美，浮点里却会炸：
+      <span style="color:var(--ink-3)">数学上 <code>−∞</code> 没有问题，但在浮点里
       <code>(−∞) − (−∞) = NaN</code>。</span>
       <b>所以代码里用 <code>-FLT_MAX</code> 顶替 —— 那个坑和修法见 <a href="#s3-3">§3 · 三</a>。</b>
     </p>
@@ -3667,7 +3661,7 @@ exp(m₂ − m) = exp(5−5) = <span class="a">1.0000</span>      <span class="c
       </tbody>
     </table></div>
     <p class="prose">
-      <span style="color:var(--ink-3)">顺带对一下 T：<code>exp(1)+exp(2)+exp(5) = 158.520497</code>，
+      <span style="color:var(--ink-3)">再核对 T：<code>exp(1)+exp(2)+exp(5) = 158.520497</code>，
       而 <code>1.068102707 × exp(5) = 158.520497</code> ——</span>
       <b>两种括号法算出来的 <code>(m, s)</code> 还原出同一个 <code>T</code>，正是 ② 说的那件事。</b>
     </p>
@@ -3722,9 +3716,9 @@ exp(m₂ − m) = exp(5−5) = <span class="a">1.0000</span>      <span class="c
       <thead><tr><th>推理链</th><th>说明</th></tr></thead>
       <tbody>
         <tr><td class="cn">① 打分矩阵太大</td>
-            <td>上下文 4096、28 个头，一层就是 <b>1.88 GB</b>。写进显存再读出来，光这一项每层就要 7.46 ms</td></tr>
-        <tr><td class="cn">② 所以不能落 HBM</td>
-            <td>必须在 shared memory 里算完就消掉。而 shared 每 SM 只有 100 KB</td></tr>
+            <td>上下文 4096、28 个头，一层就是 <b>1.88 GB</b>。朴素三趟要在显存里搬它 4 遍（7.52 GB），每层 7.46 ms；最优的 S3 也要写一次、读一次（3.76 GB），每层 3.73 ms</td></tr>
+        <tr><td class="cn">② 所以不能落显存</td>
+            <td>必须在 shared memory 里算完就消掉。而 shared memory 每个 SM 只有 100 KB</td></tr>
         <tr><td class="cn">③ 所以必须分块</td>
             <td>一次只能处理一小块打分（比如 128×128），算完丢掉，再算下一块</td></tr>
         <tr><td class="cn">④ 分块就要能合并 softmax</td>
@@ -3752,16 +3746,16 @@ FlashAttention  <span class="a">0 GB</span>        →  <span class="a">打分�
 <section>
 <h2 id="s6"><span class="num">阶梯二</span>online softmax · 四级<a class="up" href="#t6" title="回到目录">↑</a></h2>
   <p class="lede prose">
-    <strong>和 RMSNorm 那条阶梯对称，但多一级台阶 —— 因为朴素版要三趟。</strong>
+    <strong>这条阶梯和 RMSNorm 那条对称，但多一级：朴素版要三趟。</strong>
   </p>
 
   <div class="sec">
     <h3 id="s6-1">一、S1：三个 kernel，16N<a class="up" href="#t6-1" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>和 <a href="#s4-1">N1</a> 一个套路：<u>趟与趟之间只能靠 kernel 边界同步</u>，
-      中间结果落在长度 M 的小数组里。</b>
-      <span style="color:var(--ink-3)">只不过 softmax 要传两个中间量（max 和 sum），
-      所以是三个 kernel、两个小数组。</span>
+      <b>S1 和 <a href="#s4-1">N1</a> 是同一个套路：<u>趟与趟之间只能靠 kernel 边界同步</u>，
+      中间结果存在长度 M 的小数组里。</b>
+      <span style="color:var(--ink-3)">softmax 要传两个中间量（max 和 sum），
+      所以 S1 有三个 kernel、两个小数组。</span>
     </p>
     <pre><span class="c">// ═══ 积木一：两个 warp 级归约，只差一个运算符 ═════════════════</span>
 __inline__ __device__ float warpReduceMax(float v) {
@@ -3891,35 +3885,35 @@ CUDA_CHECK(cudaMalloc(&amp;ds, M * sizeof(float)));
       <text class="t-hi"  x="0" y="306">合计：读 x 三遍 ＋ 写 y 一遍 ＝ 16N / 行</text>
       <text class="t-dim" x="330" y="306">（两个小数组一行共往返 8 B，相对 16N 可忽略）</text>
     </svg>
-    <p class="cap"><b>图 26 · 三个 kernel，两个小数组，三遍读 x。</b>
-      <code>dm</code> 和 <code>ds</code> 的角色，就是 <a href="#s4-1">N1</a> 里那个 <code>dm</code> ——
-      <b>把中间结果甩到显存，只为了跨过 kernel 边界</b>。
-      <span style="color:var(--ink-3)">为什么非得跨？因为 ② 要用 ① 算出的 <code>m</code>，
-      而那是<u>别的 block</u> 算出来的；grid 这一层没有屏障（<a href="#s4-1">图 13</a>），
-      只能靠「下一次 kernel 发射」当同步点。</span></p>
+    <p class="cap"><b>图 26 · 三个 kernel，两个小数组，三趟读 x。</b>
+      <code>dm</code> 和 <code>ds</code> 的作用和 <a href="#s4-1">N1</a> 里的 <code>dm</code> 相同：
+      <b>把中间结果写到显存，只为了跨过 kernel 边界</b>。
+      <span style="color:var(--ink-3)">必须跨的原因：② 要用 ① 算出的 <code>m</code>，
+      而 <code>m</code> 由<u>别的 block</u> 算出；grid 这一层没有同步原语（<a href="#s4-1">图 13</a>），
+      只能把「下一次 kernel 发射」当同步点。</span></p>
     </div>
 
     <div class="callout warn">
-      <p class="k">代码里两处值得留意的细节</p>
+      <p class="k">代码里的两处细节</p>
       <p><b>① <code>sm_s1_max</code> 手写了归约，<u>没有广播尾巴</u>。</b>
-        <span style="color:var(--ink-3)">对比 <code>sm_s1_sum</code> 里直接调的
-        <code>blockReduceSum</code> —— 那个结尾有
+        <span style="color:var(--ink-3)"><code>sm_s1_sum</code> 直接调用
+        <code>blockReduceSum</code>，它结尾有
         <code>smem[0]</code> → <code>__syncthreads()</code> → 全员读走。
-        可这两个 kernel 都只有 <code>thread 0</code> 要用结果。</span>
-        <span style="color:var(--crit);font-weight:650">所以 ① 是「省对了」，② 是「为了复用 helper 多付了一点」
-        —— 正是 <a href="#s4-1">§4 · 一</a> 那个观察的实例。</span></p>
+        但这两个 kernel 都只有 <code>thread 0</code> 要用结果。</span>
+        <span style="color:var(--crit);font-weight:650">所以 ① 省得对，② 为了复用 helper 多付了一点，
+        这正是 <a href="#s4-1">§4 · 一</a> 那个观察的实例。</span></p>
       <p style="margin-bottom:0"><b>② <code>__expf(xr[i] − m)</code> 在 ② 和 ③ <u>各算了一遍</u>。</b>
-        <span style="color:var(--ink-3)">同一个元素的 exp 算两次。放在「条数账」上是实打实的浪费，
-        但这个 kernel 是访存瓶颈 —— 字节账才是主角，所以这笔账在这里不疼。</span>
-        <span style="color:var(--crit);font-weight:650">而且 online 递推的 exp <u>只会更多</u>不会更少
-        —— S1 每元素 2 次，S2 / S3 是 3 次。</span>
-        <b>它是拿算力换访存：16N → 8N，代价是多算一次 exp。详见 <a href="#s6-3">§6 · 三</a>。</b></p>
+        <span style="color:var(--ink-3)">同一个元素的 exp 算两次，在条数账上是真浪费。
+        但这个 kernel 的瓶颈是访存，字节账才是主角，所以这笔浪费在这里影响不大。</span>
+        <span style="color:var(--crit);font-weight:650">而且 online 递推的 exp <u>只会更多</u>：
+        S1 每元素 2 次，S2 / S3 是 3 次。</span>
+        <b>online 递推是拿算力换访存：16N → 8N，代价是多算一次 exp。详见 <a href="#s6-3">§6 · 三</a>。</b></p>
     </div>
 
     <p class="prose">
       <b><code>__expf</code> 是硬件近似指令</b>（对应 SASS 的 <code>MUFU.EX2</code>），
-      比 <code>expf</code> 快一个量级，误差随 |x| 增大（NVIDIA 给的上界是 <code>2 + floor(|1.16x|)</code> ulp），在打分常见的 ±20 区间内约 1e-5 量级。
-      <span style="color:var(--ink-3)">推理里普遍用它 —— softmax 的结果马上要做加权平均，
+      比 <code>expf</code> 快一个量级。误差随 |x| 增大（NVIDIA 给的上界是 <code>2 + floor(|1.16x|)</code> ulp），在打分常见的 ±20 区间内约 1e-5 量级。
+      <span style="color:var(--ink-3)">推理里普遍用它：softmax 的结果马上要做加权平均，
       这点误差远小于 fp16 本身的表示误差。校验时容差要放宽到 2e-3。</span>
     </p>
   </div>
@@ -3927,10 +3921,10 @@ CUDA_CHECK(cudaMalloc(&amp;ds, M * sizeof(float)));
   <div class="sec">
     <h3 id="s6-2">二、S2：online 递推，省掉一趟<a class="up" href="#t6-2" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>S2 省掉的是 S1 的第 ① 趟 —— 求 max 那一趟。</b>
-      <span style="color:var(--ink-3)">靠的不是代码技巧，是 <a href="#s5-2">§5 · 二</a> 那个数学改写：
+      <b>S2 省掉的是 S1 的第 ① 趟，即求 max 那一趟。</b>
+      <span style="color:var(--ink-3)">靠的是 <a href="#s5-2">§5 · 二</a> 的数学改写，不是代码技巧：
       online 递推让 max 和 sum 在<u>同一趟</u>里同时推进。</span>
-      <b>第三个 kernel 原封不动复用 S1 的，所以这一级只新写了一个 kernel。</b>
+      <b>S1 的第三个 kernel 原样复用，所以这一级只新写了一个 kernel。</b>
     </p>
     <pre><span class="c">// ═══ 积木一：联合归约 —— warp 内把 (m, s) 当一个整体 ═════════════════</span>
 __inline__ __device__ void warpReduceMaxSum(float &amp;m, float &amp;s) {
@@ -4090,27 +4084,27 @@ __global__ void sm_s1_div(const float *__restrict__ x, const float *__restrict__
       <text class="t-dim"  x="0" y="364">blockReduceSum 只要 8 个格子 —— 这里归约的是<tspan class="t-acc">一对数</tspan>，还得多留 2 个做广播。</text>
     </svg>
     <p class="cap"><b>图 27 · 合并掉的是前两趟，第三趟原样保留。</b>
-      S1 的 ① 和 ② 都要把整行读一遍，而它们做的事（求 max、求 exp 和）本来可以在一趟里同时推进 ——
-      <b>这就是 online 递推买到的东西：16N → 12N，少一整趟读 x</b>。
-      <span style="color:var(--ink-3)">下半是联合归约的 shared 布局：前 8 格放各 warp 的 <code>m</code>，
-      接着 8 格放各 warp 的 <code>s</code>，最后 2 格存最终的 <code>(m, s)</code> 供全 block 读走 ——
-      比 <code>blockReduceSum</code> 多一倍多一点，因为要归约的是<u>一对数</u>。</span></p>
+      S1 的 ① 和 ② 都要把整行读一趟，而它们做的两件事（求 max、求 exp 和）可以在一趟里同时推进。
+      <b>这就是 online 递推的收益：16N → 12N，少一整趟读 x</b>。
+      <span style="color:var(--ink-3)">下半是联合归约的 shared memory 布局：前 8 格放各 warp 的 <code>m</code>，
+      接着 8 格放各 warp 的 <code>s</code>，最后 2 格存最终的 <code>(m, s)</code> 供全 block 读走。
+      它比 <code>blockReduceSum</code> 多一倍多一点，因为要归约的是<u>一对数</u>。</span></p>
     </div>
 
     <div class="callout warn">
-      <p class="k">三处值得留意</p>
-      <p><b>① 线程内是<u>串行</u>递推，线程间是<u>树形</u>归约 —— 两种顺序混在一起还能对。</b>
-        <span style="color:var(--ink-3)">每个线程在自己的跨步序列上一个一个往里加，
+      <p class="k">三处细节</p>
+      <p><b>① 线程内是<u>串行</u>递推，线程间是<u>树形</u>归约，两种顺序混用，结果仍然正确。</b>
+        <span style="color:var(--ink-3)">每个线程沿自己的跨步序列逐个累加，
         然后 256 对 <code>(m, s)</code> 两两合并。这一步的正确性完全依赖
-        <a href="#s5-3">§5 · 三</a> 证的结合律 —— <code>⊕</code> 不在乎顺序。</span></p>
-      <p><b>② <code>blockReduceMaxSum</code> 每轮要 2 条 shuffle。</b>
-        <span style="color:var(--ink-3)"><code>m</code> 一条、<code>s</code> 一条，所以 5 轮共 10 条，
-        是 <code>blockReduceSum</code> 的两倍。但两条互不依赖、可以背靠背发射，
-        关键路径仍是 5 步（<a href="#s3-3">§3 · 三</a>）。</span></p>
-      <p style="margin-bottom:0"><b>③ 第 ⑥ 行那个 <code>__syncthreads()</code> 在 <code>if (warp == 0)</code> <u>外面</u>。</b>
-        <span style="color:var(--crit);font-weight:650">和 <code>blockReduceSum</code> 一样的规矩：
-        「选代表」可以写在 <code>if</code> 里，屏障绝对不行。</span>
-        <span style="color:var(--ink-3)">挪进去就是未定义行为。</span></p>
+        <a href="#s5-3">§5 · 三</a> 证明的结合律：<code>⊕</code> 不在乎顺序。</span></p>
+      <p><b>② <code>blockReduceMaxSum</code> 里的 warp 归约每轮要 2 条 shuffle。</b>
+        <span style="color:var(--ink-3)"><code>m</code> 一条、<code>s</code> 一条，5 轮共 10 条，
+        是 <code>blockReduceSum</code> 的两倍。但两条互不依赖，可以背靠背发射，
+        所以关键路径仍是 5 步（<a href="#s3-3">§3 · 三</a>）。</span></p>
+      <p style="margin-bottom:0"><b>③ 第 ⑥ 行的 <code>__syncthreads()</code> 在 <code>if (warp == 0)</code> <u>外面</u>。</b>
+        <span style="color:var(--crit);font-weight:650">规矩和 <code>blockReduceSum</code> 一样：
+        「选代表」可以写在 <code>if</code> 里，<code>__syncthreads()</code> 绝对不行。</span>
+        <span style="color:var(--ink-3)">挪进 <code>if</code> 就是未定义行为。</span></p>
     </div>
 
   </div>
@@ -4118,10 +4112,10 @@ __global__ void sm_s1_div(const float *__restrict__ x, const float *__restrict__
   <div class="sec">
     <h3 id="s6-3">三、S3：一趟，8N<a class="up" href="#t6-3" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>S3 把最后一趟也砍了：整行<u>只过一次显存</u>，<code>(m, s)</code> 全程待在片上。</b>
-      <span style="color:var(--ink-3)">代价是整行得塞进寄存器 —— 和 <a href="#s4-3">N3</a> 同一个套路，
-      连「固定次数 + 常量下标」那条规矩都一样。</span>
-      <b>于是 <code>dm</code> / <code>ds</code> 两个中间数组彻底消失，只剩一个 kernel。</b>
+      <b>S3 把最后一趟也省掉了：整行<u>只经过显存一次</u>，<code>(m, s)</code> 全程留在片上。</b>
+      <span style="color:var(--ink-3)">代价是整行要放进寄存器。这和 <a href="#s4-3">N3</a> 是同一个套路，
+      连「固定次数 + 常量下标」那条规矩也一样。</span>
+      <b>于是 <code>dm</code> / <code>ds</code> 两个中间数组消失，只剩一个 kernel。</b>
     </p>
     <pre><span class="c">// 每线程最多存多少个 float —— 和 N3 共用同一个常量</span>
 static const int MAXS = 32;                    <span class="a">// 单行最长 = BLOCK × MAXS = 8192</span>
@@ -4226,33 +4220,33 @@ if (needReg &amp;&amp; <span class="x">N &gt; BLOCK * MAXS</span>) {            
 
       <text class="t-acc" x="0" y="314">访存瓶颈的 kernel 里这笔换算划算 —— 字节账是主角，条数账在这儿让位。</text>
     </svg>
-    <p class="cap"><b>图 28 · 三级砍下来：kernel 从 3 个到 1 个，中间数组从 2 个到 0 个。</b>
-      <code>dm</code> / <code>ds</code> 之所以能消失，是因为它们本来只为「跨 kernel 边界」而存在；
-      <b>当只剩一个 kernel，中间结果待在寄存器和 shared 里就够了</b>。
-      <span style="color:var(--ink-3)">下半是这笔买卖的另一面：exp 从每元素 2 次涨到 3 次 ——
+    <p class="cap"><b>图 28 · 从 S1 到 S3：kernel 从 3 个减到 1 个，中间数组从 2 个减到 0 个。</b>
+      <code>dm</code> / <code>ds</code> 能消失，是因为它们只为「跨 kernel 边界」而存在；
+      <b>只剩一个 kernel 时，中间结果放在寄存器和 shared memory 里就够了</b>。
+      <span style="color:var(--ink-3)">下半是代价：exp 从每元素 2 次涨到 3 次，
       <u>online 递推是拿算力换访存</u>。在这个访存瓶颈的 kernel 里划算，换个场景未必。</span></p>
     </div>
 
     <div class="callout crit">
       <p class="k">越界位置为什么塞 <code>-FLT_MAX</code> 而不是 0</p>
-      <p><b>塞 0 的话，如果这一行的真实数据<u>全是负数</u>，这个假的 0 就会变成 max，整行结果全错。</b>
-        <span style="color:var(--ink-3)">塞 <code>-FLT_MAX</code> 则既不可能成为 max，
-        <code>exp(-FLT_MAX − m)</code> 也是 0、对和没有贡献 —— 它就是 <code>⊕</code> 的幺元。</span></p>
+      <p><b>如果塞 0，而这一行的真实数据<u>全是负数</u>，这个假的 0 就会成为 max，整行结果全错。</b>
+        <span style="color:var(--ink-3)"><code>-FLT_MAX</code> 不可能成为 max，
+        <code>exp(-FLT_MAX − m)</code> 也是 0，对和没有贡献。它就是 <code>⊕</code> 的幺元。</span></p>
       <p style="margin-bottom:0"><span style="color:var(--ink-3)">写回时还有
-        <code>if (i &lt; N)</code> 兜底，这些位置根本不会被写出去。<b>两道保险。</b></span>
-        <span style="color:var(--crit);font-weight:650">注意幺元是跟着<u>运算</u>走的：
-        求和用 0，求 max 用 <code>-FLT_MAX</code>，这里求的是 <code>(max, sum)</code> 这一对，
+        <code>if (i &lt; N)</code> 兜底，这些位置不会被写出去。<b>两道保险。</b></span>
+        <span style="color:var(--crit);font-weight:650">注意幺元跟着<u>运算</u>走：
+        求和用 0，求 max 用 <code>-FLT_MAX</code>；这里求的是 <code>(max, sum)</code> 这一对，
         所以幺元是 <code>(−∞, 0)</code>。</span></p>
     </div>
 
     <div class="callout link">
-      <p class="k">到这一级，<code>blockReduceMaxSum</code> 的广播才终于没白做</p>
-      <p style="margin-bottom:0"><b>S1 的 <code>sm_s1_sum</code>、S2 的 <code>sm_s2_ms</code>，
-        归约完都只有 <code>thread 0</code> 把结果写进小数组 —— 广播那几行是白搭的。</b>
+      <p class="k">到 S3 这一级，<code>blockReduceMaxSum</code> 的广播才有用</p>
+      <p style="margin-bottom:0"><b>S1 的 <code>sm_s1_sum</code>、S2 的 <code>sm_s2_ms</code>
+        归约完都只有 <code>thread 0</code> 把结果写进小数组，广播那几行是白做的。</b>
         <span style="color:var(--crit);font-weight:650">而 S3 里 256 个线程<u>每一个</u>都要拿
-        <code>(m, s)</code> 去归一化自己手上那十几个元素。</span>
-        <span style="color:var(--ink-3)">这也正是 <a href="#s3-1">§3 · 一</a> 那句话的落点：
-        凡是「归约完所有线程都要用结果」的场合，才值得为广播付那一次 shared 往返。</span></p>
+        <code>(m, s)</code> 去归一化自己手上的元素（主阶梯 N=2048 时每个线程 8 个）。</span>
+        <span style="color:var(--ink-3)">这正是 <a href="#s3-1">§3 · 一</a> 那句话的落点：
+        只有「归约完所有线程都要用结果」的场合，才值得为广播付那一次 shared memory 往返。</span></p>
     </div>
 
   </div>
@@ -4260,10 +4254,10 @@ if (needReg &amp;&amp; <span class="x">N &gt; BLOCK * MAXS</span>) {            
   <div class="sec">
     <h3 id="s6-4">四、S4：float4，顺便演示了分块合并<a class="up" href="#t6-4" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b>S4 = S3 + float4，字节数一个都没变（还是 8N），动的是访存指令条数。</b>
-      <span style="color:var(--ink-3)">但它顺手多做了一件事：因为一次进来 4 个元素，
-      它<u>不得不</u>先把这 4 个合成一个小块摘要，再并进累计值 ——</span>
-      <b>这就用上了 <a href="#s5-3">§5 · 三</a> 那个一般形式的 <code>⊕</code>，
+      <b>S4 = S3 + float4：字节数不变（仍是 8N），减少的是访存指令条数。</b>
+      <span style="color:var(--ink-3)">它还多做了一件事：一次读进 4 个元素，
+      所以<u>必须</u>先把这 4 个合成一个小块摘要，再并进累计值。</span>
+      <b>这用的是 <a href="#s5-3">§5 · 三</a> 那个一般形式的 <code>⊕</code>，
       而不是 S3 那个「并进一个元素」的特例。</b>
     </p>
     <pre><span class="c">// float4 版：8 个 float4 也是 32 个 float，寄存器压力和 S3 刻意做成一样</span>
@@ -4321,9 +4315,9 @@ if (needVec4 &amp;&amp; <span class="x">(N &amp; 3)</span>) {                   
     return 3;
 }</pre>
 
-    <h4>那一行 <code>sv = …</code> 到底在算什么</h4>
+    <h4><code>sv = …</code> 这一行算的是什么</h4>
     <p class="prose">
-      <b>它就是<a href="#s5-3">「摘要」定义</a>的直接照抄 —— 一个字都没多。</b>
+      <b>这一行直接照抄<a href="#s5-3">「摘要」的定义</a>，一个字都没多。</b>
     </p>
     <pre><span class="c">// 摘要的定义（§5·三）</span>
 摘要(A) = ( max(A) , Σ_{j∈A} exp(x_j − max(A)) )
@@ -4351,22 +4345,22 @@ if (needVec4 &amp;&amp; <span class="x">(N &amp; 3)</span>) {                   
     <div class="callout">
       <p class="k">三个「为什么」</p>
       <p><b>为什么要减 <code>mv</code>？</b>
-        <span style="color:var(--ink-3)">防溢出。<code>v_i − mv ≤ 0</code> 恒成立，每项都落在
+        <span style="color:var(--ink-3)">为了防溢出。<code>v_i − mv ≤ 0</code> 恒成立，所以每项都落在
         <code>(0, 1]</code>。打分冲到 90 时 <code>exp(90) = 1.22e39</code>，
-        已经超过 fp32 上限 <code>3.4e38</code>；减掉 max 就永远不会。</span></p>
+        已经超过 fp32 上限 <code>3.4e38</code>；减掉 max 后就永远不会溢出。</span></p>
       <p><b>为什么 <code>sv</code> 一定 ≥ 1？</b>
-        <span style="color:var(--ink-3)">因为最大的那个分量贡献 <code>exp(mv − mv) = 1</code>。
-        所以 <code>sv ∈ [1, 4]</code> —— 四个数全相等时取 4，差距极大时趋近 1。</span>
-        <b>这也保证了后面 <code>1.0f / s</code> 不会除零。</b></p>
-      <p style="margin-bottom:0"><b>为什么平铺写四项而不写循环？</b>
-        <span style="color:var(--ink-3)"><code>float4</code> 的四个分量是四个独立的寄存器，没有下标可循环 ——
-        展开写本来就是它的自然形态。</span></p>
+        <span style="color:var(--ink-3)">因为最大的分量贡献 <code>exp(mv − mv) = 1</code>。
+        所以 <code>sv ∈ [1, 4]</code>：四个数全相等时取 4，差距极大时趋近 1。</span>
+        <b>这也保证后面的 <code>1.0f / s</code> 不会除零。</b></p>
+      <p style="margin-bottom:0"><b>为什么平铺写四项，不写循环？</b>
+        <span style="color:var(--ink-3)"><code>float4</code> 的四个分量是四个独立的寄存器，没有下标可以循环，
+        所以展开写是它的自然写法。</span></p>
     </div>
 
-    <h4>值得留意：块内用的是「朴素两趟」，不是递推</h4>
+    <h4>块内用的是「朴素两趟」，不是递推</h4>
     <p class="prose">
-      <b>看清楚这两行的结构 —— <u>先求 max，再求和</u>。这正是 <a href="#s6-1">S1</a> 那套朴素做法，
-      而不是 online 递推。</b>
+      <b>这两行的结构是<u>先求 max，再求和</u>，正是 <a href="#s6-1">S1</a> 那套朴素做法，
+      不是 online 递推。</b>
     </p>
     <pre><span class="c">// 块内（4 个元素，全在寄存器里）：朴素两趟</span>
 mv = max(...)                    <span class="c">// 第 1 趟：求 max，</span><span class="a">0 次 exp</span>
@@ -4377,11 +4371,11 @@ for v_i in {x, y, z, w}:
     m_n = fmaxf(m, v_i);
     s = s * exp(m − m_n) + exp(v_i − m_n);   <span class="c">// 每元素</span> <span class="x">2 次 exp</span>   <span class="x">→ 共 8 次</span></pre>
     <p class="prose">
-      <b>4 次 vs 8 次 —— 朴素法在这里反而省一半。为什么？</b>
-      <span style="color:var(--crit);font-weight:650">因为 S1 之所以被嫌弃，不是因为它算得多，
-      而是因为「两趟」意味着<u>两遍过显存</u>。</span>
-      <span style="color:var(--ink-3)">可这四个数就躺在寄存器里 —— 两趟不花钱，
-      于是朴素法「少算一半 exp」的优势就露出来了。</span>
+      <b>4 次对 8 次：在块内，朴素法反而少算一半 exp。</b>
+      <span style="color:var(--crit);font-weight:650">S1 的问题不在算得多，
+      而在「两趟」意味着<u>两趟读显存</u>。</span>
+      <span style="color:var(--ink-3)">而这四个数就在寄存器里，两趟不花钱，
+      于是朴素法「少算一半 exp」的优势就显出来了。</span>
     </p>
 
     <div class="tw"><table>
@@ -4405,10 +4399,10 @@ for v_i in {x, y, z, w}:
       <p class="k">FlashAttention 是同一个结构的放大版</p>
       <p style="margin-bottom:0"><b>tile 内部用朴素两趟（数据在 shared memory 里，扫两遍不碰显存），
         tile 与 tile 之间用 <code>⊕</code>。</b>
-        <span style="color:var(--ink-3)">和这里唯一的区别是块从 4 放大到 128×128、
-        摘要从寄存器挪到 shared。</span>
-        <span style="color:var(--crit);font-weight:650">「朴素」和「递推」不是谁取代谁 ——
-        是看数据能不能同时握在手里：握得住就朴素，握不住才递推。</span></p>
+        <span style="color:var(--ink-3)">和这里的区别只有两点：块从 4 放大到 128×128，
+        摘要从寄存器挪到 shared memory。</span>
+        <span style="color:var(--crit);font-weight:650">「朴素」和「递推」不是谁取代谁，
+        而是看数据能不能同时握在手里：握得住就朴素，握不住才递推。</span></p>
     </div>
 
     <div class="fig">
@@ -4461,18 +4455,18 @@ for v_i in {x, y, z, w}:
 
       <text class="t-acc" x="0" y="258">合并公式一个字都不用改 —— 变的只是块多大、摘要住在哪（寄存器 → shared memory）。</text>
     </svg>
-    <p class="cap"><b>图 29 · 这段代码已经是 FlashAttention 的最小形态了。</b>
+    <p class="cap"><b>图 29 · 这段代码已经是 FlashAttention 的最小形态。</b>
       S3 往累计值里并的是<u>一个元素</u> <code>(v, 1)</code>；S4 并的是<u>一个小块的摘要</u> <code>(mv, sv)</code>。
-      <b>块大小从 1 变成 4 —— 而 FlashAttention 做的事，就是把这个块从 4 放大到 128×128，
+      <b>块大小从 1 变成 4。FlashAttention 做的事，就是把块从 4 放大到 128×128，
       把摘要从寄存器挪到 shared memory。</b>
       <span style="color:var(--ink-3)">合并公式一个字都不用改，因为 <a href="#s5-3">§5 · 三</a>
-      证的就是任意两段摘要都能这么合。</span></p>
+      证明了任意两段摘要都能这样合并。</span></p>
     </div>
 
-    <h4>这 <code>B + 2</code> 是怎么数出来的</h4>
+    <h4><code>B + 2</code> 怎么数出来</h4>
     <p class="prose">
-      <b>先把「块」定死：块 = <u>一次循环迭代里一口气拿到手的那几个元素</u>。</b>
-      <span style="color:var(--ink-3)">两个 kernel 覆盖的元素总数一样，差别只在「一次消化多少」：</span>
+      <b>先定义「块」：块 = <u>一次循环迭代里拿到的那几个元素</u>。</b>
+      <span style="color:var(--ink-3)">两个 kernel 覆盖的元素总数相同，差别只在每轮拿几个：</span>
     </p>
     <div class="tw"><table>
       <caption>行号对应 <code>fused_ops.cu</code></caption>
@@ -4491,8 +4485,8 @@ s = s * <span class="x">__expf(m - m_n)</span> + <span class="a">__expf(v - m_n)
         <span class="x">└ 缩放因子：把已累计的 s ┘</span>   <span class="a">└ 新项 ┘</span>
         <span class="x">  从旧基准 m 换到 m_n</span></pre>
     <p class="prose">
-      <span style="color:var(--crit);font-weight:650">关键在于：<u>每吃一个元素，就得重新换一次基准</u></span>
-      <span style="color:var(--ink-3)">—— 因为 <code>m_n</code> 每轮都可能变。所以 B 个元素 = <code>2B</code> 次。</span>
+      <span style="color:var(--crit);font-weight:650">关键：<u>每处理一个元素，都要重新换一次基准</u>，</span>
+      <span style="color:var(--ink-3)">因为 <code>m_n</code> 每轮都可能变。所以 B 个元素要 <code>2B</code> 次。</span>
     </p>
 
     <p class="prose"><b>S4：<code>B + 2</code> 次（<code>fused_ops.cu:409</code> 与 <code>411</code>）</b></p>
@@ -4559,26 +4553,26 @@ s = s * <span class="x">__expf(m - m_n)</span> + sv * <span class="x">__expf(mv 
       <text class="t-acc" x="0" y="200">省下的正是那 3 次多余的换基准 —— 元素项（每个元素总得算一次 exp）是省不掉的。</text>
     </svg>
     <p class="cap"><b>图 30 · 省的不是元素项，是换基准。</b>
-      每个元素总得算一次 <code>exp</code>，这部分谁也省不掉；
-      <b>能省的只有「换基准」的开销 —— 逐元素做要换 B 次，分块做只换 1 次。</b>
+      每个元素总要算一次 <code>exp</code>，这部分省不掉；
+      <b>能省的只有换基准：逐元素做要换 B 次，分块做只换 1 次。</b>
       <span style="color:var(--ink-3)">于是
       <code>逐元素 2B = B（元素项）+ B（换基准）</code>，
       <code>分块 B+2 = B（元素项）+ 2（只换一次）</code>。</span></p>
     </div>
 
     <div class="callout warn">
-      <p class="k">B = 1 时分块反而更亏 —— 所以 S3 选逐元素不是疏忽</p>
-      <p style="margin-bottom:0"><b>一个元素也要付那 2 次换基准的固定开销，
-        <code>B+2 = 3</code> 反而比 <code>2B = 2</code> 多。</b>
-        <span style="color:var(--ink-3)">B = 2 打平，<b>B ≥ 3 分块才开始赚</b>。
-        每元素成本 <code>(B+2)/B = 1 + 2/B</code>，B 越大越逼近 1。</span></p>
+      <p class="k">B = 1 时分块反而更亏，所以 S3 选逐元素不是疏忽</p>
+      <p style="margin-bottom:0"><b>一个元素也要付 2 次换基准的固定开销，
+        <code>B+2 = 3</code> 比 <code>2B = 2</code> 多。</b>
+        <span style="color:var(--ink-3)">B = 2 时打平，<b>B ≥ 3 时分块才开始省</b>。
+        每元素成本是 <code>(B+2)/B = 1 + 2/B</code>，B 越大越接近 1。</span></p>
     </div>
 
     <div class="callout">
       <p class="k">写回阶段没有这个差别</p>
       <p style="margin-bottom:0"><code>sm_s3:386</code> 是 <code>__expf(xs[c] - m) * inv</code>，
-        <code>sm_s4:421-422</code> 是四个分量各一次 —— <b>都是每元素 1 次</b>。
-        <span style="color:var(--ink-3)">因为写回时 <code>m</code> 已经是<u>全行最终的 max</u>，不用换基准，没得省。
+        <code>sm_s4:421-422</code> 是四个分量各一次，<b>都是每元素 1 次</b>。
+        <span style="color:var(--ink-3)">因为写回时 <code>m</code> 已经是<u>全行最终的 max</u>，不用换基准，也就没什么可省。
         所以每元素总计：S3 = 2 + 1 = <b>3</b>；S4 = 1.5 + 1 = <b>2.5</b>。</span></p>
     </div>
 
@@ -4602,11 +4596,11 @@ s = s * <span class="x">__expf(m - m_n)</span> + sv * <span class="x">__expf(mv 
     </table></div>
 
     <div class="callout link">
-      <p class="k">诚实说一句：这不是 FlashAttention 分块的<u>主要</u>动机</p>
-      <p style="margin-bottom:0"><b>主要动机是 <a href="#s1-2">§1 · 二</a> 算过的那笔账 ——
-        打分矩阵不落 HBM，省掉 209 ms 的搬运。</b>
+      <p class="k">这不是 FlashAttention 分块的<u>主要</u>动机</p>
+      <p style="margin-bottom:0"><b>主要动机是 <a href="#s1-2">§1 · 二</a> 算过的那笔账：
+        打分矩阵不写回显存，省掉 209 ms 的搬运。</b>
         <span style="color:var(--ink-3)">exp 摊薄是顺带的好处。</span>
-        <span style="color:var(--crit);font-weight:650">但它解释了为什么「块做大」在算力账上也没有惩罚 ——
+        <span style="color:var(--crit);font-weight:650">但它解释了为什么「块做大」在算力账上也没有惩罚：
         不会出现「省了带宽、赔了算力」的折中。</span></p>
     </div>
 
@@ -4622,13 +4616,13 @@ s = s * <span class="x">__expf(m - m_n)</span> + sv * <span class="x">__expf(mv 
     <p class="prose">
       <b>Qwen2.5-7B 的 vocab 是 152064。</b>
       采样时要对这么长的一行做 softmax，而 S3 的上限是 8192。
-      <span style="color:var(--crit);font-weight:650">差 18 倍，没有任何办法把它塞进寄存器。</span>
+      <span style="color:var(--crit);font-weight:650">差 18 倍，无论如何都放不进寄存器。</span>
     </p>
     <div class="callout warn">
       <p class="k">宁可拒绝，也不要偷偷 spill</p>
-      <p style="margin-bottom:0"><b>如果不做这个检查，编译器会把 <code>xs</code> 放进 local memory，
-        程序照样跑、结果照样对、速度照样"还行"</b>
-        <span style="color:var(--ink-3)">—— 然后你会得到一个完全错误的结论：
+      <p style="margin-bottom:0"><b>如果不做这个检查，编译器会把 <code>xs</code> 放进 local memory。
+        程序照样跑，结果照样对，速度也"还行"。</b>
+        <span style="color:var(--ink-3)">你会因此得出一个完全错误的结论：
         "S3 在长行上也有效"。实际上它退化成了 S2，而且更慢。</span>
         <span style="color:var(--crit);font-weight:650">让它明确失败，是为了让约束显形。</span></p>
     </div>
@@ -4640,7 +4634,7 @@ s = s * <span class="x">__expf(m - m_n)</span> + sv * <span class="x">__expf(mv 
 <h2 id="s7"><span class="num">预测</span>跑之前先写死<a class="up" href="#t7" title="回到目录">↑</a></h2>
   <p class="lede prose">
     <strong>和前面三份报告一样：先写预测，再看结果。</strong>
-    <b>事后看着数字编解释，什么账都能"对得上"。</b>
+    <b>如果看着数字再编解释，什么账都能"对得上"。</b>
   </p>
 
   <div class="sec">
@@ -4649,17 +4643,17 @@ s = s * <span class="x">__expf(m - m_n)</span> + sv * <span class="x">__expf(mv 
       <caption>M=8192 行 · RMSNorm N=3584 · softmax N=2048 · 跑完逐条打勾</caption>
       <thead><tr><th>#</th><th>预测</th><th>判决标准</th><th>理由</th><th>实测</th><th>判决</th></tr></thead>
       <tbody>
-        <tr><td class="cn">①</td><td><b>N2 相对 N1 几乎不提速</b></td>
+        <tr><td class="cn">①</td><td><b>N2 几乎不比 N1 快</b></td>
             <td class="en">1.00× – 1.05×</td>
-            <td>字节数一模一样，都是 12N。省的只有 launch 和 rstd 往返</td>
+            <td>字节数相同，都是 12N。省的只有 launch 和 rstd 往返</td>
             <td class="en"><b>1.49×</b></td><td><span class="tag crit">落空</span></td></tr>
         <tr><td class="cn">②</td><td><b>N3 相对 N1 接近 1.5×</b></td>
             <td class="en">1.35× – 1.50×</td>
-            <td>12N → 8N，纯字节比。达不到说明有别的东西在挡</td>
+            <td>12N → 8N，纯按字节比算。达不到就说明有别的瓶颈</td>
             <td class="en">1.51×</td><td><span class="tag good">成立</span></td></tr>
         <tr><td class="cn">③</td><td>N4 相对 N3 提升很小</td>
             <td class="en">1.00× – 1.15×</td>
-            <td>字节不变，只减指令条数。带宽已经吃紧的话没有空间</td>
+            <td>字节数不变，只减指令条数。如果带宽已经吃紧，就没有提升空间</td>
             <td class="en">1.00×</td><td><span class="tag good">成立</span></td></tr>
         <tr><td class="cn">④</td><td><b>S2 相对 S1 接近 1.33×</b></td>
             <td class="en">1.20× – 1.33×</td>
@@ -4684,8 +4678,8 @@ s = s * <span class="x">__expf(m - m_n)</span> + sv * <span class="x">__expf(mv 
             <td class="en">n3 ✓  s3 ✓</td><td><span class="tag good">成立</span></td></tr>
       </tbody>
       <caption><strong>第 ① 条是这组实验的眼睛。</strong>
-        <span style="color:var(--ink-3)">如果 N2 也快了一大截，说明我对"字节数"的计算漏了什么，
-        后面所有推导都要回头查。<b>一条符合预期的"没有提速"，比一条提速更能验证模型。</b></span></caption>
+        <span style="color:var(--ink-3)">如果 N2 也明显变快，说明我对"字节数"的计算漏了什么，
+        后面所有推导都要回头查。<b>一条符合预期的"没有变快"，比一条变快更能验证模型。</b></span></caption>
     </table></div>
   </div>
 
@@ -4716,10 +4710,10 @@ s = s * <span class="x">__expf(m - m_n)</span> + sv * <span class="x">__expf(mv 
       </tbody>
     </table></div>
     <p class="prose">
-      <b>第 ⑫ 条和 SGEMM 形状扫描的结论是同一个形状</b>：
-      <span style="color:var(--ink-3)">在 decode 那一侧，你辛苦优化的那本账会失效，
-      因为瓶颈换人了。</span>
-      <span style="color:var(--crit);font-weight:650">那边是"砍指令条数救不了带宽墙"，
+      <b>第 ⑫ 条和 SGEMM 形状扫描的结论相同</b>：
+      <span style="color:var(--ink-3)">在 decode 一侧，辛苦优化的那本账会失效，
+      因为瓶颈变了。</span>
+      <span style="color:var(--crit);font-weight:650">SGEMM 那边是"砍指令条数救不了带宽墙"，
       这边是"砍字节救不了空转的 SM"。</span>
     </p>
   </div>
@@ -4735,12 +4729,12 @@ s = s * <span class="x">__expf(m - m_n)</span> + sv * <span class="x">__expf(mv 
             <td class="en">✗ 已打印<span class="sub">日志未记录退出码</span></td><td><span class="tag good">成立</span></td></tr>
         <tr><td class="cn">⑭</td>
             <td><b>logits 形状（M=32, N=152064）的 MBU 明显低于主阶梯</b></td>
-            <td class="en">比 M=8192 <b>高</b></td>
-            <td class="en">147.9%</td><td><span class="tag crit">落空</span></td></tr>
+            <td class="en">比 M=8192 低</td>
+            <td class="en">147.9%（反而<b>更高</b>）</td><td><span class="tag crit">落空</span></td></tr>
       </tbody>
-      <caption><span style="color:var(--ink-3)">第 ⑭ 条要的是"长行 + 少行"这种形状有多难喂饱卡。
+      <caption><span style="color:var(--ink-3)">第 ⑭ 条检验"长行 + 少行"这种形状有多难喂饱卡。
         32 行意味着 32 个 block；每行 152064 个元素意味着每个 block 要循环 594 轮。
-        <b>并行度全压在行内，而行内并行度只有 256 个线程。</b></span></caption>
+        <b>并行度全压在行内，而行内只有 256 个线程。</b></span></caption>
     </table></div>
   </div>
 </section>
@@ -4749,8 +4743,8 @@ s = s * <span class="x">__expf(m - m_n)</span> + sv * <span class="x">__expf(mv 
 <section>
 <h2 id="s8"><span class="num">上机</span>代码全文与验收<a class="up" href="#t8" title="回到目录">↑</a></h2>
   <p class="lede prose">
-    <strong>两个文件，一条命令。</strong>
-    <b>磁盘路径 <code>debug/07/fused_ops.cu</code> 与 <code>debug/07/run_fused.sh</code>，原样收录。</b>
+    <strong>本节有两个文件，用一条命令跑完。</strong>
+    <b>两个文件原样收录，磁盘路径是 <code>debug/07/fused_ops.cu</code> 与 <code>debug/07/run_fused.sh</code>。</b>
   </p>
 
   <div class="sec">
@@ -4764,13 +4758,13 @@ s = s * <span class="x">__expf(m - m_n)</span> + sv * <span class="x">__expf(mv 
             <td class="en">§4 · 三</td><td class="en">1 min</td></tr>
         <tr><td class="cn">寄存器数</td>
             <td>n1/n2 应该只有十几个；n3/n4/s3/s4 应该明显更多（32 个存数据 + 其余）。
-                <span style="color:var(--ink-3)">两组差不多的话，说明寄存器驻留没生效</span></td>
+                <span style="color:var(--ink-3)">两组相近，说明寄存器驻留没生效</span></td>
             <td class="en">§4 · 三</td><td class="en">—</td></tr>
         <tr><td class="cn">正确性</td><td>八个 kernel 各看到一次 <b>✓ 抽样校验通过</b></td>
             <td class="en">§8 · 二</td><td class="en">2 min</td></tr>
         <tr><td class="cn">边界</td>
             <td><code>N=1000</code>（不是 BLOCK 整数倍）也要通过。
-                <span style="color:var(--ink-3)">幺元写错、越界判断漏掉，都在这里露馅</span></td>
+                <span style="color:var(--ink-3)">幺元写错、漏掉越界判断，都会在这里报错</span></td>
             <td class="en">§3 · 三</td><td class="en">1 min</td></tr>
         <tr><td class="cn">主阶梯</td><td>三轮读数差 &lt; 2%；八条预测逐条打勾</td>
             <td class="en">§7 · 一</td><td class="en">5 min</td></tr>
@@ -4781,10 +4775,10 @@ s = s * <span class="x">__expf(m - m_n)</span> + sv * <span class="x">__expf(mv 
         <tr><td class="cn">竞态</td><td>三段 racecheck 都要 <b>0 hazards</b></td>
             <td class="en">§3 · 二</td><td class="en">3 min</td></tr>
       </tbody>
-      <caption><strong>合计 20 分钟左右。</strong>
-        <span style="color:var(--ink-3)">比 SGEMM 那套快得多，因为访存密集算子本身跑得快，
-        而且不需要 ncu（<b>MBU 从字节数和耗时就能算出来，不依赖硬件计数器</b>——
-        这一点在拿不到 profiling 权限的机器上尤其省事）。</span></caption>
+      <caption><strong>合计约 20 分钟。</strong>
+        <span style="color:var(--ink-3)">比 SGEMM 那套短，原因有两个：访存密集算子本身跑得快；不需要 ncu。
+        <b>MBU 用字节数和耗时就能算出，不依赖硬件计数器</b>，
+        所以在没有 profiling 权限的机器上也能验收。</span></caption>
     </table></div>
     <pre><span class="c"># 测试机</span>
 nvidia-smi                          <span class="c"># 确认卡上没有别人</span>
@@ -4798,13 +4792,13 @@ ROUNDS=1 bash run_fused.sh</pre>
     <h3 id="s8-2">二、<code>fused_ops.cu</code> 全文<a class="up" href="#t8-2" title="回到目录">↑</a></h3>
     <p class="prose">
       <b>十一个 kernel + 完整脚手架（设备查询、occupancy、字节账、CPU 参照校验、中位数计时）。</b>
-      <span style="color:var(--ink-3)">计时和校验的写法和 <code>sgemm_all.cu</code> 一致 ——
-      预热次数按 ITERS 分档、偶数样本取中间两个的平均，
-      这两处写法都是 SGEMM 那一轮踩坑踩出来的，来历见<a href="../">本阶段 README</a>「怎么复现」的四条规矩。</span>
+      <span style="color:var(--ink-3)">计时和校验的写法和 <code>sgemm_all.cu</code> 相同：
+      预热次数按 ITERS 分档；样本数为偶数时，取中间两个的平均。
+      这两处写法来自 SGEMM 那一轮的教训，来历见<a href="../">本阶段 README</a>「怎么复现」的四条规矩。</span>
     </p>
 
     <details class="opt">
-      <summary>测试数据是怎么造的 —— 536~539 这四行为什么是现在这个样子<span class="tag acc">选读</span></summary>
+      <summary>测试数据怎么造：536~539 这四行为什么这样写<span class="tag acc">选读</span></summary>
       <div class="body">
 
       <pre><span class="c">// fused_ops.cu:533-539</span>
@@ -4817,15 +4811,15 @@ std::vector&lt;float&gt; hx(nElem), hw(N), hy(nElem);
 <span class="a">for (int i = 0; i &lt; N; ++i)        hw[i] = 0.5f + 0.5f * dist(rng) / 3.0f;</span></pre>
 
       <p class="prose">
-        <b>位置在 <code>runOne()</code> 里、<code>cudaMalloc</code> 之前 —— 纯 CPU 侧，不进计时窗口。</b>
+        <b>这段代码在 <code>runOne()</code> 里、<code>cudaMalloc</code> 之前，只在 CPU 侧运行，不进计时窗口。</b>
       </p>
 
-      <h4>种子写死，不是图省事</h4>
+      <h4>种子写死是有意的</h4>
       <p class="prose">
+        <span style="color:var(--crit);font-weight:650">重点是种子 <code>12345</code> 写死在代码里，
+        而不是用 <code>std::random_device{}()</code>。</span>
         <b><code>std::mt19937</code> 是 Mersenne Twister 伪随机<u>引擎</u></b>
         <span style="color:var(--ink-3)">（名字里的 19937 是它的周期 2<sup>19937</sup>−1）。</span>
-        <span style="color:var(--crit);font-weight:650">重点不在算法，在 <code>12345</code> 是硬编码的种子，
-        而不是 <code>std::random_device{}()</code>。</span>
       </p>
       <div class="tw"><table>
         <caption>固定种子换来的三件事</caption>
@@ -4838,22 +4832,22 @@ std::vector&lt;float&gt; hx(nElem), hw(N), hy(nElem);
           <tr><td class="cn">换机器重跑</td>
               <td>数字失去可比性</td></tr>
         </tbody>
-        <caption><span style="color:var(--ink-3)">顺带留意：<code>verifyRows</code> 里另有一个
-          <code>std::mt19937 rng(20260925)</code>（<code>fused_ops.cu:437</code>），
-          那个是用来<b>抽行号</b>的，和这个各管各的流，种子特意取得不同。</span></caption>
+        <caption><span style="color:var(--ink-3)">另外，<code>verifyRows</code> 里还有一个
+          <code>std::mt19937 rng(20260925)</code>（<code>fused_ops.cu:437</code>）。
+          它只用来<b>抽行号</b>，和这里是两条独立的流，所以种子特意取得不同。</span></caption>
       </table></div>
 
       <h4>引擎和分布是两件事</h4>
       <p class="prose">
-        <b><code>&lt;random&gt;</code> 把「产生随机位」和「整形成某种分布」拆开了</b><span style="color:var(--ink-3)">：
-        引擎吐 32 位整数流，<code>uniform_real_distribution</code> 负责映射。
-        区间按标准是 <code>[-3, 3)</code> 左闭右开。<code>dist</code> 是个函数对象，
-        每调一次就从 <code>rng</code> 取走一段位。</span>
+        <b><code>&lt;random&gt;</code> 把「产生随机位」和「映射成某种分布」分成两步</b><span style="color:var(--ink-3)">：
+        引擎输出 32 位整数流，<code>uniform_real_distribution</code> 负责映射。
+        按标准，区间是左闭右开的 <code>[-3, 3)</code>。<code>dist</code> 是函数对象，
+        每调用一次，就从 <code>rng</code> 取走一段位。</span>
       </p>
 
       <h4>为什么偏偏是 ±3</h4>
       <p class="prose">
-        <b>两条阶梯各提一个要求，再加一个让公式成立的前提 —— 三者的交集把 L 钉在 3 附近。</b>
+        <b>三个条件共同把 L 定在 3 附近：两条阶梯各提一个要求，再加一个让公式成立的前提。</b>
       </p>
 
       <p class="prose"><b>① RMSNorm 一侧：要避开一个具体的退化点</b></p>
@@ -4880,17 +4874,17 @@ r = 1/√(E[x²]) = <span class="a">√3 / L</span></pre>
           <tr><td class="cn">10</td><td class="en">33.33</td><td class="en">0.1732</td><td></td></tr>
           <tr><td class="cn">50</td><td class="en">833.3</td><td class="en">0.0346</td><td></td></tr>
         </tbody>
-        <caption><b>要避开的不是一片模糊区域，是 <code>L = √3</code> 这一个点。</b>
-          <span style="color:var(--ink-3)">上界这边其实没有硬约束 ——
-          真要让 <code>y</code> 掉进 fp32 非正规数，得 L 大到 10<sup>38</sup> 量级，
-          那时 <code>v*v</code> 自己先溢出了。所以这一侧只有「别碰 √3」这一条。</span></caption>
+        <caption><b>要避开的只有 <code>L = √3</code> 这一个点，不是一片区域。</b>
+          <span style="color:var(--ink-3)">上界没有硬约束：
+          要让 <code>y</code> 掉进 fp32 非正规数，L 得大到 10<sup>38</sup> 量级，
+          那时 <code>v*v</code> 已经先溢出。所以这一侧只有「别取 √3」这一条。</span></caption>
       </table></div>
 
-      <p class="prose"><b>② 区间必须跨零 —— 否则上面那个公式根本不成立</b></p>
+      <p class="prose"><b>② 区间必须跨零，否则上面的公式不成立</b></p>
       <p class="prose">
+        <span style="color:var(--crit);font-weight:650">只有区间对称、<code>E[x] = 0</code> 时，方差才等于 <code>E[x²]</code>。</span>
         <span style="color:var(--ink-3)">常见写法 <code>(b−a)²/12</code> 算的是<b>方差</b>，不是
-        <code>E[x²]</code>。两者的关系是 <code>E[x²] = Var(x) + (E[x])²</code> ——
-        </span><span style="color:var(--crit);font-weight:650">只有区间对称、<code>E[x] = 0</code> 时才相等。</span>
+        <code>E[x²]</code>。两者的关系是 <code>E[x²] = Var(x) + (E[x])²</code>。</span>
       </p>
       <div class="tw"><table>
         <caption>同样宽 6 的两个区间，均方值差 4 倍</caption>
@@ -4903,8 +4897,8 @@ r = 1/√(E[x²]) = <span class="a">√3 / L</span></pre>
         </tbody>
       </table></div>
       <p class="prose">
-        <b>跨零还顺手把「漏写平方」从细微偏差变成数量级事故。</b>
-        <span style="color:var(--ink-3)">20 万样本实测：</span>
+        <b>跨零还有一个好处：「漏写平方」的后果从细微偏差变成数量级的错误。</b>
+        <span style="color:var(--ink-3)">下表是 20 万样本的实测：</span>
       </p>
       <div class="tw"><table>
         <caption>把 <code>acc += v * v</code> 误写成 <code>acc += v</code> 的后果</caption>
@@ -4913,15 +4907,15 @@ r = 1/√(E[x²]) = <span class="a">√3 / L</span></pre>
           <tr class="on"><td class="cn">[−3, 3]</td>
               <td class="en">3.012 → 0.576</td>
               <td class="en"><b>−0.0026 → 19.6</b><span class="sub">趋向 1/√eps = 1000</span></td>
-              <td><span style="color:var(--good);font-weight:650">差三个数量级，一眼看出</span></td></tr>
+              <td><span style="color:var(--good);font-weight:650">实测差 34 倍（极限可达三个数量级），很明显</span></td></tr>
           <tr><td class="cn">[0, 6]</td>
               <td class="en">11.99 → 0.289</td>
               <td class="en">3.000 → 0.577</td>
-              <td><span style="color:var(--crit);font-weight:650">只差 2 倍 ——
-                  容易被误判成 eps 位置写错之类</span></td></tr>
+              <td><span style="color:var(--crit);font-weight:650">只差 2 倍，
+                  容易误判成 eps 位置写错之类的问题</span></td></tr>
         </tbody>
         <caption><span style="color:var(--ink-3)">对称区间上 <code>mean(x) ≈ 0</code>，
-          被 <code>eps = 1e-6</code> 一除，因子直接冲到几百上千。</span></caption>
+          再被 <code>eps = 1e-6</code> 一除，因子就升到几百上千。</span></caption>
       </table></div>
 
       <p class="prose"><b>③ softmax 一侧：上界与 L 无关，L 只管下界</b></p>
@@ -4929,18 +4923,18 @@ r = 1/√(E[x²]) = <span class="a">√3 / L</span></pre>
 x_j − max ∈ (−2L, 0]        →        exp(x_j − max) ∈ (<span class="a">e^(−2L)</span>, <span class="a">1</span>]</pre>
       <div class="callout warn">
         <p class="k">上界 1 不是 ±3 的功劳</p>
-        <p style="margin-bottom:0"><b>取最大的那个元素时指数恰好是 <code>exp(0) = 1</code> ——
-          这是「减去 max」这个手法本身的性质，和区间多宽毫无关系。</b>
-          <span style="color:var(--ink-3)">就算 L = 1000，减完 max 的最大项还是 1。
-          所以<b>溢出早在算法层面就被排除了</b>，不需要靠挑数据范围来保证。</span>
-          <span style="color:var(--crit);font-weight:650">L 唯一能左右的是下界。</span></p>
+        <p style="margin-bottom:0"><b>最大元素的指数项恰好是 <code>exp(0) = 1</code>。
+          这是「减去 max」本身的性质，和区间宽度无关。</b>
+          <span style="color:var(--ink-3)">即使 L = 1000，减去 max 后的最大项还是 1。
+          所以<b>算法本身已经排除了溢出</b>，不需要靠选数据范围来保证。</span>
+          <span style="color:var(--crit);font-weight:650">L 只影响下界。</span></p>
       </div>
       <div class="tw"><table>
-        <caption>下界随 L 塌落的速度</caption>
+        <caption>下界随 L 下降的速度</caption>
         <thead><tr><th>半宽 L</th><th>最小的指数项</th><th>落在哪</th></tr></thead>
         <tbody>
           <tr class="on"><td class="cn"><b>3</b></td><td class="en"><b>2.479e-03</b></td>
-              <td>离 fp32 下限远得很</td></tr>
+              <td>离 fp32 下限很远</td></tr>
           <tr><td class="cn">6</td><td class="en">6.144e-06</td><td></td></tr>
           <tr><td class="cn">10</td><td class="en">2.061e-09</td><td></td></tr>
           <tr><td class="cn">50</td><td class="en">3.720e-44</td>
@@ -4950,7 +4944,7 @@ x_j − max ∈ (−2L, 0]        →        exp(x_j − max) ∈ (<span class="
           <span style="color:var(--ink-3)">
           <code>e^(−2L) &lt; 1.18e-38</code>（跌出正规数）⟺ <b>L &gt; 43.67</b>；
           <code>e^(−2L) &lt; 1.40e-45</code>（彻底变 0）⟺ <b>L &gt; 51.64</b>。
-          所以 ±50 正好卡在这条线上，不是随口挑的反例。</span></caption>
+          所以 ±50 正好卡在这条线上，不是随意挑的反例。</span></caption>
       </table></div>
 
       <p class="prose"><b>④ 行和的量级</b></p>
@@ -4971,28 +4965,28 @@ E[s] = N · (1 − e^(−6)) / 6 = <span class="a">0.166254 · N</span></pre>
           <tr><td class="cn">N=152064</td><td class="en">25281.2</td><td class="en">3.0000</td>
               <td>logits 形状</td></tr>
         </tbody>
-        <caption><b>几百到几万，fp32 的有效位绰绰有余。</b>
-          <span style="color:var(--ink-3)">抽一行实测 s = 349.6。要判断这算不算吻合，得先知道波动幅度：
+        <caption><b>行和在几百到几万之间，fp32 的有效位足够。</b>
+          <span style="color:var(--ink-3)">抽一行实测 s = 349.6。要判断它是否吻合，先算波动幅度：
           单项方差 <code>(1−e^(−12))/12 − 0.166254² = 0.055693</code>（SD 0.2360），
           和的 SD = <code>0.2360·√2048 = 10.68</code>。
-          <code>(349.6 − 340.5)/10.68 = 0.85σ</code> —— 正常采样波动。</span></caption>
+          <code>(349.6 − 340.5)/10.68 = 0.85σ</code>，属于正常的采样波动。</span></caption>
       </table></div>
 
       <h4>真正的设计点：容差里那个 <code>1e-7</code> 兜底项</h4>
       <p class="prose">
-        <b>上面四条都还只是「数值别出事」。±3 真正买到的东西，藏在校验的容差里。</b>
+        <b>±3 的主要作用在校验的容差里。上面四条只保证数值不出问题。</b>
       </p>
       <pre><span class="c">// fused_ops.cu:461 —— verifyRows 的判定</span>
 if (d &gt; 2e-3 * fabs(ref[i]) + <span class="x">1e-7</span>) { ... }</pre>
       <p class="prose">
-        <span style="color:var(--crit);font-weight:650">那个绝对兜底项意味着：参照值本身小于
-        <code>1e-7</code> 的元素，GPU 算成什么都会通过 —— 等于没查。</span>
+        <span style="color:var(--crit);font-weight:650">因为有这个绝对兜底项，参照值小于
+        <code>1e-7</code> 的元素，GPU 算出什么都会通过，等于没查。</span>
         <span style="color:var(--ink-3)">输出是 <code>y_j = exp(x_j − max)/s</code>，
         所以「自动通过」的条件是 <code>exp(x_j − max) &lt; 1e-7 · s</code>。
-        s 本身又随 L 变小（≈ N/(2L)），于是 L 一大，兜底区就迅速吃掉整行。</span>
+        s 又随 L 变小（≈ N/(2L)）。所以 L 一大，兜底区很快就覆盖整行。</span>
       </p>
       <div class="tw"><table>
-        <caption>N=2048 时，每行有多少元素其实没被校验</caption>
+        <caption>N=2048 时，每行有多少元素实际没被校验</caption>
         <thead><tr><th>半宽 L</th><th>行和</th><th>自动通过的门槛</th><th>占比</th></tr></thead>
         <tbody>
           <tr class="on"><td class="cn"><b>3</b></td><td class="en">340.5</td>
@@ -5007,16 +5001,16 @@ if (d &gt; 2e-3 * fabs(ref[i]) + <span class="x">1e-7</span>) { ... }</pre>
           <tr><td class="cn">50</td><td class="en">20.5</td><td class="en">x−max &lt; −13.10</td>
               <td class="en"><b>86.9%</b></td></tr>
         </tbody>
-        <caption><strong>L=3 时一个元素都不会自动通过，整行每一个数都真查了。</strong>
-          <span style="color:var(--ink-3)">临界点在 <b>L ≈ 5.5</b> 附近 —— ±3 留了约 1.8 倍余量。</span></caption>
+        <caption><strong>L=3 时没有元素自动通过，整行每个数都被真正校验。</strong>
+          <span style="color:var(--ink-3)">临界点在 <b>L ≈ 5.5</b> 附近，±3 留了约 1.8 倍余量。</span></caption>
       </table></div>
 
       <h4>实测：rescale 写错，两种区间下各能抓到多少</h4>
       <p class="prose">
-        <b>fp32 模拟 N=2048，故意植入两种 bug 再跑同一套容差判定。</b>
+        <b>方法：用 fp32 模拟 N=2048，植入两种 bug，再跑同一套容差判定。</b>
       </p>
       <div class="tw"><table>
-        <caption>同一个 bug，换个数据范围就从「满屏报警」退化成「零星报警」</caption>
+        <caption>同一个 bug，换个数据范围，就从「全部报警」降为「零星报警」</caption>
         <thead><tr><th>区间</th><th>版本</th><th>算出的行和</th><th>超出容差的元素</th></tr></thead>
         <tbody>
           <tr><td class="cn" rowspan="3">±3</td><td>正确</td><td class="en">339.04</td>
@@ -5033,27 +5027,26 @@ if (d &gt; 2e-3 * fabs(ref[i]) + <span class="x">1e-7</span>) { ... }</pre>
               <td class="en"><b>190 / 2048（9.3%）</b></td></tr>
         </tbody>
         <caption><span style="color:var(--ink-3)">实测落进兜底区的元素：±3 是 <b>0 / 2048</b>，
-          ±50 是 <b>1791 / 2048 = 87.5%</b> —— 和上一张表预测的 86.9% 对得上。</span></caption>
+          ±50 是 <b>1791 / 2048 = 87.5%</b>，和上一张表预测的 86.9% 吻合。</span></caption>
       </table></div>
       <div class="callout crit">
         <p class="k">差别不在「能不能抓」，在余量</p>
-        <p style="margin-bottom:0"><b>±50 下那个 bug 仍然会被抓到（9.7%）—— 但检出面从「每个元素都报警」
-          塌成「只有最大的那一成报警」。</b>
-          <span style="color:var(--ink-3)">±3 下连舍入级别的偏差都兜得住；
-          ±50 下再叠一点别的扰动就可能整行漏网。</span>
+        <p style="margin-bottom:0"><b>±50 下这个 bug 仍会被抓到（9.7%），但报警范围从「每个元素」
+          缩小到「只有最大的约一成元素」。</b>
+          <span style="color:var(--ink-3)">±3 下，连舍入级别的偏差都能查出；
+          ±50 下，再叠加一点别的扰动，整行就可能漏查。</span>
           <span style="color:var(--crit);font-weight:650">online 递推里
           <code>s * __expf(m - m_n)</code>（<code>fused_ops.cu:378</code>）这一步，
-          靠的就是「每一项都还在和里说得上话」才查得动 —— 这才是 ±3 真正的用处。</span></p>
+          只有每一项对行和都有可见的贡献时才查得出来。这才是 ±3 的主要用处。</span></p>
       </div>
 
-      <h4>为什么不能图省事用常数</h4>
+      <h4>为什么不能用常数输入</h4>
       <p class="prose">
-        <b>这件事可以当成一组对照实验来做：往 kernel 里植入九个真实的 bug，
-        换三种输入各跑一遍，看同一套容差判定各能抓到多少。</b>
-        <span style="color:var(--ink-3)">判定完全照
-        <code>fused_ops.cu:461</code>（<code>|ref−got| &gt; 2e-3·|ref| + 1e-7</code>），
-        参照用 double、被测用 fp32，规模 M=8 行 × N=1000 列 = 8000 个元素
-        —— 取 N=1000 是为了让「漏掉越界判断」那一条是活的。</span>
+        <b>对照实验：往 kernel 里植入九个真实的 bug，用三种输入各跑一遍，看同一套容差判定各抓到多少。</b>
+        <span style="color:var(--ink-3)">判定与
+        <code>fused_ops.cu:461</code> 完全相同（<code>|ref−got| &gt; 2e-3·|ref| + 1e-7</code>）。
+        参照用 double，被测用 fp32，规模是 M=8 行 × N=1000 列 = 8000 个元素。
+        取 N=1000，是为了让「漏掉越界判断」这个 bug 真正生效。</span>
       </p>
 
       <div class="tw"><table>
@@ -5066,14 +5059,14 @@ if (d &gt; 2e-3 * fabs(ref[i]) + <span class="x">1e-7</span>) { ... }</pre>
           <tr><td class="cn">写回整体错位一列</td><td class="en"><span style="color:var(--crit);font-weight:700">✗ 漏掉</span></td><td class="en"><span style="color:var(--good);font-weight:650">抓到 8000</span></td><td class="en"><span style="color:var(--good);font-weight:650">抓到 7993</span></td></tr>
           <tr><td class="cn">漏掉 <code>i &lt; N</code> 越界判断</td><td class="en"><span style="color:var(--crit);font-weight:700">✗ 漏掉</span></td><td class="en"><span style="color:var(--good);font-weight:650">抓到 7000</span></td><td class="en"><span style="color:var(--good);font-weight:650">抓到 7000</span></td></tr>
         </tbody>
-        <caption><b>非零常数对 RMSNorm 居然够用 —— 五个 bug 全抓到了。</b>
+        <caption><b>对 RMSNorm，非零常数输入也够用，五个 bug 全部抓到。</b>
           <span style="color:var(--ink-3)">但「全 0」一个都抓不到。</span></caption>
       </table></div>
 
       <p class="prose">
-        <b>为什么常数输入下 RMSNorm 还能抓住「写回错位」？因为它有<u>两个</u>变化源 ——
+        <b>常数输入下 RMSNorm 还能抓住「写回错位」，因为它有<u>两个</u>变化源：
         输入 <code>x</code> 和权重 <code>w</code>。</b>
-        <span style="color:var(--ink-3)">把 <code>w</code> 也换成全 1，立刻就瞎了：</span>
+        <span style="color:var(--ink-3)">把 <code>w</code> 也换成全 1，这两个 bug 在常数输入下就都抓不到了：</span>
       </p>
       <div class="tw"><table>
         <caption>同样的 bug，但 <code>w</code> 改成全 1</caption>
@@ -5082,15 +5075,15 @@ if (d &gt; 2e-3 * fabs(ref[i]) + <span class="x">1e-7</span>) { ... }</pre>
           <tr><td class="cn">权重下标写成 <code>w[c]</code></td><td class="en"><span style="color:var(--crit);font-weight:700">✗ 漏掉</span></td><td class="en"><span style="color:var(--crit);font-weight:700">✗ 漏掉</span></td><td class="en"><span style="color:var(--crit);font-weight:700">✗ 漏掉</span></td></tr>
           <tr><td class="cn">写回整体错位一列</td><td class="en"><span style="color:var(--crit);font-weight:700">✗ 漏掉</span></td><td class="en"><span style="color:var(--crit);font-weight:700">✗ 漏掉</span></td><td class="en"><span style="color:var(--good);font-weight:650">抓到 7990</span></td></tr>
         </tbody>
-        <caption><strong>救了 RMSNorm 的不是输入，是 <code>w</code>。</strong>
+        <caption><strong>让 RMSNorm 抓到 bug 的是 <code>w</code>，不是输入。</strong>
           <span style="color:var(--ink-3)">两者都是常数时，
-          <code>y_i = c · r · w</code> 每个位置都一样 —— 位置信息彻底消失，
-          下标怎么错都看不出来。这也正是
-          <a href="#s8-2">上一节</a>坚持让 <code>w</code> 取随机值的原因。</span></caption>
+          <code>y_i = c · r · w</code> 在每个位置都一样，位置信息完全消失，
+          下标怎么错都看不出来。这就是
+          <a href="#s8-2">本节</a>后面坚持让 <code>w</code> 取随机值的原因。</span></caption>
       </table></div>
 
       <div class="tw"><table>
-        <caption>softmax 四级 —— 没有 <code>w</code> 可以依靠</caption>
+        <caption>softmax 四级：没有 <code>w</code> 可以依靠</caption>
         <thead><tr><th>植入的 bug</th><th>全 0</th><th>全常数 1.5</th><th>U(−3,3)</th></tr></thead>
         <tbody>
           <tr><td class="cn">漏掉 rescale</td><td class="en"><span style="color:var(--crit);font-weight:700">✗ 漏掉</span></td><td class="en"><span style="color:var(--crit);font-weight:700">✗ 漏掉</span></td><td class="en"><span style="color:var(--good);font-weight:650">抓到 8000</span></td></tr>
@@ -5099,21 +5092,21 @@ if (d &gt; 2e-3 * fabs(ref[i]) + <span class="x">1e-7</span>) { ... }</pre>
           <tr><td class="cn">写回整体错位一列</td><td class="en"><span style="color:var(--crit);font-weight:700">✗ 漏掉</span></td><td class="en"><span style="color:var(--crit);font-weight:700">✗ 漏掉</span></td><td class="en"><span style="color:var(--good);font-weight:650">抓到 7991</span></td></tr>
         </tbody>
         <caption><span style="color:var(--crit);font-weight:650">两种常数输入下，四个 bug <b>一个都抓不到</b>。</span>
-          <span style="color:var(--ink-3)">softmax 只有 <code>x</code> 这一个变化源，
-          输入一旦恒定，正确答案就是均匀的 <code>1/N</code> —— 每个位置的值都相同。</span></caption>
+          <span style="color:var(--ink-3)">softmax 只有 <code>x</code> 这一个变化源。
+          输入恒定时，正确答案是均匀的 <code>1/N</code>，每个位置的值都相同。</span></caption>
       </table></div>
 
       <div class="callout crit">
-        <p class="k">两条阶梯的差别，在于变化源的个数</p>
-        <p><b>RMSNorm：<code>y_i = x_i · r · w_i</code> —— 两个带下标的量。
+        <p class="k">两条阶梯的差别在于变化源的个数</p>
+        <p><b>RMSNorm：<code>y_i = x_i · r · w_i</code> 有两个带下标的量。
           只要有一个在变，位置就可区分。</b></p>
-        <p style="margin-bottom:0"><b>softmax：<code>y_i = exp(x_i − m)/s</code> —— 只有一个。
-          <code>x</code> 恒定 ⟹ 全部 <code>y_i</code> 相等 ⟹ 任何位置相关的 bug 都隐身。</b>
-          <span style="color:var(--crit);font-weight:650">所以这份测试里，
-          softmax 那四级是「必须用随机输入」的硬约束，不是讲究。</span></p>
+        <p style="margin-bottom:0"><b>softmax：<code>y_i = exp(x_i − m)/s</code> 只有一个。
+          <code>x</code> 恒定 ⟹ 全部 <code>y_i</code> 相等 ⟹ 任何与位置有关的 bug 都查不出。</b>
+          <span style="color:var(--crit);font-weight:650">所以在这份测试里，
+          softmax 四级必须用随机输入。这是硬约束，不是可选项。</span></p>
       </div>
 
-      <p class="prose"><b>「漏掉 rescale」在常数输入下不是「差一点」，是<u>逐位相同</u></b></p>
+      <p class="prose"><b>常数输入下，「漏掉 rescale」版与正确版的输出<u>逐位相同</u></b></p>
       <pre><span class="c">// 常数输入 x ≡ c 时，走一遍递推：</span>
 <span class="c">// 第 1 个元素：m = −FLT_MAX → m_n = c</span>
 正确：  s = s * exp(m − m_n) + exp(c − c) = 0 * <span class="a">exp(−FLT_MAX − c)</span> + 1 = 1
@@ -5125,30 +5118,30 @@ if (d &gt; 2e-3 * fabs(ref[i]) + <span class="x">1e-7</span>) { ... }</pre>
 
 <span class="c">// 结论：rescale 这一步【一次都没被真正触发过】</span></pre>
       <p class="prose">
-        <span style="color:var(--ink-3)">实测验证：全 0 和全常数 1.5 下，正确版与漏 rescale 版的输出
-        <b>逐位相同</b>（<code>array_equal</code> 为真）；换成 U(−3,3) 立刻不同。</span>
-        <span style="color:var(--crit);font-weight:650">常数输入不是「检验力度弱」，是这条代码路径根本没被执行。</span>
+        <span style="color:var(--crit);font-weight:650">常数输入的问题不是「检验力度弱」，而是这条代码路径根本没被执行。</span>
+        <span style="color:var(--ink-3)">实测：全 0 和全常数 1.5 下，正确版与漏 rescale 版的输出
+        <b>逐位相同</b>（<code>array_equal</code> 为真）；换成 U(−3,3)，输出立刻不同。</span>
       </p>
 
       <div class="callout warn">
-        <p class="k">顺带测出来两个盲点 —— 换随机输入也补不上</p>
-        <p><b>① <code>m</code> 初值写成 <code>0.0f</code>（而不是 <code>-FLT_MAX</code>）：三种输入全都抓不到。</b>
-          <span style="color:var(--ink-3)">要触发它，得有一整行元素全为负 —— 而 U(−3,3) 抽 1000 个数，
-          最大值为负的概率是 2<sup>−1000</sup>。
-          这个 bug 只有刻意构造「全负行」才测得出来，</span>
+        <p class="k">实验还发现两个盲点，换随机输入也补不上</p>
+        <p><b>① <code>m</code> 初值写成 <code>0.0f</code>（而不是 <code>-FLT_MAX</code>）：三种输入都抓不到。</b>
+          <span style="color:var(--ink-3)">只有一整行元素全为负时，这个 bug 才会触发。
+          U(−3,3) 抽 1000 个数，最大值为负的概率是 2<sup>−1000</sup>。
+          要测出它，必须专门构造「全负行」。</span>
           <b>现在这套测试覆盖不到。</b></p>
         <p style="margin-bottom:0"><b>② 容差判定会放过 <code>NaN</code>。</b>
-          <span style="color:var(--ink-3)">IEEE754 规定任何与 NaN 的比较都返回 false，
-          于是 <code>d &gt; 2e-3·|ref| + 1e-7</code> 在 <code>d</code> 为 NaN 时恒为假 → 当成通过。
-          （<code>±Inf</code> 没这个问题，比较正常。）
-          上面「漏写平方」那一条在 U(−3,3) 下只抓到 3000 而不是 8000，就是因为对称区间上
-          <code>acc</code> 可能为负，<code>rsqrtf(负数)</code> 吐出 NaN，那 5 行静悄悄通过了。</span>
-          <span style="color:var(--crit);font-weight:650">要堵这个口子，判定得加一句
-          <code>!std::isfinite(yr[i])</code>。</span></p>
+          <span style="color:var(--crit);font-weight:650">要修复，判定里得加一句
+          <code>!std::isfinite(yr[i])</code>。</span>
+          <span style="color:var(--ink-3)">IEEE754 规定，任何与 NaN 的比较都返回 false。
+          所以 <code>d</code> 为 NaN 时，<code>d &gt; 2e-3·|ref| + 1e-7</code> 恒为假，结果被当成通过。
+          （<code>±Inf</code> 的比较正常，没有这个问题。）
+          上面「漏写平方」在 U(−3,3) 下只抓到 3000 而不是 8000，原因就在这里：
+          对称区间上 <code>acc</code> 可能为负，<code>rsqrtf(负数)</code> 返回 NaN，那 5 行就无报错地通过了。</span></p>
       </div>
 
       <div class="tw"><table>
-        <caption>一句话总结：该用哪种输入</caption>
+        <caption>总结：该用哪种输入</caption>
         <thead><tr><th>输入</th><th>够不够用</th><th>为什么</th></tr></thead>
         <tbody>
           <tr><td class="cn">全 0</td>
@@ -5170,19 +5163,19 @@ if (d &gt; 2e-3 * fabs(ref[i]) + <span class="x">1e-7</span>) { ... }</pre>
 <span class="c">// 0.5f + ...             ∈ [0, 1)       ← 均匀，均值 0.5</span>
 hw[i] = 0.5f + 0.5f * dist(rng) / 3.0f;</pre>
       <p class="prose">
-        <b>没有另外声明一个 <code>uniform_real_distribution&lt;float&gt;(0.0f, 1.0f)</code>，
-        而是把手头的 <code>dist</code> 做了个仿射变换。</b>
-        <span style="color:var(--ink-3)">这在数学上严格等价 —— 均匀分布对仿射变换封闭，重映射不引入任何偏差。
-        纯粹是少写一行。行尾那串多余空格只是为了和上一行的 <code>hx[i]</code> 对齐。</span>
+        <b>这一行没有另外声明 <code>uniform_real_distribution&lt;float&gt;(0.0f, 1.0f)</code>，
+        而是对现有的 <code>dist</code> 做仿射变换。</b>
+        <span style="color:var(--ink-3)">两者在数学上严格等价：均匀分布对仿射变换封闭，重映射不引入偏差。
+        这样写只是为了少写一行。行尾的多余空格是为了和上一行的 <code>hx[i]</code> 对齐。</span>
       </p>
       <p class="prose">
-        <b>循环长度是 <code>N</code>，不是 <code>nElem</code> —— 这是两条阶梯最大的结构差异。</b>
-        <span style="color:var(--ink-3)"><code>w</code> 是每列一个、<u>所有 M 行共用</u>的学习参数，
-        N=3584 时整份只有 <b>14 KB</b>。类型也跟着变了：上一行用 <code>size_t i</code>（<code>nElem</code> 可能很大），
+        <b>循环长度是 <code>N</code>，不是 <code>nElem</code>。这是两条阶梯最大的结构差异。</b>
+        <span style="color:var(--ink-3)"><code>w</code> 是可学参数，每列一个，<u>所有 M 行共用</u>；
+        N=3584 时整份只有 <b>14 KB</b>。循环变量的类型也不同：上一行用 <code>size_t i</code>（<code>nElem</code> 可能很大），
         这一行用 <code>int i</code>（<code>N</code> 本身就是 <code>int</code>）。</span>
       </p>
       <div class="tw"><table>
-        <caption>为什么不直接写 <code>hw[i] = 1.0f</code> —— 真实模型的初始化就是全 1</caption>
+        <caption>真实模型的初始化是全 1，为什么不直接写 <code>hw[i] = 1.0f</code></caption>
         <thead><tr><th>用 w = 1 会漏掉的错误</th><th>为什么漏掉</th><th>随机 w 怎么抓住</th></tr></thead>
         <tbody>
           <tr><td class="cn">kernel 里漏写 <code>* w[i]</code></td>
@@ -5192,57 +5185,56 @@ hw[i] = 0.5f + 0.5f * dist(rng) / 3.0f;</pre>
               <td>w 全是 1 时，读哪儿都对</td>
               <td><b>所有行共用同一份</b> → 用展平偏移就会读到别处</td></tr>
         </tbody>
-        <caption><span style="color:var(--ink-3)">区间取 <code>[0, 1)</code> 则保证输出量级不乱跑：
-          <code>y = x · 0.577 · w</code>，w 均值 0.5，于是 <code>y ≈ 0.29x</code>，既不溢出也不被压没。</span></caption>
+        <caption><span style="color:var(--ink-3)">区间取 <code>[0, 1)</code>，输出的量级就保持稳定：
+          <code>y = x · 0.577 · w</code>，w 均值 0.5，所以 <code>y ≈ 0.29x</code>，既不溢出，也不会小到看不出差别。</span></caption>
       </table></div>
       <p class="prose">
-        <b>还有一点：softmax 那四级根本不碰 <code>w</code>。</b>
-        <span style="color:var(--ink-3)">查签名就清楚 —— <code>sm_s1_max/sum/div</code>、<code>sm_s2_ms</code>、
-        <code>sm_s3</code>、<code>sm_s4</code> 全都只收 <code>(x, …, y, N)</code>，softmax 本来就没有可学权重。
-        但代码没为此加分支，跑 s1–s4 时照样填充并上传 <code>hw</code> —— 代价是 14 KB 和一次
-        <code>cudaMemcpy</code>，不值得写个 <code>if</code>。</span>
+        <b>softmax 四级完全不用 <code>w</code>。</b>
+        <span style="color:var(--ink-3)">签名可以证明：<code>sm_s1_max/sum/div</code>、<code>sm_s2_ms</code>、
+        <code>sm_s3</code>、<code>sm_s4</code> 都只收 <code>(x, …, y, N)</code>，softmax 本来就没有可学权重。
+        但代码没为此加分支，跑 s1–s4 时照样填充并上传 <code>hw</code>。代价只是 14 KB 和一次
+        <code>cudaMemcpy</code>，不值得写一个 <code>if</code>。</span>
       </p>
 
-      <h4>顺带结清一笔账：为什么字节账里没有 w</h4>
+      <h4>为什么字节账里没有 w</h4>
       <p class="prose">
-        <b>既然每行都要读一遍 <code>w</code>，为什么 <a href="#s2-1">§2 · 一</a> 的账是 8N（读 x + 写 y）而不是 12N？</b>
-        <span style="color:var(--ink-3)">因为 <code>w</code> 是 M 行共用的：全份 14 KB，摊到每行只有
+        <b><a href="#s2-1">§2 · 一</a> 的账是 8N（读 x + 写 y），不是 12N，因为 <code>w</code> 由 M 行共用。</b>
+        <span style="color:var(--ink-3)">每行都要读一遍 <code>w</code>，但全份只有 14 KB，摊到每行只有
         <code>4N/M = 1.75 字节</code>，占 8N（28672 字节）的 <b>0.006%</b>。</span>
       </p>
       <div class="tw"><table>
-        <caption>这不只是估算 —— <a href="#s9-1">§9 · 一</a> 的实测直接证了</caption>
+        <caption>这不只是估算，<a href="#s9-1">§9 · 一</a> 的实测直接证实了它</caption>
         <thead><tr><th>假设</th><th>搬运量</th><th>按 917.5 GB/s 需要</th></tr></thead>
         <tbody>
-          <tr><td class="cn">w 每个 block 都回 DRAM 取一遍</td><td class="en">12N = 336.0 MiB</td>
+          <tr><td class="cn">w 每个 block 都回显存取一遍</td><td class="en">12N = 336.0 MiB</td>
               <td class="en">0.3840 ms</td></tr>
           <tr><td class="cn">w 由缓存供给</td><td class="en">8N = 224.0 MiB</td>
               <td class="en">0.2560 ms</td></tr>
           <tr><td class="cn"><b>N3 实测</b></td><td class="en">—</td>
               <td class="en"><b>0.2560 ms</b></td></tr>
         </tbody>
-        <caption><strong>正中 8N。</strong>
+        <caption><strong>实测正好等于 8N 的预测。</strong>
           <span style="color:var(--ink-3)">14 KB 的 <code>w</code> 被 8192 个 block 反复读，
-          但它小到永远待在片上（<code>const</code> + <code>__restrict__</code> 还让它走只读缓存通路），
-          对 DRAM 来说只付了第一次那一下。</span></caption>
+          但它小到一直留在片上（<code>const</code> + <code>__restrict__</code> 还让它走只读缓存通路），
+          只有第一次读要访问显存。</span></caption>
       </table></div>
       <div class="callout link">
         <p class="k">和 §9 · 三 是同一件事的两面</p>
-        <p style="margin-bottom:0"><b>决定一次访问花不花钱的是<u>重用距离</u>，不是访问次数。</b>
-          <span style="color:var(--ink-3)"><code>w</code> 是重用距离最小的极端情形 ——
+        <p style="margin-bottom:0"><b>一次访问要不要付显存的代价，取决于<u>重用距离</u>，不取决于访问次数。</b>
+          <span style="color:var(--ink-3)"><code>w</code> 是重用距离最小的极端情形，
           小到每个 block 都能命中。</span>
-          <span style="color:var(--crit);font-weight:650">而 N2 那 1.49× 的意外提速，
-          是同一条规律作用在 14 KB 的一行数据上（<a href="#s9-3">§9 · 三</a>）。</span></p>
+          <span style="color:var(--crit);font-weight:650">N2 意外快 1.49 倍，
+          也是这条规律，只是作用在 14 KB 的一行数据上（<a href="#s9-3">§9 · 三</a>）。</span></p>
       </div>
 
       </div>
     </details>
     <details class="opt">
-      <summary>跑之前的三道前置检查 —— 4/5/6 这几个数是怎么来的<span class="tag acc">选读</span></summary>
+      <summary>跑之前的三道前置检查：4/5/6 这几个数怎么来<span class="tag acc">选读</span></summary>
       <div class="body">
 
       <p class="prose">
-        <b>这段代码在计时之前打三行诊断。目的不是好看 ——
-        是万一结果不对，能立刻知道是哪个前提塌了。</b>
+        <b>这段代码在计时之前打印三行诊断。目的是：如果结果不对，能立刻知道哪个前提不成立。</b>
       </p>
       <pre><span class="c">// fused_ops.cu:570-593</span>
 <span class="c">// ---- occupancy：这一级理论上每个 SM 能同时跑几个 block ----</span>
@@ -5263,9 +5255,9 @@ printf("footprint = x + y = %.1f MB（L2 %.1f MB）%s\n",
       <h4>一、<code>rep</code>：为什么要挑一个「代表 kernel」</h4>
       <p class="prose">
         <b><code>cudaOccupancyMaxActiveBlocksPerMultiprocessor</code> 一次只接受<u>一个</u> kernel 函数指针。</b>
-        <span style="color:var(--ink-3)">但 N1 要发射两个 kernel、S1 要发射三个，所以只能挑一个代表。
-        那串嵌套三元写成单个表达式，是为了让 <code>rep</code> 能声明成 <code>const</code>；
-        <code>(const void *)</code> 强转是因为这个 API 是 C 风格接口。</span>
+        <span style="color:var(--ink-3)">但 N1 要发射两个 kernel，S1 要发射三个，所以只能挑一个代表。
+        嵌套三元写成单个表达式，是为了让 <code>rep</code> 能声明成 <code>const</code>。
+        强转成 <code>(const void *)</code>，是因为这个 API 是 C 风格接口。</span>
       </p>
       <div class="tw"><table>
         <caption>挑了谁，以及没挑的那些用多少寄存器</caption>
@@ -5281,15 +5273,15 @@ printf("footprint = x + y = %.1f MB（L2 %.1f MB）%s\n",
               <td class="en">sm_s2_ms<span class="sub">22 个寄存器</span></td>
               <td class="en">div 用 24</td></tr>
         </tbody>
-        <caption><b>这里有个没写出来的假设：同一级里各 kernel 的占用率一样。</b>
-          <span style="color:var(--ink-3)">这份代码里恰好成立（三级的所有 kernel 都落在同一档），
-          但不是普适的 —— <code>sm_s1_sum</code> 其实比 <code>sm_s1_max</code> 多用 1 个寄存器，
+        <caption><b>这里有个隐含假设：同一级里各 kernel 的占用率相同。</b>
+          <span style="color:var(--ink-3)">这份代码里它恰好成立（三级的所有 kernel 都落在同一档），
+          但不是普遍成立：<code>sm_s1_sum</code> 比 <code>sm_s1_max</code> 多用 1 个寄存器，
           只是没跨过下面那道悬崖。</span>
-          <span style="color:var(--crit);font-weight:650">换个 kernel 多吃几个寄存器，
+          <span style="color:var(--crit);font-weight:650">如果某个 kernel 多用几个寄存器，
           这行打印的数字就不能代表整级了。</span></caption>
       </table></div>
 
-      <h4>二、那个 API 到底在算什么：三条限额取最小</h4>
+      <h4>二、这个 API 算什么：三条限额取最小</h4>
       <pre><span class="c">// RTX 4090（sm_89），BLOCK = 256</span>
 线程限    = 1536 / 256                       = <span class="a">6</span>
 寄存器限  = 65536 / 每 block 占用的寄存器数
@@ -5299,8 +5291,8 @@ shared 限 = 102400 / 每 block 的 shared 字节
 每 warp 占 = 256 × ceil(寄存器数 × 32 / 256) = <span class="a">256 × ceil(寄存器数 / 8)</span>
 每 block 占 = 8 个 warp × 每 warp 占</pre>
       <p class="prose">
-        <b>公式里那两个输入 —— 「寄存器数」和「shared 字节」—— 都来自 <code>-Xptxas -v</code>
-        打出来的同一行。</b>
+        <b>公式的两个输入「寄存器数」和「shared memory 字节」，都来自 <code>-Xptxas -v</code>
+        打印的同一行。</b>
         <span style="color:var(--ink-3)">日志 <code>fused_20261001_005225.txt</code> 第 14–67 行：</span>
       </p>
       <pre><span class="c">// 行号      kernel          ptxas info : Used …</span>
@@ -5317,7 +5309,7 @@ shared 限 = 102400 / 每 block 的 shared 字节
  67   rms_n1_pass1   Used <span class="a">40 registers</span>, used 1 barriers, <span class="a">32 bytes smem</span>, 376 bytes cmem[0]</pre>
 
       <div class="tw"><table>
-        <caption><code>smem</code> 能一路追回源码</caption>
+        <caption><code>smem</code> 的大小可以追溯到源码</caption>
         <thead><tr><th>源码里的声明</th><th>算出来</th><th>PTXAS 报的</th><th>哪些 KERNEL</th></tr></thead>
         <tbody>
           <tr><td class="en">__shared__ float smem[BLOCK / 32]</td>
@@ -5327,20 +5319,19 @@ shared 限 = 102400 / 每 block 的 shared 字节
               <td class="en">18 个 float × 4</td><td class="en"><b>72 bytes smem</b></td>
               <td class="en">sm_s2_ms · sm_s3 · sm_s4<span class="sub">要同时传 m 和 s，再加 2 个广播位</span></td></tr>
         </tbody>
-        <caption><b>那两个<u>整项都没有</u>的（<code>sm_s1_div</code>、<code>rms_n1_pass2</code>）：源码里本来就没有
+        <caption><b>日志里<u>没有 smem 这一项</u>的两个 kernel（<code>sm_s1_div</code>、<code>rms_n1_pass2</code>），源码里本来就没有
           <code>__shared__</code>。</b>
-          <span style="color:var(--ink-3)">它们不做归约，只是读已经算好的 <code>m</code>/<code>s</code>/<code>rstd</code>。
-          ptxas 在该项为 0 时直接省略不打印。</span>
-          <span style="color:var(--crit);font-weight:650">同一行的 <code>0 barriers</code> 也和这条对齐 ——
-          正是这两个不调 <code>__syncthreads()</code>。</span>
+          <span style="color:var(--ink-3)">它们不做归约，只读已经算好的 <code>m</code>/<code>s</code>/<code>rstd</code>。
+          该项为 0 时，ptxas 直接不打印。</span>
+          <span style="color:var(--crit);font-weight:650">同一行的 <code>0 barriers</code> 与此一致：
+          这两个 kernel 都不调 <code>__syncthreads()</code>。</span>
           <span style="color:var(--ink-3)">barrier 也是每 SM 的资源（16 个），
-          但 1 个/block × 6 block = 6，从不构成约束，所以没进上面那三条限额。</span></caption>
+          但 1 个/block × 6 block = 6，从不构成约束，所以不在上面那三条限额里。</span></caption>
       </table></div>
 
       <p class="prose">
-        <b>那 <code>cmem[0]</code> 又是什么？代码里明明看不到。</b>
-        <span style="color:var(--ink-3)">它是<b>常量内存 bank 0</b> —— CUDA 用它传 kernel 参数。
-        所以你其实看得见，它就是你的函数签名，只是编译器把它放进了常量内存。
+        <b><code>cmem[0]</code> 是常量内存 bank 0，CUDA 用它传 kernel 参数。</b>
+        <span style="color:var(--ink-3)">代码里看不到它的声明，但它的内容就是函数签名里的参数，编译器把参数放进了常量内存。
         按「指针 8 字节、<code>int</code>/<code>float</code> 各 4 字节」数一遍：</span>
       </p>
       <div class="tw"><table>
@@ -5371,15 +5362,15 @@ shared 限 = 102400 / 每 block 的 shared 字节
               <td class="en">376</td><td class="en"><b>352</b></td></tr>
         </tbody>
         <caption><strong>十一个 kernel 的差值全是 352（= 0x160）。</strong>
-          <span style="color:var(--ink-3)">那是参数区在常量 bank 0 里的起始偏移 ——
-          sm_70 以后固定留给驱动/ABI 的前缀，和你的代码无关。</span></caption>
+          <span style="color:var(--ink-3)">352 是参数区在常量 bank 0 里的起始偏移。
+          sm_70 以后，这段前缀固定留给驱动/ABI，和你的代码无关。</span></caption>
       </table></div>
       <div class="callout">
         <p class="k">为什么 cmem 不在那三条限额里</p>
-        <p style="margin-bottom:0"><b>常量内存是一块独立的 64 KB 空间，不按 SM 切分、不随 block 数复制 ——
+        <p style="margin-bottom:0"><b>常量内存是一块独立的 64 KB 空间，不按 SM 切分，也不随 block 数复制。
           所以它不限制每个 SM 能驻留几个 block。</b>
-          <span style="color:var(--ink-3)">它只在「参数表超过 4 KB 编不过」的时候才是个事，
-          这里 380 字节，离得远。</span></p>
+          <span style="color:var(--ink-3)">只有参数表超过 4 KB、编译不通过时，它才成为问题。
+          这里是 372–388 字节，离上限很远。</span></p>
       </div>
 
       <div class="tw"><table>
@@ -5413,38 +5404,37 @@ shared 限 = 102400 / 每 block 的 shared 字节
               <td class="en"><b>5</b></td><td class="en">5 ✓</td></tr>
         </tbody>
         <caption><strong>八个全部对上。</strong>
-          <span style="color:var(--ink-3)">三点值得留意：① <b>shared 从来不是约束</b> ——
-          这些 kernel 只用 32 或 72 字节，算下来能放 1400~3200 个 block，离 6 差三个数量级；
-          ② <code>sm_s2_ms</code> 是唯一被<b>线程数</b>卡住的（寄存器允许 10 个，线程只允许 6 个）；
-          ③ 1536 这个线程上限本身不常见 —— Ada 和 GA10x 都是 1536，而 A100（sm_80）是 2048，
-          换到 A100 线程限就变成 8 个 block，这张表要重算。</span>
-          <span style="color:var(--crit);font-weight:650">注意「API 返回」这一列不是硬件测量</span><span style="color:var(--ink-3)">
-          —— 它是 <code>cudaOccupancyMaxActiveBlocksPerMultiprocessor</code> 读编译产物算出来的<b>解析值</b>
+          <span style="color:var(--ink-3)">要留意三点：① <b>shared memory 从来不是约束</b>：
+          这些 kernel 只用 32 或 72 字节，算下来能放 1400~3200 个 block，是 6 的两三百倍；
+          ② <code>sm_s2_ms</code> 是唯一被<b>线程数</b>限制的（寄存器允许 10 个，线程只允许 6 个）；
+          ③ 1536 这个线程上限不常见：Ada 和 GA10x 都是 1536，A100（sm_80）是 2048。
+          换到 A100，线程限变成 8 个 block，这张表要重算。</span>
+          <span style="color:var(--crit);font-weight:650">注意：「API 返回」这一列不是硬件测量值。</span><span style="color:var(--ink-3)">
+          它是 <code>cudaOccupancyMaxActiveBlocksPerMultiprocessor</code> 读编译产物算出的<b>解析值</b>
           （日志 <code>fused_20261001_005225.txt</code> 第 198/208/218/228/238/248/258/268 行的
-          <code>occupancy:</code>）。所以这张表比的是<b>手算模型 vs NVIDIA 的模型</b>，
-          两边吻合只说明上面那几个常数取对了，<b>并不证明运行时真有 4/5/6 个 block 同时驻留</b>。
-          真要测实际驻留得用 ncu 的 achieved occupancy，而
-          <a href="#s10-2">§10 · 二</a>说了这台实例没有 profiling 权限。</span></caption>
+          <code>occupancy:</code>）。所以这张表比的是<b>手算模型 vs NVIDIA 的模型</b>。
+          两边吻合只说明上面几个常数取对了，<b>不证明运行时真有 4/5/6 个 block 同时驻留</b>。
+          要测实际驻留，得用 ncu 的 achieved occupancy；
+          <a href="#s10-2">§10 · 二</a>说明了这台实例没有 profiling 权限。</span></caption>
       </table></div>
       <div class="callout">
-        <p class="k">第三个参数那个 0</p>
-        <p style="margin-bottom:0"><b>它是 <code>dynamicSMemSize</code>。</b>
+        <p class="k">第四个参数那个 0</p>
+        <p style="margin-bottom:0"><b>它是 <code>dynamicSMemSize</code>，传 0 表示「没有额外的动态 shared memory」。</b>
+          <span style="color:var(--crit);font-weight:650">不要把静态大小也填进去，否则会被重复计算一遍。</span>
           <span style="color:var(--ink-3)">这些 kernel 用的是 kernel 内部声明的<b>静态</b>
-          <code>__shared__</code>，已经编进 kernel 元数据，API 自己会读出来。
-          传 0 表示「没有额外的动态 shared」——</span>
-          <span style="color:var(--crit);font-weight:650">要是手痒把静态大小也填进去，就会被重复计算一遍。</span></p>
+          <code>__shared__</code>，已经编进 kernel 元数据，API 会自己读出来。</span></p>
       </div>
       <p class="prose">
-        <b>为什么用 API 而不自己算？</b>
-        <span style="color:var(--ink-3)">它直接读编译产物里的实际用量，换架构、换 nvcc 版本都不用改这段代码。
-        上面那套手算模型里的「256 字节粒度」是和架构绑定的 —— 自己写死，迟早算错。</span>
+        <b>用 API 而不自己算，是因为它直接读编译产物里的实际用量。</b>
+        <span style="color:var(--ink-3)">换架构、换 nvcc 版本，都不用改这段代码。
+        上面手算模型里的「256 字节粒度」和架构绑定，自己写死，迟早算错。</span>
       </p>
 
       <h4>三、寄存器悬崖，以及 <code>sm_s4</code> 正好踩在边上</h4>
       <pre><span class="c">// BLOCK = 256 固定，把上面的式子化简</span>
 blocks_reg = floor( 32 / ceil(寄存器数 / 8) )</pre>
       <div class="tw"><table>
-        <caption>寄存器数是<b>阶梯式</b>起作用的，不是连续的</caption>
+        <caption>寄存器数的影响是<b>阶梯式</b>的，不是连续的</caption>
         <thead><tr><th>寄存器数</th><th>每 SM 的 BLOCK 数</th><th>占用率</th></tr></thead>
         <tbody>
           <tr><td class="cn">≤ 40</td><td class="en">6</td><td class="en">100.0%</td></tr>
@@ -5454,30 +5444,28 @@ blocks_reg = floor( 32 / ceil(寄存器数 / 8) )</pre>
         </tbody>
         <caption><b>两道悬崖在 40→41 和 48→49。</b>
           <span style="color:var(--crit);font-weight:650"><code>sm_s4</code> 用 48 个寄存器，
-          正好站在第二道悬崖边上 —— 再多 1 个就掉到 4 个 block。</span></caption>
+          正好在第二道悬崖边上：再多 1 个，就掉到 4 个 block。</span></caption>
       </table></div>
       <p class="prose">
-        <b>还有个反直觉的点：s4 比 s3 <u>少</u>用 8 个寄存器（48 vs 56），
-        尽管两者都要在寄存器里存 32 个 float。</b>
-        <span style="color:var(--ink-3)">因为 float4 版把它们装进 8 个 <code>float4</code>，
-        循环只跑 8 轮，省掉了一大堆地址计算和下标寄存器。于是 s4 的占用率 83.3% 高于 s3 的 66.7%。</span>
+        <b>两者都要在寄存器里存 32 个 float，但 s4 比 s3 <u>少</u>用 8 个寄存器（48 vs 56）。</b>
+        <span style="color:var(--ink-3)">原因是 float4 版把它们装进 8 个 <code>float4</code>，
+        循环只跑 8 轮，省掉了大量地址计算和下标寄存器。所以 s4 的占用率（83.3%）高于 s3（66.7%）。</span>
       </p>
       <div class="callout crit">
         <p class="k">占用率不是目标，是手段</p>
-        <p style="margin-bottom:0"><b>s4 的占用率比 s3 高 25%，但<a href="#s9-1">实测耗时完全一样</a>
-          —— 都是 0.1475 ms。</b>
-          <span style="color:var(--ink-3)">访存密集算子只要 4 个 block 就能把带宽吃满，
-          多塞 block 只是多几个在排队等显存的线程。</span>
-          <span style="color:var(--crit);font-weight:650">所以这行打印出来的百分比，
-          是用来「排除嫌疑」的，不是用来「追求高」的 ——
-          它低到 25% 以下才值得担心，66.7% 和 83.3% 之间毫无意义。</span></p>
+        <p style="margin-bottom:0"><b>s4 的占用率比 s3 高 25%，但<a href="#s9-1">实测耗时完全相同</a>，
+          都是 0.1475 ms。</b>
+          <span style="color:var(--ink-3)">访存密集算子只要 4 个 block 就能用满带宽。
+          多放的 block 只是多了几个排队等显存的线程。</span>
+          <span style="color:var(--crit);font-weight:650">所以这行打印的百分比用来「排除嫌疑」，不用来「追求高」。
+          它低于 25% 才值得担心；66.7% 和 83.3% 的差别没有意义。</span></p>
       </div>
 
       <h4>四、<code>smFill</code>：填充度就是「几个整波」</h4>
       <p class="prose">
-        <span style="color:var(--ink-3)"><b>分母</b>是整张卡能同时驻留的 block 总数（128 SM × 每 SM 几个），
-        <b>分子</b>是 grid 大小 —— 这份代码里 <code>grid = M</code>，<b>一行一个 block</b>。
-        所以这个比值就是「这个 grid 要分几波跑完」。</span>
+        <b><code>smFill</code> 表示这个 grid 要分几波跑完。</b>
+        <span style="color:var(--ink-3)"><b>分母</b>是整张卡能同时驻留的 block 总数（128 SM × 每 SM 几个）。
+        <b>分子</b>是 grid 大小；这份代码里 <code>grid = M</code>，<b>一行一个 block</b>。</span>
       </p>
       <div class="tw"><table>
         <caption>各形状的波数与尾波浪费</caption>
@@ -5500,26 +5488,26 @@ blocks_reg = floor( 32 / ceil(寄存器数 / 8) )</pre>
           <tr><td class="cn">大批 · n3</td><td class="en">16384</td><td class="en">4</td>
               <td class="en">512</td><td class="en">32.00</td><td class="en">0.0%</td></tr>
         </tbody>
-        <caption><b>一个巧合值得一提：n3 在主阶梯是整整 16.00 波（零尾波），n1 是 10.67（3% 尾波）。</b>
-          <span style="color:var(--ink-3)">n3 占用率更低，反而把 grid 整得更齐 ——
-          这是它那 <a href="#s9-1">1.51×</a> 里一个二阶的小便宜。</span></caption>
+        <caption><b>一个巧合：主阶梯上 n3 正好是 16.00 波（零尾波），n1 是 10.67 波（3% 尾波）。</b>
+          <span style="color:var(--ink-3)">n3 占用率更低，grid 反而分得更整齐。
+          这是 n3 那 <a href="#s9-1">1.51×</a> 里一个次要的小收益。</span></caption>
       </table></div>
       <div class="callout warn">
-        <p class="k">两个诚实的保留</p>
-        <p><b>① 「整波推进」是个粗模型。</b>
-          <span style="color:var(--ink-3)">真实的调度器是<b>一个 block 退休就立刻补一个新的</b>，
-          不会等整波结束，所以尾部比模型算出来的软。上面那列百分比只能当上界看。</span></p>
+        <p class="k">两点保留</p>
+        <p><b>① 「整波推进」是粗模型，上面那列百分比只能当上界看。</b>
+          <span style="color:var(--ink-3)">真实的调度器<b>每退休一个 block，就立刻补一个新的</b>，
+          不等整波结束，所以尾部浪费比模型算的小。</span></p>
         <p style="margin-bottom:0"><b>② <code>smFill &lt; 1.0</code> 这个告警阈值偏松。</b>
-          <span style="color:var(--ink-3)">prefill 的 2.67 已经有 11% 的尾波浪费了，但不告警。</span></p>
+          <span style="color:var(--ink-3)">prefill 的 2.67 已经有 11% 的尾波浪费，但不触发告警。</span></p>
       </div>
 
-      <h4>五、<code>footprint</code> 这一行，正是 §9 · 三那个误导信号的来源</h4>
+      <h4>五、<code>footprint</code> 这一行是 §9 · 三那个误导信号的来源</h4>
       <p class="prose">
-        <span style="color:var(--ink-3)"><code>bytes = nElem * sizeof(float)</code> 就是 x 的大小，
+        <span style="color:var(--ink-3)"><code>bytes = nElem * sizeof(float)</code> 是 x 的大小，
         <code>2.0 * bytes</code> 是 x + y。L2 是 75497472 字节 = 72 MiB。</span>
       </p>
       <div class="tw"><table>
-        <caption>程序的判定 vs 实际该看的那个量</caption>
+        <caption>程序的判定 vs 实际该看的量</caption>
         <thead><tr><th>形状</th><th>x</th><th>x + y</th><th>程序判定</th><th>X 单独装得下吗</th></tr></thead>
         <tbody>
           <tr><td class="cn">RMSNorm 主阶梯</td><td class="en">112.0 MiB</td><td class="en">224.0</td>
@@ -5534,25 +5522,25 @@ blocks_reg = floor( 32 / ceil(寄存器数 / 8) )</pre>
           <tr><td class="cn">logits</td><td class="en">18.6 MiB</td><td class="en">37.1</td>
               <td class="en">装得下，虚高</td><td class="en">是</td></tr>
         </tbody>
-        <caption><strong>softmax 主阶梯那一行就是害得<a href="#s9-3">预测 ④⑤</a>落空的信号。</strong>
-          <span style="color:var(--ink-3)">程序打印「装不下，必须走显存」，让人放心地以为 16N 的账会如实兑现。
-          可 x 单独只有 64 MiB，塞得进 72 MiB 的 L2 ——
-          S1 的 max→sum 两趟之间 x 还在片上，实际只搬了 13.7N。</span></caption>
+        <caption><strong>softmax 主阶梯这一行，就是让<a href="#s9-3">预测 ④⑤</a>落空的信号。</strong>
+          <span style="color:var(--ink-3)">程序打印「装不下，必须走显存」，让人以为 16N 的账会如实兑现。
+          但 x 单独只有 64 MiB，放得进 72 MiB 的 L2。
+          S1 的 max→sum 两趟之间，x 还在片上，所以实际只搬了 13.7N。</span></caption>
       </table></div>
       <div class="tw"><table>
         <caption>这一行的三个口径问题</caption>
         <thead><tr><th>问题</th><th>后果</th></tr></thead>
         <tbody>
           <tr><td class="cn">只看 x+y 的总和<span class="sub">不看单个数组</span></td>
-              <td>真正决定跨 kernel 重用能不能命中的，是<b>被重用的那个数组自己</b>的大小。
-                  <a href="#s9-3">预测 ④⑤</a> 就栽在这里</td></tr>
+              <td>跨 kernel 重用能不能命中，取决于<b>被重用的那个数组自己</b>的大小。
+                  <a href="#s9-3">预测 ④⑤</a> 就错在这里</td></tr>
           <tr><td class="cn">完全不看重用距离</td>
-              <td>N2 的 footprint 是 224 MiB、判定「装不下」，但它的重用距离只有一行 14 KB，
-                  第二次读稳稳命中 —— 于是实测 1.49×，<a href="#s9-3">预测 ①</a> 落空</td></tr>
+              <td>N2 的 footprint 是 224 MiB，判定为「装不下」；但它的重用距离只有一行 14 KB，
+                  第二次读一定命中。所以实测快 1.49×，<a href="#s9-3">预测 ①</a> 落空</td></tr>
           <tr><td class="cn">单位标的是 MB<span class="sub">除的是 1048576</span></td>
-              <td>其实是 MiB。自己内部一致，但和日志里的 GB/s（十进制）混着看容易算错</td></tr>
+              <td>实际是 MiB。程序内部一致，但和日志里的 GB/s（十进制）一起看时容易算错</td></tr>
         </tbody>
-        <caption><b>要让它说实话，至少得同时打印单个数组的大小、以及每行的字节数（重用距离的下界）。</b></caption>
+        <caption><b>要让这一行给出正确信号，至少要同时打印单个数组的大小，以及每行的字节数（重用距离的下界）。</b></caption>
       </table></div>
 
       </div>
@@ -6364,14 +6352,15 @@ footprint = x + y = 0.1 MB（L2 72.0 MB）  ⚠ 装得下 → 数字会虚高
     <p class="prose">
       <strong>一条命令跑完八个 kernel × 五种形状 × 三轮，外加边界、长行拒绝和 racecheck。</strong>
       <span style="color:var(--ink-3)">这次实跑的产物就是 <a href="#s9">§9</a> 那三张表。</span>
-      <span style="color:var(--good);font-weight:650"><b>开头有一段 shell 语法速查</b></span><span style="color:var(--ink-3)">，
-      把这份脚本用到的写法（<code>${VAR:-默认}</code>、<code>$( )</code>、<code>"$@"</code> 与 <code>"$*"</code>、
-      <code>2&gt;&amp;1</code>、<code>set -u</code>、<code>set --</code>、<code>command -v</code> 等）一次讲完；
-      正文里每段开头也标了该段在干什么。<b>不熟悉 shell 的话从那段读起，比逐行猜快得多。</b></span>
-      <span style="color:var(--warn);font-weight:650"><b>有一处故意不加引号</b></span>
-      <span style="color:var(--ink-3)">—— 形状扫描那段的 <code>set -- $shp</code>，
-      就是要让 <code>"prefill 2048"</code> 被空格拆成两个词。全脚本只有这一处，注释里也标了出来。</span>
     </p>
+    <ul class="pts">
+      <li><span style="color:var(--good);font-weight:650"><b>脚本开头有一段 shell 语法速查。</b></span><span style="color:var(--ink-3)">
+      它讲脚本用到的写法：<code>${VAR:-默认}</code>、<code>$( )</code>、<code>"$@"</code> 与 <code>"$*"</code>、
+      <code>2&gt;&amp;1</code>、<code>set -u</code>、<code>set --</code>、<code>command -v</code> 等。
+      正文每段开头也标了该段做什么。<b>不熟悉 shell 的话，先读那段，再读正文。</b></span></li>
+      <li><span style="color:var(--warn);font-weight:650"><b>全脚本只有一处故意不加引号</b></span><span style="color:var(--ink-3)">：
+      形状扫描那段的 <code>set -- $shp</code>。目的是让 <code>"prefill 2048"</code> 按空格拆成两个词。注释里也标了。</span></li>
+    </ul>
     <pre>#!/usr/bin/env bash
 # =============================================================================
 # run_fused.sh —— RMSNorm / online softmax 两条融合阶梯的完整测试
@@ -6634,10 +6623,10 @@ log "============================================================="</pre>
     <strong>RTX 4090 · 2026-10-01 · 三轮中位数。</strong>
     <b>原始日志 <code>Results/Fused/fused_20261001_005225.txt</code>。驱动 595.91.07，nvcc <code>-O3 -arch=sm_89</code>，
     显存带宽峰值 1008 GB/s。</b>
-    <span style="color:var(--ink-3)">八级全部 ✓ 抽样校验通过，十一个 kernel 全部 0 spill，
+    <span style="color:var(--ink-3)">八级全部通过 ✓ 抽样校验；十一个 kernel 全部 0 spill；
     三个 racecheck 全部 0 hazards。</span>
-    <span style="color:var(--crit);font-weight:650">十四条预测：成立 9 条、落空 4 条、口径失效 1 条 ——
-    而这 5 条全部栽在同一件事上，见 <a href="#s9-3">§9 · 三</a>。</span>
+    <span style="color:var(--crit);font-weight:650">十四条预测里成立 9 条、落空 4 条、口径失效 1 条。
+    没成立的 5 条都栽在同一件事上，见 <a href="#s9-3">§9 · 三</a>。</span>
   </p>
 
   <div class="sec">
@@ -6672,7 +6661,7 @@ log "============================================================="</pre>
   <div class="sec">
     <h3 id="s9-2">二、形状扫描<a class="up" href="#t9-2" title="回到目录">↑</a></h3>
     <div class="tw"><table>
-      <caption>MBU 随行数 M 的变化。<b>M=2048 那一列整列都超过 100% —— 那不是跑赢了显存，是整个数据集装进了 L2，MBU 的分子已经不再是 DRAM 流量。</b></caption>
+      <caption>MBU 随行数 M 的变化。<b>M=2048 一列全部超过 100%。这不是比显存还快，而是整个数据集装进了 L2，MBU 的分子已经不是显存流量。</b></caption>
       <thead><tr><th>kernel</th><th>M=1<br><span class="sub">decode b1</span></th>
                  <th>M=32<br><span class="sub">decode b32</span></th>
                  <th>M=2048<br><span class="sub">prefill</span></th>
@@ -6691,9 +6680,9 @@ log "============================================================="</pre>
   <div class="sec">
     <h3 id="s9-3">三、十四条预测的判决<a class="up" href="#t9-3" title="回到目录">↑</a></h3>
     <p class="prose">
-      <b><a href="#s7">§7</a> 那三张表的「实测」「判决」两列已经填好。</b>
-      <span style="color:var(--crit);font-weight:650">成立 9 条、落空 4 条、口径失效 1 条 ——
-      而这 5 条<u>全部栽在同一件事上：L2</u>。</span>
+      <b><a href="#s7">§7</a> 三张表的「实测」「判决」两列已经填好。</b>
+      <span style="color:var(--crit);font-weight:650">成立 9 条、落空 4 条、口径失效 1 条。
+      没成立的 5 条<u>都栽在同一件事上：L2</u>。</span>
     </p>
 
     <div class="tw"><table>
@@ -6702,28 +6691,28 @@ log "============================================================="</pre>
       <tbody>
         <tr><td><span class="tag good">成立</span></td>
             <td class="en">② ③ ⑥ ⑦ ⑧ ⑨ ⑩ ⑫ ⑬</td>
-            <td>字节账在<b>喂饱卡、且数据装不进 L2</b> 的前提下完全兑现；
-                11 个 kernel 零 spill；边界用例和长行拒绝都如预期</td></tr>
+            <td>只要<b>喂饱卡、且数据装不进 L2</b>，字节账完全兑现；
+                11 个 kernel 零 spill；边界用例和长行拒绝都符合预期</td></tr>
         <tr><td><span class="tag crit">落空</span></td><td class="en">①</td>
-            <td><b>N2 快了 1.49×</b>，预测只给了 1.00×–1.05×</td></tr>
+            <td><b>N2 快 1.49×</b>，预测只有 1.00×–1.05×</td></tr>
         <tr><td><span class="tag crit">落空</span></td><td class="en">④ ⑤</td>
-            <td><b>S2 只有 1.14×（预测 1.33×）、S3 只有 1.70×（预测 2.00×）</b></td></tr>
+            <td><b>S2 只快 1.14×（预测 1.33×），S3 只快 1.70×（预测 2.00×）</b></td></tr>
         <tr><td><span class="tag crit">落空</span></td><td class="en">⑭</td>
-            <td>logits 形状的 MBU <b>不降反升</b>到 147.9%</td></tr>
+            <td>logits 形状的 MBU <b>不降反升</b>，到了 147.9%</td></tr>
         <tr><td><span class="tag warn">口径失效</span></td><td class="en">⑪</td>
-            <td>M=2048 的 MBU 冲到 155–328%，这个指标在那里<b>已经量不了 DRAM</b></td></tr>
+            <td>M=2048 的 MBU 到了 155–328%，这个指标在那里<b>已经量不了显存</b></td></tr>
       </tbody>
       <caption><strong>§7 把第 ① 条称作「这组实验的眼睛」，还写了一句
         「如果 N2 也快了一大截，说明我对字节数的计算漏了什么，后面所有推导都要回头查」。</strong>
-        <span style="color:var(--crit);font-weight:650">它真的快了一大截。下面就是回头查的结果。</span></caption>
+        <span style="color:var(--crit);font-weight:650">N2 确实快了一大截。下面是回头查的结果。</span></caption>
     </table></div>
 
-    <h4>一把尺子量穿五条：重用距离</h4>
+    <h4>五条的共同原因：重用距离</h4>
     <p class="prose">
-      <b>字节账算的是「kernel 发出了多少访存请求」，而耗时取决于「DRAM 实际被读写了多少」。</b>
-      <span style="color:var(--crit);font-weight:650">这两个数之间隔着一层 72 MiB 的 L2。</span>
-      <span style="color:var(--ink-3)">同一行数据被读第二次时，这两次之间隔了多少数据 ——
-      这个距离叫<b>重用距离</b>。它小于 L2 容量，第二次读就不花钱。</span>
+      <b>字节账算的是 kernel 发出了多少访存请求；耗时取决于显存实际读写了多少。</b>
+      <span style="color:var(--crit);font-weight:650">两者之间隔着 72 MiB 的 L2。</span>
+      <span style="color:var(--ink-3)">同一行数据被读两次，两次读之间隔了多少数据，叫<b>重用距离</b>。
+      重用距离小于 L2 容量，第二次读就不花钱。</span>
     </p>
 
     <div class="fig">
@@ -6753,16 +6742,16 @@ log "============================================================="</pre>
       <text class="t-dim" x="632" y="286" text-anchor="end">左边：还在片上</text>
       <text class="t-dim" x="648" y="286">右边：装不下，回 DRAM</text>
     </svg>
-    <p class="cap"><b>图 31 · 条的长度是示意，不是等比 —— 要看的是它们落在虚线的哪一侧。</b>
-      <span style="color:var(--ink-3)">N1 和 N2 的代码字节账一模一样（都读 x 两次），
-      差别只在两次读之间隔了多远。</span></p>
+    <p class="cap"><b>图 31 · 条的长度只是示意，不按比例。要看的是条落在虚线哪一侧。</b>
+      <span style="color:var(--ink-3)">N1 和 N2 的代码字节账相同（都读 x 两次），
+      差别只在两次读之间隔多远。</span></p>
     </div>
 
-    <h4>① N2 为什么快了 1.49×</h4>
+    <h4>① N2 为什么快 1.49×</h4>
     <p class="prose">
-      <b>把 N3 实测到的 917.5 GB/s 当作这张卡的 DRAM 实际天花板</b>
-      <span style="color:var(--ink-3)">（峰值 1008 GB/s 的 91.0%，八级里七级都贴着它跑），
-      用「耗时 × 917.5 GB/s」反推每一级真正搬了多少，再和账面对一下：</span>
+      <b>把 N3 实测的 917.5 GB/s 当作这张卡显存带宽的实际上限</b>
+      <span style="color:var(--ink-3)">（峰值 1008 GB/s 的 91.0%，八级里六级都贴着它跑）。
+      用「耗时 × 917.5 GB/s」反推每一级实际搬了多少，再和账面比：</span>
     </p>
     <div class="tw"><table>
       <caption>账面兑现率 = 反推的实际搬运量 ÷ 账面搬运量</caption>
@@ -6782,11 +6771,11 @@ log "============================================================="</pre>
             <td class="en">100.8%</td><td class="en">8.1N</td></tr>
       </tbody>
       <caption><b>八级里六级落在 100.0%–100.8%，只有 N2（67.5%）和 S1（85.8%）掉了出来。</b>
-        <span style="color:var(--ink-3)">这种整齐度说明字节账本身是准的 —— 掉出来的那两个另有原因。</span></caption>
+        <span style="color:var(--ink-3)">六级这么整齐，说明字节账本身是准的；掉出来的两级另有原因。</span></caption>
     </table></div>
     <p class="prose">
-      <b>N2 账面 12N，实际只搬了 8.1N —— 第二次读 <code>xr[i]</code> 根本没走到 DRAM。</b>
-      <span style="color:var(--ink-3)">原因在代码里一眼可见：</span>
+      <b>N2 账面 12N，实际只搬了 8.1N：第二次读 <code>xr[i]</code> 没有走到显存。</b>
+      <span style="color:var(--ink-3)">原因见代码：</span>
     </p>
     <pre><span class="c">// rms_n2：两次读之间，这个 block 只处理了自己这一行</span>
 for (int i = threadIdx.x; i &lt; N; i += BLOCK) {
@@ -6800,33 +6789,33 @@ for (int i = threadIdx.x; i &lt; N; i += BLOCK)
 <span class="c">// rms_n1：pass1 读完【全部 8192 行 = 112 MiB】，kernel 结束，</span>
 <span class="c">//         pass2 才从头再读一遍 —— 那时 72 MiB 的 L2 早被后面的行挤干净了</span></pre>
     <p class="prose">
-      <span style="color:var(--crit);font-weight:650">所以预测 ① 错在哪：它默认「访存指令发出的字节」就是「DRAM 搬运的字节」。</span>
-      <b>实测里 N2（0.2591 ms）和 N3（0.2560 ms）只差 1.2%</b>
-      <span style="color:var(--ink-3)">—— 因为它俩对 DRAM 来说都是 8N，
-      区别仅在 N2 多发了一遍 L2 读请求。</span>
+      <span style="color:var(--crit);font-weight:650">预测 ① 错在默认「访存指令发出的字节」等于「显存搬运的字节」。</span>
+      <b>实测 N2（0.2591 ms）和 N3（0.2560 ms）只差 1.2%</b>
+      <span style="color:var(--ink-3)">，因为对显存来说两者都是 8N。
+      N2 只是多发了一遍 L2 读请求。</span>
     </p>
     <div class="callout crit">
       <p class="k">这条落空比成立值钱</p>
-      <p style="margin-bottom:0"><b>融合确实省带宽 —— 但省的机制不是「少发访存指令」，
-        而是「把重用距离压缩到 cache 装得下」。</b>
-        <span style="color:var(--ink-3)">N1→N2 没动任何一条 load 指令的数量，只是把两次 load 挪进了同一个 block，
-        重用距离就从 112 MiB 塌到 14 KB。</span>
+      <p style="margin-bottom:0"><b>融合确实省带宽，但机制不是「少发访存指令」，
+        而是「把重用距离压到 cache 装得下」。</b>
+        <span style="color:var(--ink-3)">N1→N2 没改任何一条 load 指令的数量，只把两次 load 挪进同一个 block，
+        重用距离就从 112 MiB 降到 14 KB。</span>
         <span style="color:var(--crit);font-weight:650">这正是 FlashAttention 的全部赌注：
-        它也没有减少对 Q/K/V 的读次数，减少的是两次读之间隔了多远。</span></p>
+        它也没有减少对 Q/K/V 的读次数，减少的是两次读之间的距离。</span></p>
     </div>
 
-    <h4>④⑤ S2 / S3 为什么没摸到理论值</h4>
+    <h4>④⑤ S2 / S3 为什么没达到理论值</h4>
     <p class="prose">
-      <b>问题不在 S2 和 S3 身上 —— 是基线 S1 被 L2 抬快了。</b>
-      <span style="color:var(--ink-3)">softmax 的 M=8192 × N=2048 下，
-      <code>x</code> 整张是 <b>64 MiB</b>，而 L2 是 <b>72 MiB</b>。</span>
+      <b>问题不在 S2 和 S3，而是基线 S1 被 L2 抬快了。</b>
+      <span style="color:var(--ink-3)">softmax 在 M=8192 × N=2048 时，
+      <code>x</code> 整张是 <b>64 MiB</b>，L2 是 <b>72 MiB</b>。</span>
       <span style="color:var(--crit);font-weight:650">刚好装得下。</span>
-      <span style="color:var(--ink-3)">S1 的 max kernel 扫完 <code>x</code> 之后，
-      sum kernel 再读同一份 <code>x</code>，相当一部分还在 L2 里 ——
-      账面 16N，实际只付了 13.7N。基线虚快，比值自然缩水。</span>
+      <span style="color:var(--ink-3)">S1 的 max kernel 扫完 <code>x</code> 后，
+      sum kernel 再读同一份 <code>x</code>，其中相当一部分还在 L2 里。
+      所以 S1 账面 16N，实际只付了 13.7N。基线虚快，比值就缩水。</span>
     </p>
     <div class="tw"><table>
-      <caption>同一组 kernel，只把 M 从 8192 加到 16384（x 从 64 MiB 涨到 128 MiB，L2 再也装不下）</caption>
+      <caption>同一组 kernel，只把 M 从 8192 加到 16384（x 从 64 MiB 涨到 128 MiB，L2 装不下）</caption>
       <thead><tr><th>形状</th><th>x 大小</th><th>S1 兑现率</th><th>S3 对 S1</th><th>S4 对 S1</th><th>理论</th></tr></thead>
       <tbody>
         <tr><td class="cn">M=8192</td><td class="en">64 MiB<span class="sub">装得进 72 MiB L2</span></td>
@@ -6836,24 +6825,24 @@ for (int i = threadIdx.x; i &lt; N; i += BLOCK)
             <td class="en"><b>99.2%</b></td><td class="en"><b>1.97×</b></td><td class="en">1.98×</td>
             <td class="en">2.00×</td></tr>
       </tbody>
-      <caption><strong>换个形状，预测 ⑤ 就从 1.70× 跳回 1.97×，几乎正中 2.00×。</strong>
-        <span style="color:var(--ink-3)">RMSNorm 那一侧从来没出过这个问题，因为 N=3584 时
-        <code>x</code> 是 112 MiB，任何 M 下都装不进 L2 —— 所以 ② 一直稳稳成立
+      <caption><strong>换个形状，预测 ⑤ 就从 1.70× 回到 1.97×，几乎正中 2.00×。</strong>
+        <span style="color:var(--ink-3)">RMSNorm 一侧没出过这个问题：N=3584 时
+        <code>x</code> 在 M=8192 时是 112 MiB，M=16384 时是 224 MiB，都装不进 L2。所以 ② 一直成立
         （M=8192 是 1.51×，M=16384 是 1.50×）。</span></caption>
     </table></div>
     <div class="callout warn">
-      <p class="k">更糟的是，程序当时还给了个反向的保证</p>
+      <p class="k">更糟的是，程序当时给出了相反的保证</p>
       <p style="margin-bottom:0"><b>日志里 softmax 主阶梯那一行印的是
         <code>footprint = x + y = 128.0 MB（L2 72.0 MB）→ 装不下，必须走显存</code>。</b>
-        <span style="color:var(--crit);font-weight:650">这个信号本身就是误导的</span><span style="color:var(--ink-3)">
-        —— 它只比较 <code>x + y</code> 的总和，而真正决定跨 kernel 重用能不能命中的，
-        是<b>被重用的那个数组自己</b>的大小：x 单独只有 64 MiB，塞得进 72 MiB 的 L2。
+        <span style="color:var(--crit);font-weight:650">这个信号本身是误导的。</span><span style="color:var(--ink-3)">
+        它只比较 <code>x + y</code> 的总和；决定跨 kernel 重用能否命中的，
+        是<b>被重用的那个数组自己</b>的大小。x 单独只有 64 MiB，装得进 72 MiB 的 L2。
         检查代码的完整拆解见 <a href="#s8-2">§8 · 二</a>的「跑之前的三道前置检查」。</span></p>
     </div>
 
-    <h4>⑪⑭ MBU 什么时候会骗人</h4>
+    <h4>⑪⑭ MBU 什么时候失效</h4>
     <p class="prose">
-      <b>MBU = 账面字节 ÷ 耗时 ÷ 1008 GB/s。只要数据整个装进 L2，分子就不再是 DRAM 流量，这个数立刻失去意义。</b>
+      <b>MBU = 账面字节 ÷ 耗时 ÷ 1008 GB/s。只要数据整个装进 L2，分子就不再是显存流量，这个数也就失去意义。</b>
     </p>
     <div class="tw"><table>
       <caption>四个 MBU 超过 100% 的场合，根因都一样</caption>
@@ -6864,34 +6853,34 @@ for (int i = threadIdx.x; i &lt; N; i += BLOCK)
             <td>数据装不下，但<b>第二次读</b>的重用距离只有 14 KB</td></tr>
         <tr><td class="cn">S1<span class="sub">主阶梯</span></td><td class="en">106.1%</td>
             <td class="en">x 单独 64 MiB</td>
-            <td><code>x</code> 挤得进 L2，跨 kernel 的第二次读部分命中</td></tr>
+            <td><code>x</code> 装得进 L2，跨 kernel 的第二次读部分命中</td></tr>
         <tr><td class="cn">⑪ M=2048<span class="sub">prefill</span></td><td class="en">155–328%</td>
             <td class="en">32–56 MiB</td>
-            <td><b>x 和 y 全部装进 L2</b>，整个基准根本没碰显存</td></tr>
+            <td><b>x 和 y 全部装进 L2</b>，整个基准没有碰显存</td></tr>
         <tr><td class="cn">⑭ M=32 N=152064<span class="sub">logits</span></td><td class="en">147.9%</td>
             <td class="en">37 MiB</td>
             <td>同上。<b>预测说会更低，结果更高</b></td></tr>
       </tbody>
     </table></div>
     <p class="prose">
-      <b>⑪ 的预测本意（2048 个 block 够把卡填满）其实是对的</b>
-      <span style="color:var(--ink-3)">—— grid 填充度 2.67（N1）到 4.00（N3），确实填满了。</span>
-      <span style="color:var(--crit);font-weight:650">错的是用 MBU 去验证它：
-      数据进了 L2，这把尺子就不量 DRAM 了。</span>
+      <b>⑪ 的预测本意（2048 个 block 够把卡填满）是对的</b>
+      <span style="color:var(--ink-3)">：grid 填充度从 2.67（N1）到 4.00（N3），确实填满了。</span>
+      <span style="color:var(--crit);font-weight:650">错在用 MBU 去验证它：
+      数据进了 L2，这把尺子就不再量显存。</span>
     </p>
     <div class="callout warn">
-      <p class="k">⑭ 还顺带翻出一个反转</p>
+      <p class="k">⑭ 还暴露了一个反转</p>
       <p style="margin-bottom:0"><b>logits 形状下 S2（0.0602 ms）比 S1（0.0522 ms）还<u>慢</u>，
-        尽管 S2 的账面字节少了 25%。</b>
-        <span style="color:var(--ink-3)">数据全在 L2 时，省字节不再有收益，
-        而 online 递推多出来的 exp 和更长的依赖链照样要付钱。</span>
-        <span style="color:var(--crit);font-weight:650">阶梯倒过来了 ——
-        这正好反证了：这一整套优化的前提是「瓶颈在 DRAM」，前提不成立时结论也不成立。</span></p>
+        尽管 S2 的账面字节少 25%。</b>
+        <span style="color:var(--ink-3)">数据全在 L2 时，省字节没有收益；
+        online 递推多出的 exp 和更长的依赖链照样要花时间。</span>
+        <span style="color:var(--crit);font-weight:650">阶梯倒过来了。
+        这反证了一点：整套优化的前提是「瓶颈在显存」，前提不成立，结论也不成立。</span></p>
     </div>
 
-    <h4>⑫ 唯一一条跨了五种形状还站得住的</h4>
+    <h4>⑫ 唯一一条在五种形状下都成立的</h4>
     <div class="tw"><table>
-      <caption>N3 相对 N1 的提速，随 M 单调爬升</caption>
+      <caption>N3 比 N1 快的倍数随 M 上升，M=8192 起稳定在约 1.5×</caption>
       <thead><tr><th>行数</th><th>M=1</th><th>M=32</th><th>M=2048</th><th>M=8192</th><th>M=16384</th></tr></thead>
       <tbody>
         <tr><td class="cn">N3 对 N1</td><td class="en">1.00×</td><td class="en">1.02×</td>
@@ -6899,27 +6888,27 @@ for (int i = threadIdx.x; i &lt; N; i += BLOCK)
         <tr><td class="cn">grid 填充度<span class="sub">按 N3 的 4 block/SM 算</span></td><td class="en">0.002</td><td class="en">0.06</td>
             <td class="en">4.00</td><td class="en">16.0</td><td class="en">32.0</td></tr>
       </tbody>
-      <caption><b>M=1 时省掉三分之一的字节，一点用都没有 —— 128 个 SM 里 127 个在空转，
-        瓶颈压根不是带宽。</b>
-        <span style="color:var(--ink-3)">注意 M=1 / M=32 的绝对耗时都在 4–6 μs，
-        已经贴着 kernel 启动和同步的地板，那两列的细微差别不值得解读。</span></caption>
+      <caption><b>M=1 时省掉三分之一的字节没有任何用：128 个 SM 里 127 个在空转，
+        瓶颈不是带宽。</b>
+        <span style="color:var(--ink-3)">注意：M=1 / M=32 的绝对耗时都在 4–6 μs，
+        已经贴着 kernel 启动和同步的下限，这两列的细微差别不值得解读。</span></caption>
     </table></div>
     <p class="prose">
-      <b>一个小尾巴：M=1 和 M=32 时 N4 反而比 N3 快 1.49×</b>
-      <span style="color:var(--ink-3)">（0.0041 ms vs 0.0061 ms）。那不是省字节 —— 字节一个没省 ——
-      是 <code>float4</code> 把访存指令条数砍到四分之一，缩短了延迟受限时的关键路径。</span>
-      <span style="color:var(--crit);font-weight:650">喂饱卡时它毫无用处（1.00×），喂不饱时它是唯一还起作用的那一级。</span>
+      <b>一个例外：M=1 和 M=32 时，N4 比 N3 快 1.49×</b>
+      <span style="color:var(--ink-3)">（0.0041 ms 对 0.0061 ms）。原因不是省字节（字节一个没省），
+      而是 <code>float4</code> 把访存指令条数减到四分之一，缩短了延迟受限时的关键路径。</span>
+      <span style="color:var(--crit);font-weight:650">喂饱卡时它没有用（1.00×）；喂不饱时，它是唯一还起作用的一级。</span>
     </p>
 
     <div class="callout">
       <p class="k">这一轮实验真正留下的三句话</p>
-      <p><b>① 字节账要算「到 DRAM 的字节」，不是「指令发出的字节」。</b>
-        <span style="color:var(--ink-3)">两者之间隔着一层 cache，差距可以有 1.5 倍。</span></p>
-      <p><b>② 决定第二次访问花不花钱的，是重用距离，不是访问次数。</b>
-        <span style="color:var(--ink-3)">融合、分块、寄存器驻留，三种手法压缩的都是同一个量。</span></p>
-      <p style="margin-bottom:0"><b>③ 选基准形状时要先看数据装不装得进 L2。</b>
+      <p><b>① 字节账要算「到显存的字节」，不是「指令发出的字节」。</b>
+        <span style="color:var(--ink-3)">两者之间隔着一层 cache，差距可达 1.5 倍。</span></p>
+      <p><b>② 决定第二次访问花不花钱的是重用距离，不是访问次数。</b>
+        <span style="color:var(--ink-3)">融合、分块、寄存器驻留，三种手法压缩的都是这个量。</span></p>
+      <p style="margin-bottom:0"><b>③ 选基准形状时，先看数据装不装得进 L2。</b>
         <span style="color:var(--crit);font-weight:650">M=8192 的 softmax 刚好卡在 64 MiB / 72 MiB 这条线上，
-        四条预测里有三条是被它绊倒的。</span>
+        预测 ④⑤ 就是被它绊倒的。</span>
         <span style="color:var(--ink-3)">换成 M=16384，理论值立刻兑现。</span></p>
     </div>
   </div>
@@ -6935,14 +6924,14 @@ for (int i = threadIdx.x; i &lt; N; i += BLOCK)
       <thead><tr><th>这里学的</th><th>往后用在哪</th></tr></thead>
       <tbody>
         <tr><td class="cn">online softmax 递推<br>+ 结合律证明</td>
-            <td><b>FlashAttention 前向</b>（路线图 04 阶段）。<span style="color:var(--ink-3)">分块算 attention 的唯一数学前提。
-                FA-2 的前向伪代码里，那个 <code>rescale</code> 步骤就是 <code>s · exp(m_old − m_new)</code></span></td></tr>
+            <td><b>FlashAttention 前向</b>（路线图 04 阶段）。<span style="color:var(--ink-3)">这是分块算 attention 的唯一数学前提。
+                FA-2 前向伪代码里的 <code>rescale</code> 步骤就是 <code>s · exp(m_old − m_new)</code>。</span></td></tr>
         <tr><td class="cn">寄存器驻留<br>+ 单行长度上限</td>
-            <td><b>为什么必须分块</b>。<span style="color:var(--ink-3)">shared/寄存器容量是硬约束，
-                所有"把数据留在片上"的优化最终都会撞上它</span></td></tr>
+            <td><b>为什么必须分块</b>。<span style="color:var(--ink-3)">shared memory 和寄存器的容量是硬约束，
+                所有「把数据留在片上」的优化最终都会撞上它。</span></td></tr>
         <tr><td class="cn">MBU 视角</td>
-            <td><b><a href="../../01-decode-latency-anatomy/">01 阶段</a>的两堵墙</b>。<span style="color:var(--ink-3)">decode 撞带宽墙这件事，
-                在 vLLM 的吞吐曲线上看是宏观现象，在这里是微观机制 —— 两头能对上</span></td></tr>
+            <td><b><a href="../../01-decode-latency-anatomy/">01 阶段</a>的两堵墙</b>。<span style="color:var(--ink-3)">decode 撞带宽墙，
+                在 vLLM 的吞吐曲线上是宏观现象，在这里是微观机制，两头能对上。</span></td></tr>
       </tbody>
     </table></div>
   </div>
@@ -6953,22 +6942,22 @@ for (int i = threadIdx.x; i &lt; N; i += BLOCK)
       <thead><tr><th>方向</th><th>为什么没做</th><th>做了会怎样</th></tr></thead>
       <tbody>
         <tr><td class="cn">fp16 / bf16 版本</td>
-            <td>为了和 SGEMM 那一章的 fp32 口径保持一致，便于横向比较</td>
-            <td><b>字节数直接减半，MBU 的分母不变</b> → 理论上耗时减半。
-                <span style="color:var(--ink-3)">但归约必须在 fp32 里做，否则 3584 个数累加会丢精度 ——
-                这正是 PyTorch 的 RMSNorm 把输入 <code>.float()</code> 再算的原因</span></td></tr>
+            <td>和 SGEMM 那一章的 fp32 口径保持一致，便于横向比较</td>
+            <td><b>字节数减半，MBU 的分母不变</b> → 理论上耗时减半。
+                <span style="color:var(--ink-3)">但归约必须在 fp32 里做，否则 3584 个数累加会丢精度。
+                PyTorch 的 RMSNorm 先把输入转成 <code>.float()</code> 再算，就是这个原因。</span></td></tr>
         <tr><td class="cn">RMSNorm + 残差加法融合</td>
-            <td>会引入第二个输入张量，破坏"每级只动一个变量"</td>
+            <td>会引入第二个输入张量，破坏「每级只动一个变量」</td>
             <td><span style="color:var(--crit);font-weight:650">这是生产里最常见的融合</span>，
                 <span style="color:var(--ink-3)">因为残差加法本来要单独读写一遍，融进来能再省 8N</span></td></tr>
         <tr><td class="cn">一个 warp 一行</td>
             <td>N=3584 需要每线程 112 个元素，寄存器不够</td>
-            <td><span style="color:var(--ink-3)">短行（比如 head_dim=128）时这是更好的排布 ——
+            <td><span style="color:var(--ink-3)">短行（例如 head_dim=128）时这种排布更好：
                 省掉跨 warp 归约和两次 <code>__syncthreads</code></span></td></tr>
         <tr><td class="cn">ncu 验证 MBU</td>
             <td>手头的实例没有 profiling 权限</td>
-            <td><span style="color:var(--ink-3)"><code>gpu__dram_throughput</code> 能直接印证我们算的 MBU。
-                不过这两个算子的访存模式是纯顺序流，手算字节数的可信度比 SGEMM 那边高得多</span></td></tr>
+            <td><span style="color:var(--ink-3)"><code>gpu__dram_throughput</code> 能直接验证我们算的 MBU。
+                不过这两个算子的访存是纯顺序流，手算字节数比 SGEMM 那边可信得多。</span></td></tr>
       </tbody>
     </table></div>
   </div>
@@ -6978,20 +6967,20 @@ for (int i = threadIdx.x; i &lt; N; i += BLOCK)
     <ul class="pts">
       <li><strong>① 为什么这里用 <code>__shfl_xor_sync</code>，而第 10 章 R6 用 <code>__shfl_down_sync</code>？
         换过来会怎样？</strong></li>
-      <li><strong>② N1 和 N2 发出的访存指令都是 12N，为什么 N2 实测快了 1.49×？「指令发出的字节」和「DRAM 搬运的字节」差在哪一层，差多少？</strong></li>
+      <li><strong>② N1 和 N2 发出的访存指令都是 12N，为什么 N2 实测快 1.49×？「指令发出的字节」和「显存搬运的字节」差在哪一层、差多少？</strong></li>
       <li><strong>③ 为什么 <code>float xs[MAXS]</code> 必须配 <code>#pragma unroll</code> 和常量下标？
-        写成 <code>xs[cnt++]</code> 会发生什么，从哪里能看出来？</strong></li>
-      <li><strong>④ 不加证明地把 online softmax 的递推用在蝶形归约上，错在哪？
-        那半页结合律证明到底证了什么？</strong></li>
+        写成 <code>xs[cnt++]</code> 会发生什么？从哪里能看出来？</strong></li>
+      <li><strong>④ 不加证明就把 online softmax 的递推用在蝶形归约上，错在哪？
+        那半页结合律证明证的是什么？</strong></li>
       <li><strong>⑤ 幺元为什么不能写 <code>-INFINITY</code>？什么输入会触发这个 bug？</strong></li>
-      <li><strong>⑥ S3 已经是"每个元素只过一次显存"的最优了，
+      <li><strong>⑥ S3 已经做到「每个元素只过一次显存」，
         为什么 FlashAttention 还能比它快一个数量级？</strong></li>
     </ul>
     <div class="callout link">
       <p class="k">第 ⑥ 题是整份报告的出口</p>
-      <p style="margin-bottom:0"><b>答案不在"怎么把 kernel 写得更快"里，
-        而在"这个 kernel 本来就不该存在"里。</b>
-        <span style="color:var(--ink-3)">S3 的 8N 是"必须把打分矩阵写出来再读回"这个前提下的最优；
+      <p style="margin-bottom:0"><b>答案不在「怎么把 kernel 写得更快」，
+        而在「这个 kernel 本来就不该存在」。</b>
+        <span style="color:var(--ink-3)">S3 的 8N 是「必须把打分矩阵写出来再读回」这个前提下的最优；
         FlashAttention 直接否定了这个前提。</span>
         <span style="color:var(--crit);font-weight:650">算子级优化的天花板，是算法级优化的地板。</span></p>
     </div>
@@ -7000,7 +6989,7 @@ for (int i = threadIdx.x; i &lt; N; i += BLOCK)
 
 
 <footer>
-  <span>02 阶段 · 报告 04 · 前作：报告 03（归约六级优化）—— block 级归约的骨架在那里打下</span>
+  <span>02 阶段 · 报告 04 · 前作：报告 03（归约六级优化），block 级归约的骨架在那里打下</span>
   <span>代码：src/fused_ops.cu（11 个 kernel）· Scripts/run_fused.sh · 数据：Results/Fused/fused_20261001_005225.txt</span>
   <span>实测 2026-10-01 · RTX 4090 · 128 SM · L2 72 MiB · 峰值带宽 1008 GB/s</span>
   <span>模型维度取自 01 阶段的 Qwen2.5-7B 结构拆解 · online softmax 递推 → 04 阶段的 FlashAttention-2 前向</span>
